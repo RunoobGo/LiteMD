@@ -3,6 +3,7 @@
 // 关键点：
 //   - 切换 tab 时由 setContent(value) 覆盖内容（不通过 dispatch，避免污染 undo history）
 //   - 用户输入时通过 onUpdate 回调 → TabManager.syncLiveContent
+//   - 光标移动时通过 onCursorChange 回调 → 状态栏显示行列位置
 //   - 主题：跟随 SetConfig 配置（dark/light，未配置则用 one-dark 默认）
 
 import { EditorState, Compartment } from "@codemirror/state";
@@ -17,6 +18,8 @@ import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle } from "@code
 import { tags as t } from "@lezer/highlight";
 
 export type EditorChangeListener = (content: string) => void;
+/** 光标位置变化回调：(行号从 1 开始, 列号从 1 开始) */
+export type CursorChangeListener = (line: number, col: number) => void;
 
 export interface LiteMDTheme {
     base: "light" | "dark";
@@ -45,11 +48,13 @@ const mdHighlight = HighlightStyle.define([
 export class MarkdownEditor {
     private view: EditorView;
     private onChange: EditorChangeListener;
+    private onCursorChange: CursorChangeListener | null;
     private themeCompartment = new Compartment();
     private imageDropHandler: ImageDropHandler | null = null;
 
-    constructor(host: HTMLElement, initialContent: string, onChange: EditorChangeListener, theme: LiteMDTheme = { base: "dark" }) {
+    constructor(host: HTMLElement, initialContent: string, onChange: EditorChangeListener, theme: LiteMDTheme = { base: "dark" }, onCursorChange?: CursorChangeListener) {
         this.onChange = onChange;
+        this.onCursorChange = onCursorChange ?? null;
         const baseThemeExt = this.buildBaseTheme(theme.base);
         const extensions = [
             lineNumbers(),
@@ -80,6 +85,12 @@ export class MarkdownEditor {
             EditorView.updateListener.of((u) => {
                 if (u.docChanged) {
                     this.onChange(u.state.doc.toString());
+                }
+                // 光标位置变化或内容变化时，回调最新行列位置（供状态栏显示）
+                if (this.onCursorChange && (u.selectionSet || u.docChanged)) {
+                    const head = u.state.selection.main.head;
+                    const lineObj = u.state.doc.lineAt(head);
+                    this.onCursorChange(lineObj.number, head - lineObj.from + 1);
                 }
             }),
             // 图片拖入：阻止默认 + 调用回调
@@ -139,6 +150,13 @@ export class MarkdownEditor {
     /** 获取当前内容（O(1)） */
     getContent(): string {
         return this.view.state.doc.toString();
+    }
+
+    /** 获取主光标位置 {line, col}（行号、列号均从 1 开始） */
+    getCursorPos(): { line: number; col: number } {
+        const head = this.view.state.selection.main.head;
+        const lineObj = this.view.state.doc.lineAt(head);
+        return { line: lineObj.number, col: head - lineObj.from + 1 };
     }
 
     /** 切主题 */

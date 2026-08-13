@@ -43,6 +43,7 @@ function showError(title: string, body: string): void {
 const cmHost = $<HTMLDivElement>("cmHost");
 const tabbar = $<HTMLDivElement>("tabbar");
 const statusPath = $<HTMLSpanElement>("statusPath");
+const statusPos = $<HTMLSpanElement>("statusPos");
 const emptyPreview = $<HTMLDivElement>("emptyPreview");
 const meta = $<HTMLDivElement>("meta");
 const splitRoot = $<HTMLDivElement>("splitpane");
@@ -94,8 +95,12 @@ function initEditorAndPreview() {
                 updateMeta();
             }
         },
-        { base: "dark" }
+        { base: "dark" },
+        (line, col) => updateStatusPos(line, col)
     );
+    // 初始化状态栏光标位置显示
+    const pos0 = editor.getCursorPos();
+    updateStatusPos(pos0.line, pos0.col);
 
     // 图片拖入 / 粘贴：复制到资产目录并插入 markdown
     editor.onImageDrop(async (file) => {
@@ -208,6 +213,11 @@ function updateMeta() {
     }
     meta.textContent = a.dirty ? "● 已修改" : (a.path ? "✓ 已保存" : "○ 新建");
     statusPath.textContent = a.path ? a.path : `${a.title} (未保存)`;
+}
+
+/** 更新状态栏光标位置显示（行/列，均从 1 开始） */
+function updateStatusPos(line: number, col: number) {
+    statusPos.textContent = `行 ${line} · 列 ${col}`;
 }
 
 function renderFrontmatterPanel() {
