@@ -46,8 +46,9 @@ type CheckResult struct {
 }
 
 // versionRE 解析 semver：v1.2.3 / 1.2.3 / 1.2.3-rc1 / 1.2.3+build.1
+// 兼容两段式版本号（如 v1.0 / 1.2），缺失的 patch 视为 0。
 // 第 4 组捕获预发布标识（如 -rc1），用于判断是否预发布版本。
-var versionRE = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$`)
+var versionRE = regexp.MustCompile(`^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$`)
 
 // fetchBaseURL 是 GitHub Releases API 的基础 URL，变量便于测试替换为 mock server。
 var fetchBaseURL = "https://api.github.com/repos/%s/releases/latest"
@@ -61,7 +62,9 @@ func parseSemver(v string) (maj, min, pat int, preRelease string, err error) {
 	}
 	maj, _ = strconv.Atoi(m[1])
 	min, _ = strconv.Atoi(m[2])
-	pat, _ = strconv.Atoi(m[3])
+	if m[3] != "" {
+		pat, _ = strconv.Atoi(m[3])
+	} // 两段式版本号（如 v1.0）patch 默认为 0
 	preRelease = m[4] // 可能为空串
 	return maj, min, pat, preRelease, nil
 }

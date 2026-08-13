@@ -23,7 +23,10 @@ func TestParseSemver(t *testing.T) {
 		{"1.2.3+build.1", 1, 2, 3, "", true},
 		{"v0.2.0", 0, 2, 0, "", true},
 		{"abc", 0, 0, 0, "", false},
-		{"1.2", 0, 0, 0, "", false},
+		// 两段式版本号：patch 缺失视为 0（GitHub 常见 v1.0 风格 tag）
+		{"v1.0", 1, 0, 0, "", true},
+		{"1.2", 1, 2, 0, "", true},
+		{"v2", 0, 0, 0, "", false}, // 单段仍非法
 	}
 	for _, c := range cases {
 		maj, min, pat, pre, err := parseSemver(c.in)
@@ -56,6 +59,9 @@ func TestIsNewer(t *testing.T) {
 		{"v0.2.0-rc1", "v0.2.0", false},
 		{"v0.2.0-rc2", "v0.2.0-rc1", true}, // 同为预发布，字典序比较
 		{"0.10.0", "0.9.5", true},
+		// 两段式版本号（GitHub v1.0 tag）应能正确比较
+		{"v1.0", "v0.2.0", true},
+		{"v1.0", "v1.0", false},
 	}
 	for _, c := range cases {
 		got, err := IsNewer(c.latest, c.current)
