@@ -115,6 +115,15 @@ html, body {
     height: 100vh;
 }
 
+/* 显式指定各区域所在行：frontmatter-panel 隐藏时 display:none 不占用网格单元，
+   若依赖自动放置会导致后续元素上移错位——splitpane 落到 auto 行（高度随内容变化）、
+   statusbar 落到 1fr 行（占据所有剩余空间）。显式 grid-row 锁定位置，杜绝错位。 */
+#app > .topbar { grid-row: 1; }
+#app > .tabbar { grid-row: 2; }
+#app > .frontmatter-panel { grid-row: 3; }
+#app > .splitpane { grid-row: 4; }
+#app > .statusbar { grid-row: 5; }
+
 /* ===== Markdown 配色（供 CM 主题用 CSS variables） ===== */
 :root {
     --md-fontsize: 14px;
@@ -302,6 +311,10 @@ html, body {
     position: relative;
     display: grid;
     grid-template-columns: var(--split-ratio, 50%) 6px calc(100% - var(--split-ratio, 50%) - 6px);
+    /* 行高锁定为 1fr：让 pane 占满 splitpane 全高，高度由网格行决定而非文本内容，
+       内容在 pane 内部滚动（cm-host/preview 均为 flex:1 + overflow:auto），
+       实现工作区高度与文本长度解耦的稳定布局。 */
+    grid-template-rows: 1fr;
     background: var(--bg-0);
     overflow: hidden;
 }
