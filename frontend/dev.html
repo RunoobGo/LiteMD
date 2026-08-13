@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>LiteMD (browser-mock)</title>
+    <link rel="stylesheet" href="./src/style.css"/>
+</head>
+<body>
+    <!-- 启动屏：等 CodeMirror 初始化完成后由 main.ts 隐藏 -->
+    <div id="splash" class="splash">
+        <div class="splash-inner">
+            <div class="splash-logo">
+                <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#58A6FF"/>
+                            <stop offset="100%" stop-color="#1F6FEB"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="6" y="6" width="52" height="52" rx="10" fill="url(#g)"/>
+                    <text x="32" y="42" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="28" font-weight="700">L</text>
+                </svg>
+            </div>
+            <h1 class="splash-title">LiteMD</h1>
+            <p class="splash-tagline">极致轻量 · Markdown 编辑器</p>
+            <div class="splash-spinner">
+                <span></span><span></span><span></span>
+            </div>
+            <p class="splash-version" id="splashVersion">v0.2.0</p>
+        </div>
+    </div>
+
+    <div id="app" class="app-hidden">
+        <header class="topbar">
+            <div class="brand">LiteMD <span style="color:var(--accent);font-weight:400;font-size:11px">mock</span></div>
+            <nav class="actions">
+                <button data-action="new" title="新建 (Ctrl+N)">新建</button>
+                <button data-action="open" title="打开 (Ctrl+O)">打开</button>
+                <button data-action="save" title="保存 (Ctrl+S)">保存</button>
+                <button data-action="save-as" title="另存为 (Ctrl+Shift+S)">另存为</button>
+                <span class="sep"></span>
+                <button data-action="mode-both" title="分屏">分屏</button>
+                <button data-action="mode-left" title="仅编辑">编辑</button>
+                <button data-action="mode-right" title="仅预览">预览</button>
+                <span class="sep"></span>
+                <button data-action="check-update" title="检查更新">检查更新</button>
+            </nav>
+            <div class="meta" id="meta">未保存</div>
+        </header>
+        <div class="tabbar" id="tabbar" role="tablist"></div>
+        <details class="frontmatter-panel" id="frontmatterPanel" hidden>
+            <summary>
+                <strong>Frontmatter</strong>
+                <span id="fmKeys" class="fm-keys"></span>
+            </summary>
+            <div id="fmBody" class="fm-body"></div>
+        </details>
+        <main class="splitpane" id="splitpane" data-mode="both" style="--split-ratio: 50%;">
+            <div class="pane pane-left">
+                <div class="cm-host" id="cmHost"></div>
+            </div>
+            <div class="pane-handle" title="拖动调整宽度 · 双击重置"></div>
+            <div class="pane pane-right">
+                <div class="preview" id="preview"></div>
+            </div>
+            <div class="empty-state empty-right" id="emptyPreview">
+                <p>👁 暂无内容</p>
+            </div>
+        </main>
+        <footer class="statusbar" id="statusbar">
+            <span id="statusPath">未打开文件</span>
+            <span id="statusPos">L1 · C1</span>
+            <span id="statusEncoding">UTF-8</span>
+        </footer>
+    </div>
+
+    <dialog id="unsavedDialog" class="litemd-dialog">
+        <form method="dialog">
+            <h3>当前标签存在未保存的修改</h3>
+            <p id="unsavedFileName" class="muted"></p>
+            <menu>
+                <button value="cancel">取消</button>
+                <button value="discard" class="danger">放弃修改</button>
+                <button value="save" autofocus>保存</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <dialog id="updateDialog" class="litemd-dialog">
+        <form method="dialog">
+            <h3 id="updateTitle">检查更新</h3>
+            <p id="updateBody" class="muted"></p>
+            <menu>
+                <button value="later">稍后再说</button>
+                <button value="open" autofocus>查看详情</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <dialog id="errorDialog" class="litemd-dialog">
+        <form method="dialog">
+            <h3 id="errorTitle">操作失败</h3>
+            <p id="errorBody" class="muted"></p>
+            <menu>
+                <button value="ok" autofocus>知道了</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <script src="./src/dev-bootstrap.ts" type="module"></script>
+</body>
+</html>
