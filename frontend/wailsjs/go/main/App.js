@@ -6,10 +6,6 @@ export function AppInfo() {
   return window['go']['main']['App']['AppInfo']();
 }
 
-export function CheckForUpdate(arg1) {
-  return window['go']['main']['App']['CheckForUpdate'](arg1);
-}
-
 export function CopyImageAsset(arg1, arg2) {
   return window['go']['main']['App']['CopyImageAsset'](arg1, arg2);
 }
@@ -24,10 +20,6 @@ export function OpenDialog() {
 
 export function OpenFile(arg1) {
   return window['go']['main']['App']['OpenFile'](arg1);
-}
-
-export function OpenReleasePage(arg1) {
-  return window['go']['main']['App']['OpenReleasePage'](arg1);
 }
 
 export function PushRecent(arg1) {

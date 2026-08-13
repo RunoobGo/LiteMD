@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +11,6 @@ import (
 
 	"litemd/internal/config"
 	"litemd/internal/fileio"
-	"litemd/internal/updater"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -184,49 +182,6 @@ func (a *App) PushRecent(path string) (config.Config, error) {
 		return cfg, fmt.Errorf("save after push: %w", err)
 	}
 	return cfg, nil
-}
-
-// ============================================================================
-// 自动更新
-// ============================================================================
-
-// CheckForUpdate 主动检查 GitHub Releases 是否有新版本。
-//
-// 语义：
-//   - 返回值永远不是 nil，前端用 HasUpdate 字段决定是否弹窗
-//   - 网络失败 / 解析失败 → HasUpdate=false, Error="..."
-//   - 24h 内不重复检查（用 config.LastUpdateCheck 记录），但手动调用绕过
-func (a *App) CheckForUpdate(force bool) (updater.CheckResult, error) {
-	cfg, _ := a.store.Load()
-
-	// 节流：24h 内不重复（除非 force）
-	if !force && !cfg.LastUpdateCheck.IsZero() && time.Since(cfg.LastUpdateCheck) < 24*time.Hour {
-		// 不发起网络请求，返回上次的 known 信息（用 CurrentVersion 占位）
-		return updater.CheckResult{
-			HasUpdate:      false,
-			CurrentVersion: AppVersion,
-		}, nil
-	}
-
-	result := updater.Check(AppVersion, 5*time.Second)
-	// 记录检查时间；保存失败不阻塞返回，但记日志便于排查节流失效问题
-	cfg.LastUpdateCheck = time.Now()
-	if err := a.store.Save(cfg); err != nil {
-		log.Printf("save lastUpdateCheck failed: %v", err)
-	}
-	return result, nil
-}
-
-// OpenReleasePage 让前端用一个按钮直接跳到 GitHub release 页（无需前端自己拼链接）。
-func (a *App) OpenReleasePage(url string) error {
-	if url == "" {
-		return errors.New("empty url")
-	}
-	if a.ctx == nil {
-		return errors.New("app not ready")
-	}
-	wailsruntime.BrowserOpenURL(a.ctx, url)
-	return nil
 }
 
 // ============================================================================

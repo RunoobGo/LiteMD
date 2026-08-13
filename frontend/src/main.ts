@@ -328,7 +328,6 @@ document.querySelectorAll<HTMLButtonElement>(".actions button").forEach((btn) =>
             case "mode-both": setMode("both"); break;
             case "mode-left": setMode("left"); break;
             case "mode-right": setMode("right"); break;
-            case "check-update": handleCheckUpdate(true); break;
         }
     });
 });
@@ -441,81 +440,6 @@ installBeforeUnloadGuard(tm);
 tm.newTab();
 initEditorAndPreview();
 editor!.focus();
-
-/**
- * 主动 / 自动检查更新。
- * @param force true 表示用户手动触发（绕过 24h 节流）；false 表示启动后台静默检查
- */
-async function handleCheckUpdate(force: boolean) {
-    const w = window as any;
-    if (!w.go?.main?.App?.CheckForUpdate) {
-        // 浏览器模式：仅用户手动触发时提示，后台静默检查不打扰
-        if (force) {
-            showUpdateDialog({
-                hasUpdate: false,
-                currentVersion: "0.2.0-mock",
-                latest: { tagName: "v0.2.0-mock", name: "Mock Release", htmlUrl: "https://github.com/litemd/litemd" },
-                error: "更新检查仅在桌面应用中可用",
-            }, force);
-        }
-        return;
-    }
-    try {
-        const result = await w.go.main.App.CheckForUpdate(force);
-        showUpdateDialog(result, force);
-    } catch (e) {
-        if (force) {
-            showUpdateDialog({
-                hasUpdate: false,
-                currentVersion: "?",
-                latest: { tagName: "", name: "", htmlUrl: "" },
-                error: String(e),
-            }, force);
-        } else {
-            // 后台静默检查失败不打扰用户
-            console.warn("后台更新检查失败", e);
-        }
-    }
-}
-
-function showUpdateDialog(result: any, force: boolean) {
-    // 后台静默检查：仅发现新版本时才弹窗；失败/无更新均不打扰
-    if (!force && !result.hasUpdate) return;
-    const dlg = document.getElementById("updateDialog") as HTMLDialogElement;
-    const title = document.getElementById("updateTitle");
-    const body = document.getElementById("updateBody");
-    if (!dlg || !title || !body) return;
-    if (result.error) {
-        title.textContent = "检查更新失败";
-        body.textContent = result.error;
-    } else if (result.hasUpdate) {
-        title.textContent = `发现新版本 ${result.latest.tagName}`;
-        body.textContent = `当前版本：${result.currentVersion}\n最新版本：${result.latest.tagName}\n发布日期：${result.latest.publishedAt || "—"}\n\n点击「查看详情」打开下载页`;
-    } else {
-        title.textContent = "已是最新版本";
-        body.textContent = `当前版本：${result.currentVersion}\nGitHub 上未发现新版本`;
-    }
-    if (!dlg.open) dlg.showModal();
-    dlg.addEventListener("close", async function once() {
-        dlg.removeEventListener("close", once);
-        if (dlg.returnValue === "open" && result.latest?.htmlUrl) {
-            try {
-                const w2 = window as any;
-                await w2.go.main.App.OpenReleasePage(result.latest.htmlUrl);
-            } catch { /* fallback: 新窗口 */
-                window.open(result.latest.htmlUrl, "_blank");
-            }
-        }
-    }, { once: true });
-}
-
-// 启动 5s 后静默检查更新（不阻塞 UI）
-setTimeout(() => {
-    const w = window as any;
-    if (w.go?.main?.App?.CheckForUpdate) {
-        handleCheckUpdate(false);
-    }
-}, 5000);
 
 // 隐藏启动屏：等 CodeMirror 渲染完第一帧后淡出
 requestAnimationFrame(() => {
