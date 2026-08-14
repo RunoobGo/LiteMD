@@ -5,6 +5,8 @@ import {config} from '../models';
 
 export function AppInfo():Promise<main.AppInfo>;
 
+export function ConsumeStartupFile():Promise<main.FilePayload>;
+
 export function CopyImageAsset(arg1:string,arg2:string):Promise<string>;
 
 export function GetConfig():Promise<config.Config>;

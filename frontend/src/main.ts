@@ -18,6 +18,8 @@ import {
     copyImageAsset,
 } from "./file-ops";
 import { parseFrontmatter } from "./obsidian";
+import { ConsumeStartupFile } from "../wailsjs/go/main/App";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
@@ -48,6 +50,53 @@ const emptyPreview = $<HTMLDivElement>("emptyPreview");
 const meta = $<HTMLDivElement>("meta");
 const splitRoot = $<HTMLDivElement>("splitpane");
 const fmPanel = $<HTMLDetailsElement>("frontmatterPanel") as unknown as HTMLDetailsElement;
+
+// =============================================================================
+// 主题（暗/亮切换）。index.html 头部内联脚本已在解析阶段读取 localStorage
+// 并设置 <html data-theme>，这里负责运行时切换、编辑器同步与偏好持久化。
+// =============================================================================
+
+const THEME_KEY = "litemd:theme";
+type ThemeBase = "dark" | "light";
+
+function currentThemeBase(): ThemeBase {
+    return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+// 主题过渡动画窗口：<html> 临时挂 .theme-anim 让 CSS 过渡颜色（约 300ms），
+// 到期移除以避免常驻 transition 的样式重算开销。快速连续切换时复用定时器。
+let themeAnimTimer: number | null = null;
+
+/** 应用主题：<html data-theme>（驱动全部 CSS 变量）+ CodeMirror + 切换按钮提示 */
+function applyTheme(base: ThemeBase, persist = true, animate = true): void {
+    const root = document.documentElement;
+    if (animate) {
+        if (themeAnimTimer !== null) window.clearTimeout(themeAnimTimer);
+        root.classList.add("theme-anim");
+        themeAnimTimer = window.setTimeout(() => {
+            root.classList.remove("theme-anim");
+            themeAnimTimer = null;
+        }, 300);
+    }
+    root.dataset.theme = base;
+    editor?.setTheme({ base });
+    const btn = document.querySelector<HTMLButtonElement>(".actions button[data-action='toggle-theme']");
+    if (btn) {
+        const label = base === "dark" ? "切换为亮色主题" : "切换为暗色主题";
+        btn.dataset.tip = label;
+        const tip = btn.querySelector(".tip");
+        if (tip) tip.textContent = label;
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("aria-pressed", String(base === "light"));
+    }
+    if (persist) {
+        try { localStorage.setItem(THEME_KEY, base); } catch { /* 隐私模式等场景下忽略 */ }
+    }
+}
+
+function toggleTheme(): void {
+    applyTheme(currentThemeBase() === "dark" ? "light" : "dark");
+}
 
 // =============================================================================
 // TabManager + 编辑器/预览
@@ -95,7 +144,7 @@ function initEditorAndPreview() {
                 updateMeta();
             }
         },
-        { base: "dark" },
+        { base: currentThemeBase() },
         (line, col) => updateStatusPos(line, col)
     );
     // 初始化状态栏光标位置显示
@@ -166,6 +215,7 @@ function initEditorAndPreview() {
     });
 
     split = new SplitPane(splitRoot, { initialRatio: 0.5 });
+    setMode(split.getMode()); // 同步顶栏视图模式按钮的初始 active 状态
     lastRenderedActiveId = tm.activeId;
     renderFrontmatterPanel();
     updateMeta();
@@ -220,31 +270,39 @@ function updateStatusPos(line: number, col: number) {
     statusPos.textContent = `行 ${line} · 列 ${col}`;
 }
 
+// frontmatter 面板内容签名：每次按键都会触发本函数，签名不变时跳过 DOM 重建，
+// 避免 innerHTML 重排造成的输入期卡顿（面板内容仅由 frontmatter 决定，正文改动无需重渲染）
+let lastFmSig: string | null = null; // null = 面板处于隐藏态
+
 function renderFrontmatterPanel() {
     const a = tm.active;
-    if (!a) {
-        fmPanel.open = false;
-        fmPanel.hidden = true;
-        return;
+    let data: Record<string, string> | null = null;
+    if (a) {
+        const { frontmatter } = parseFrontmatter(a.liveContent);
+        if (frontmatter && Object.keys(frontmatter.data).length) {
+            data = frontmatter.data as Record<string, string>;
+        }
     }
-    const { frontmatter } = parseFrontmatter(a.liveContent);
-    if (!frontmatter || !Object.keys(frontmatter.data).length) {
+    const sig = data ? JSON.stringify(data) : null;
+    if (sig === lastFmSig) return;
+    lastFmSig = sig;
+
+    if (a) a.frontmatter = data;
+    if (!data) {
         fmPanel.hidden = true;
         fmPanel.open = false;
-        a.frontmatter = null;
         return;
     }
     fmPanel.hidden = false;
-    a.frontmatter = frontmatter.data as Record<string, string>;
-    const keys = Object.keys(frontmatter.data);
-    const keysText = keys.map((k) => `${escapeHtml(k)}: ${escapeHtml(String(frontmatter.data[k]))}`).join("  ·  ");
+    const keys = Object.keys(data);
+    const keysText = keys.map((k) => `${escapeHtml(k)}: ${escapeHtml(String(data[k]))}`).join("  ·  ");
     fmPanel.innerHTML = `
         <summary>
             <strong>Frontmatter</strong>
             <span class="fm-keys">${keysText}</span>
         </summary>
         <div class="fm-body">
-            ${keys.map((k) => `<span class="fm-key">${escapeHtml(k)}</span><span class="fm-value">${escapeHtml(String(frontmatter.data[k]))}</span>`).join("")}
+            ${keys.map((k) => `<span class="fm-key">${escapeHtml(k)}</span><span class="fm-value">${escapeHtml(String(data[k]))}</span>`).join("")}
         </div>
     `;
 }
@@ -258,6 +316,10 @@ function escapeHtml(s: string): string {
 function setMode(mode: SplitMode) {
     if (!split) return;
     split.setMode(mode);
+    // 同步顶栏视图模式按钮的 .active 高亮，使当前模式一目了然
+    document.querySelectorAll<HTMLButtonElement>(".actions button[data-action^='mode-']").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.action === `mode-${mode}`);
+    });
     requestAnimationFrame(() => editor?.focus());
 }
 
@@ -328,6 +390,7 @@ document.querySelectorAll<HTMLButtonElement>(".actions button").forEach((btn) =>
             case "mode-both": setMode("both"); break;
             case "mode-left": setMode("left"); break;
             case "mode-right": setMode("right"); break;
+            case "toggle-theme": toggleTheme(); break;
         }
     });
 });
@@ -342,10 +405,33 @@ async function handleOpen() {
         const path = await pickOpenPath();
         if (!path) return;
         const payload = await openFile(path);
-        tm.openTab(payload.path, payload.content);
-        pushRecent(payload.path).catch(console.warn);
+        openFilePayload(payload);
     } catch (e) {
         showError("打开失败", (e as Error).message ?? String(e));
+    }
+}
+
+/** 打开文件载荷的公共路径:开标签 + 记录最近文件 */
+function openFilePayload(payload: { path: string; content: string }): void {
+    tm.openTab(payload.path, payload.content);
+    pushRecent(payload.path).catch(console.warn);
+}
+
+/**
+ * 消费"使用本应用打开"(文件关联)的启动文件。
+ * 返回 true 表示成功打开了一个文件;false 表示无待开文件或读取失败
+ * (浏览器 mock 环境 ConsumeStartupFile 返回空载荷,自然返回 false)。
+ */
+async function consumeStartupFile(): Promise<boolean> {
+    try {
+        const payload = await ConsumeStartupFile();
+        if (!payload?.path) return false;
+        openFilePayload(payload);
+        return true;
+    } catch (e) {
+        // 读取失败(文件被移动/权限等):提示但不阻塞启动,回退到新建文档
+        showError("打开文件失败", (e as Error).message ?? String(e));
+        return false;
     }
 }
 
@@ -437,9 +523,29 @@ installBeforeUnloadGuard(tm);
 // =============================================================================
 // 启动
 // =============================================================================
-tm.newTab();
+
+// 文件关联支持:先同步创建一个空 tab 保证编辑器/面板初始化安全,
+// 再异步消费启动参数携带的关联文件(多选打开会入队多个,循环全部消费);
+// 若至少打开了一个文件,静默移除初始空 tab(仅在它未被修改且未关联路径时)。
+const bootTabId = tm.newTab().id;
 initEditorAndPreview();
+applyTheme(currentThemeBase(), false, false); // 启动同步按钮提示/图标，不持久化、不播动画
 editor!.focus();
+
+(async () => {
+    let openedAny = false;
+    while (await consumeStartupFile()) openedAny = true;
+    if (!openedAny) return;
+    const boot = tm.get(bootTabId);
+    if (boot && !boot.dirty && !boot.path) tm.closeTab(bootTabId, true);
+})();
+
+// 应用已运行时再次通过文件关联/命令行启动:Go 侧单实例锁截获参数并触发此事件
+if ((window as any).runtime) {
+    EventsOn("litemd:openExternalFile", async () => {
+        while (await consumeStartupFile()) { /* 消费队列中的全部待开文件 */ }
+    });
+}
 
 // 隐藏启动屏：等 CodeMirror 渲染完第一帧后淡出
 requestAnimationFrame(() => {

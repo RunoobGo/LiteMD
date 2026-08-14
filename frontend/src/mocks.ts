@@ -3,7 +3,9 @@
 // 当运行在 Wails WebView 中时，wailsjs/go/main/App.js 会由 vite 优先匹配真实包；
 // 这里是浏览器环境的兜底实现：把方法挂到 window.go 上供 main.ts 透明调用。
 
-// 内存中的 mock 文件系统：E2E 测试可注入预置文件
+// 内存中的 mock 文件系统:E2E 测试可注入预置文件。
+// 同时镜像到 sessionStorage,使 location.reload()/跳转后注入的文件仍存在
+// (window 级注入会被刷新清空,无法验证"启动参数打开文件"链路)。
 export interface MockFs {
     files: Map<string, string>;
     savedFiles: Array<{ path: string; content: string }>;
@@ -11,12 +13,26 @@ export interface MockFs {
     popLastSave(): { path: string; content: string } | undefined;
 }
 
+const MOCKFS_STORE_KEY = "__litemd__mockfs_store";
+
+function loadPersistedFiles(): Map<string, string> {
+    const m = new Map<string, string>();
+    try {
+        const raw = sessionStorage.getItem(MOCKFS_STORE_KEY);
+        if (raw) for (const [p, c] of JSON.parse(raw) as [string, string][]) m.set(p, c);
+    } catch { /* 损坏数据忽略 */ }
+    return m;
+}
+
 class InMemoryMockFs implements MockFs {
-    files = new Map<string, string>();
+    files = loadPersistedFiles();
     savedFiles: Array<{ path: string; content: string }> = [];
 
     setFile(path: string, content: string) {
         this.files.set(path, content);
+        try {
+            sessionStorage.setItem(MOCKFS_STORE_KEY, JSON.stringify([...this.files]));
+        } catch { /* 存储满等场景忽略 */ }
     }
     popLastSave() {
         return this.savedFiles.pop();
@@ -45,6 +61,22 @@ const mockFs = new InMemoryMockFs();
                 customCssPath: "",
             }),
             SetConfig: async () => {},
+            // 文件关联场景的 mock:模拟"命令行带参启动"。
+            // 优先读 URL 查询参数 ?open=<path>(跨刷新存在,最接近 argv 语义,
+            // 消费后立即从地址栏移除,避免刷新重复打开);其次是 window 级注入。
+            ConsumeStartupFile: async () => {
+                const fromUrl = new URLSearchParams(location.search).get("open");
+                const path: string | undefined =
+                    fromUrl || ((window as any).__litemd__startupFile as string | undefined);
+                if (!path) return { path: "", content: "", modified: 0 };
+                if (fromUrl) history.replaceState(null, "", location.pathname);
+                (window as any).__litemd__startupFile = undefined;
+                const content = mockFs.files.get(path);
+                if (content === undefined) {
+                    throw new Error(`mock: file not found: ${path}`);
+                }
+                return { path, content, modified: Math.floor(Date.now() / 1000) };
+            },
             OpenFile: async (path: string) => {
                 const content = mockFs.files.get(path);
                 if (content === undefined) {

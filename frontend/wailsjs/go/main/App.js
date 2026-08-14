@@ -6,6 +6,10 @@ export function AppInfo() {
   return window['go']['main']['App']['AppInfo']();
 }
 
+export function ConsumeStartupFile() {
+  return window['go']['main']['App']['ConsumeStartupFile']();
+}
+
 export function CopyImageAsset(arg1, arg2) {
   return window['go']['main']['App']['CopyImageAsset'](arg1, arg2);
 }

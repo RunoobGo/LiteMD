@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"litemd/internal/config"
@@ -15,8 +17,9 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AppVersion 是 LiteMD 当前版本号，编译时注入。
-// 在 NSIS 脚本里同步替换：LiteMD-Setup-v${APP_VERSION}.exe。
+// AppVersion 是 LiteMD 当前版本号,作为全项目唯一版本事实源。
+// 发版时需同步更新:wails.json 的 info.productVersion(NSIS 安装包名/版本
+// 信息由此生成)。注释中的"编译时注入"曾与硬编码实现不符,已修正。
 const AppVersion = "0.2.0"
 
 // App 是 Wails 应用主体，前端可通过自动生成的 wailsjs/go 绑定访问其方法。
@@ -25,22 +28,43 @@ const AppVersion = "0.2.0"
 //   - 方法都返回 (T, error)，前端可用 try/catch 处理；
 //   - 错误优先用 errors.Is 判断类型，便于前端分类提示；
 //   - 不在 binding 内做重活，所有 IO 都即时返回。
+//
+// 并发说明：ctx 由 startup 钩子写入、可能被 SingleInstanceLock 的
+// OnSecondInstanceLaunch 回调并发读取,因此经 ctxMu 读写锁保护;
+// pendingNotify 用于"回调先于 startup"时挂起通知、startup 后补发。
 type App struct {
-	ctx   context.Context
-	store *config.Store
+	ctxMu         sync.RWMutex
+	ctx           context.Context
+	store         *config.Store
+	startupFiles  *startupFileQueue // 文件关联打开的待开文件（启动参数 / 二实例参数）
+	pendingNotify atomic.Bool       // 前端就绪前收到二实例打开请求的补发标记
 }
 
 // NewApp 构造应用实例。store 注入便于测试替换。
 func NewApp() *App {
-	return &App{store: config.NewStore()}
+	return &App{store: config.NewStore(), startupFiles: &startupFileQueue{}}
 }
 
 // startup 是 Wails 生命周期钩子，保存 ctx 供后续 binding 使用。
+// 二实例回调(OnSecondInstanceLaunch)可能在钩子前后任意时刻到达,
+// 因此这里写入后需检查是否有挂起的通知需要补发。
 func (a *App) startup(ctx context.Context) {
+	a.ctxMu.Lock()
 	a.ctx = ctx
+	a.ctxMu.Unlock()
+	a.flushPendingNotify()
 }
 
-// shutdown 是 Wails 生命周期钩子，确保配置被持久化（如果有变更但没保存的场景）。
+// currentCtx 以读锁安全获取 ctx(可能为 nil,发生在 startup 之前)。
+func (a *App) currentCtx() context.Context {
+	a.ctxMu.RLock()
+	defer a.ctxMu.RUnlock()
+	return a.ctx
+}
+
+// shutdown 是 Wails 生命周期钩子。当前无需收尾工作:
+// 配置在每次 SetConfig/PushRecent 时即时落盘,文件保存也是即时原子写,
+// 不存在"内存态需在退出前刷盘"的场景。保留钩子供未来扩展。
 func (a *App) shutdown(ctx context.Context) {
 	_ = ctx
 }
@@ -97,10 +121,11 @@ func (a *App) OpenFile(path string) (FilePayload, error) {
 //   - 用户取消时为空字符串 + nil
 //   - 出错时返回非 nil error
 func (a *App) OpenDialog() (string, error) {
-	if a.ctx == nil {
+	ctx := a.currentCtx()
+	if ctx == nil {
 		return "", errors.New("app not ready")
 	}
-	return wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+	return wailsruntime.OpenFileDialog(ctx, wailsruntime.OpenDialogOptions{
 		Title: "打开 Markdown 文件",
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "Markdown (*.md, *.markdown)", Pattern: "*.md;*.markdown;*.mdown;*.mkd;*.mkdn"},
@@ -111,10 +136,11 @@ func (a *App) OpenDialog() (string, error) {
 
 // SaveDialog 弹出另存为对话框。
 func (a *App) SaveDialog(suggestedName string) (string, error) {
-	if a.ctx == nil {
+	ctx := a.currentCtx()
+	if ctx == nil {
 		return "", errors.New("app not ready")
 	}
-	return wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+	return wailsruntime.SaveFileDialog(ctx, wailsruntime.SaveDialogOptions{
 		Title:           "另存为",
 		DefaultFilename: suggestedName,
 		Filters: []wailsruntime.FileFilter{
@@ -153,6 +179,54 @@ func (a *App) SaveFileAs(suggestedName, content string) (string, error) {
 	}
 	abs, _ := filepath.Abs(target)
 	return abs, nil
+}
+
+// ============================================================================
+// 文件关联（"使用本应用打开"）
+// ============================================================================
+
+// ConsumeStartupFile 取出待打开的关联文件（若存在）。
+//
+// 触发来源：
+//   - 系统以文件路径为参数启动应用（见 main.go 对 os.Args 的解析）
+//   - 应用已运行时再次通过文件关联打开（二实例参数，见 SingleInstanceLock 回调）
+//
+// 返回语义：
+//   - 无待开文件：返回零值 FilePayload{Path: ""} + nil，前端据此走"新建空文档"
+//   - 有待开文件：等价于 OpenFile 的返回（读取失败时返回相应 error）
+//
+// "消费即清除"保证重复调用不会重复打开。
+func (a *App) ConsumeStartupFile() (FilePayload, error) {
+	path := a.startupFiles.pop()
+	if path == "" {
+		return FilePayload{}, nil
+	}
+	return a.OpenFile(path)
+}
+
+// notifyExternalOpen 通知前端"有新的关联文件待打开"。
+//
+// 时序兜底:若回调到达时 startup 尚未执行(ctx == nil),事件无法发出,
+// 置 pendingNotify 标记,startup 完成后由 flushPendingNotify 补发;
+// 即使补发也失败(极端:前端事件监听未注册),文件仍在队列中,
+// 前端下次消费(事件触发或重启)仍可取到,不丢数据。
+func (a *App) notifyExternalOpen() {
+	if ctx := a.currentCtx(); ctx != nil {
+		wailsruntime.EventsEmit(ctx, "litemd:openExternalFile")
+		return
+	}
+	a.pendingNotify.Store(true)
+}
+
+// flushPendingNotify 补发挂起的通知(仅 startup 后调用一次;
+// CAS 保证与并发到达的 notifyExternalOpen 至多发一次)。
+func (a *App) flushPendingNotify() {
+	if !a.pendingNotify.CompareAndSwap(true, false) {
+		return
+	}
+	if ctx := a.currentCtx(); ctx != nil {
+		wailsruntime.EventsEmit(ctx, "litemd:openExternalFile")
+	}
 }
 
 // ============================================================================
