@@ -22,15 +22,13 @@ OUTDIR="${OUTDIR:-build/bin}"
 
 # ---- 关键修复：确保 build/windows 为真实目录（非指向 build_windows 的软链）----
 # Wails 的 project.nsi 用相对路径 "..\..\bin" 解析输出，软链会导致物理 CWD 错位。
+# 始终以 build_windows 为准做增量同步（含新增文件如 appicon.png），保证构建可重复。
 if [ -L "build/windows" ]; then
   echo "[fix] 检测到 build/windows 为软链，替换为真实目录"
   rm "build/windows"
-  cp -r build_windows build/windows
-elif [ ! -d "build/windows/installer" ]; then
-  echo "[fix] build/windows/installer 缺失，从 build_windows 复制"
-  mkdir -p build/windows
-  cp -r build_windows/. build/windows/
 fi
+mkdir -p build/windows
+rsync -a --delete --exclude '.DS_Store' build_windows/ build/windows/
 
 # ---- 交叉编译 + NSIS 安装包 ----
 echo "==> wails build -platform windows/amd64 -webview2 $WEBVIEW2 -nsis"

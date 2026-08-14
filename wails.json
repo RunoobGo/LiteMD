@@ -9,9 +9,15 @@
   "info": {
     "companyName": "LiteMD",
     "productName": "LiteMD",
-    "productVersion": "1.0.0",
+    "productVersion": "0.2.0",
     "copyright": "Copyright © 2026 LiteMD",
-    "comments": "A lightweight Markdown editor with Obsidian-compatible syntax"
+    "comments": "A lightweight Markdown editor with Obsidian-compatible syntax",
+    "fileAssociations": [
+      { "ext": "md", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
+      { "ext": "markdown", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
+      { "ext": "mdown", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
+      { "ext": "mkd", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" }
+    ]
   },
   "author": {
     "name": "",

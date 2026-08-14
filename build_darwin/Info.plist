@@ -23,5 +23,28 @@
         <string>true</string>
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
+        <!-- 文件关联:声明 LiteMD 可编辑 Markdown 文档,Finder"打开方式"菜单据此列出本应用 -->
+        <key>CFBundleDocumentTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeName</key>
+                <string>Markdown Document</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSHandlerRank</key>
+                <string>Alternate</string>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                    <string>md</string>
+                    <string>markdown</string>
+                    <string>mdown</string>
+                    <string>mkd</string>
+                </array>
+                <key>LSItemContentTypes</key>
+                <array>
+                    <string>net.daringfireball.markdown</string>
+                </array>
+            </dict>
+        </array>
     </dict>
 </plist>

@@ -62,6 +62,9 @@ go.work.sum
 build/bin/
 build/*.log
 
+# build-windows.sh 由 build_windows/ rsync 生成的同步目录（构建产物，不入库）
+build/windows/
+
 # UPX/打包中间产物
 build/*.tmp
 
