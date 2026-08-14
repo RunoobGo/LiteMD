@@ -50,12 +50,12 @@ export class MarkdownEditor {
     private onChange: EditorChangeListener;
     private onCursorChange: CursorChangeListener | null;
     private themeCompartment = new Compartment();
+    private baseThemeCompartment = new Compartment();
     private imageDropHandler: ImageDropHandler | null = null;
 
     constructor(host: HTMLElement, initialContent: string, onChange: EditorChangeListener, theme: LiteMDTheme = { base: "dark" }, onCursorChange?: CursorChangeListener) {
         this.onChange = onChange;
         this.onCursorChange = onCursorChange ?? null;
-        const baseThemeExt = this.buildBaseTheme(theme.base);
         const extensions = [
             lineNumbers(),
             foldGutter(),
@@ -81,7 +81,7 @@ export class MarkdownEditor {
             syntaxHighlighting(mdHighlight, { fallback: true }),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
             this.themeCompartment.of(theme.base === "dark" ? oneDark : []),
-            baseThemeExt,
+            this.baseThemeCompartment.of(this.buildBaseTheme(theme.base)),
             EditorView.updateListener.of((u) => {
                 if (u.docChanged) {
                     this.onChange(u.state.doc.toString());
@@ -162,7 +162,11 @@ export class MarkdownEditor {
     /** 切主题 */
     setTheme(theme: LiteMDTheme) {
         this.view.dispatch({
-            effects: this.themeCompartment.reconfigure(theme.base === "dark" ? oneDark : []),
+            effects: [
+                this.themeCompartment.reconfigure(theme.base === "dark" ? oneDark : []),
+                // 基础主题一并重建：dark 标志（影响选区/面板绘制）需与新主题一致
+                this.baseThemeCompartment.reconfigure(this.buildBaseTheme(theme.base)),
+            ],
         });
     }
 
@@ -177,10 +181,12 @@ export class MarkdownEditor {
     }
 
     private buildBaseTheme(base: "light" | "dark") {
+        // backgroundColor/color 引用 CSS 变量并置于主题扩展之后，
+        // 覆盖 oneDark 的硬编码底色，使编辑器跟随全局暗/亮主题切换
         return EditorView.theme({
-            "&": { height: "100%", fontSize: "var(--md-fontsize, 14px)" },
+            "&": { height: "100%", fontSize: "var(--md-fontsize, 14px)", backgroundColor: "var(--bg-0)", color: "var(--fg-1)" },
             ".cm-scroller": { fontFamily: "var(--font-mono)" },
-            ".cm-gutters": { backgroundColor: "var(--md-gutter-bg)", color: "var(--md-gutter-fg)" },
+            ".cm-gutters": { backgroundColor: "var(--md-gutter-bg)", color: "var(--md-gutter-fg)", border: "none" },
             ".cm-activeLineGutter": { backgroundColor: "var(--md-gutter-active-bg)" },
             ".cm-content": { caretColor: "var(--md-caret)" },
             "&.cm-focused .cm-cursor": { borderLeftColor: "var(--md-caret)" },

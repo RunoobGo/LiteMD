@@ -6,7 +6,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #0D1117 0%, #161B22 50%, #0D1117 100%);
+    background: linear-gradient(135deg, var(--bg-0) 0%, var(--bg-1) 50%, var(--bg-0) 100%);
     transition: opacity 0.4s ease, visibility 0.4s ease;
 }
 .splash.fade-out {
@@ -26,7 +26,7 @@
     margin: 0 0 8px;
     font-size: 32px;
     font-weight: 700;
-    background: linear-gradient(135deg, #58A6FF 0%, #A5D6FF 100%);
+    background: linear-gradient(135deg, var(--brand-a) 0%, var(--brand-b) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -69,8 +69,10 @@
 }
 #app.app-hidden { visibility: hidden; }
 
-/* LiteMD 主题：深色渐变 #0D1117 → #161B22，白字，GitHub 暗色风格 */
+/* LiteMD 主题：暗色为默认。亮色通过 <html data-theme="light"> 覆盖同名变量实现，
+   所有组件只引用变量，保证两套主题下视觉结构一致、对比度达标（WCAG AA）。 */
 :root {
+    color-scheme: dark; /* 让滚动条/原生控件跟随暗色 */
     --bg-0: #0D1117;
     --bg-1: #161B22;
     --bg-2: #21262D;
@@ -82,6 +84,14 @@
     --fg-2: #8B949E;
     --accent: #58A6FF;
     --accent-hover: #79B8FF;
+    /* accent 衍生色：active 高亮背景 / wiki-link hover 背景 / 强调按钮文字色 */
+    --accent-soft: rgba(88, 166, 255, 0.12);
+    --accent-soft-hover: rgba(88, 166, 255, 0.18);
+    --accent-faint: rgba(88, 166, 255, 0.08);
+    --accent-fg: #0D1117; /* accent 之上的文字色（暗色 accent 偏亮 → 用深色文字保证对比度） */
+    --brand-a: #58A6FF;   /* 品牌/标题渐变 */
+    --brand-b: #A5D6FF;
+    --handle-dot: rgba(255, 255, 255, 0.15); /* 分屏把手圆点 */
     --danger: #F85149;
     --danger-hover: #FF7B72;
     --warn: #D29922;
@@ -91,6 +101,35 @@
     --radius: 6px;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
     --font-sans: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+/* ===== 亮色主题（GitHub Light 风格） ===== */
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg-0: #FFFFFF;
+    --bg-1: #F6F8FA;
+    --bg-2: #EFF2F6;
+    --bg-3: #D8DEE4;
+    --border: #D0D7DE;
+    --border-strong: #AFB8C1;
+    --fg-0: #1F2328;
+    --fg-1: #24292F;
+    --fg-2: #57606A;
+    --accent: #0969DA;
+    --accent-hover: #0550AE;
+    --accent-soft: rgba(9, 105, 218, 0.12);
+    --accent-soft-hover: rgba(9, 105, 218, 0.18);
+    --accent-faint: rgba(9, 105, 218, 0.08);
+    --accent-fg: #FFFFFF; /* 亮色 accent 偏深 → 用白字保证对比度 */
+    --brand-a: #0969DA;
+    --brand-b: #66A9F9;
+    --handle-dot: rgba(0, 0, 0, 0.2);
+    --danger: #CF222E;
+    --danger-hover: #A40E26;
+    --warn: #9A6700;
+    --ok: #1A7F37;
+    --tab-bg: #F6F8FA;
+    --tab-active: #FFFFFF;
 }
 
 * {
@@ -139,7 +178,20 @@ html, body {
     --md-code: #F0A8AA;
     --md-quote: #8B949E;
     --md-list: #D2A8FF;
-    --md-meta: #586069;
+    --md-meta: #768390; /* 原 #586069 对比度 2.97:1 不达 WCAG AA,#768390 提升至 4.88:1 */
+}
+
+/* Markdown 亮色配色（对比度均按浅底 ≥4.5:1 校准） */
+:root[data-theme="light"] {
+    --md-h1: #0550AE;
+    --md-h2: #116329;
+    --md-h3: #953800;
+    --md-heading: #24292F;
+    --md-link: #0969DA;
+    --md-code: #953800;
+    --md-quote: #57606A;
+    --md-list: #8250DF;
+    --md-meta: #6E7781;
 }
 
 /* ===== 顶栏 ===== */
@@ -159,7 +211,7 @@ html, body {
 .brand {
     font-weight: 700;
     font-size: 15px;
-    background: linear-gradient(135deg, #58A6FF 0%, #A5D6FF 100%);
+    background: linear-gradient(135deg, var(--brand-a) 0%, var(--brand-b) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -169,19 +221,33 @@ html, body {
 
 .actions {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 4px;
     -webkit-app-region: no-drag;
 }
 
+/* 图标按钮：正方形、内容居中、无文字。position:relative 作为 .tip 定位锚点 */
 .actions button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border);
     color: var(--fg-1);
-    padding: 4px 10px;
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 12px;
+    line-height: 0;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.actions button svg {
+    pointer-events: none;
 }
 
 .actions button:hover {
@@ -194,6 +260,101 @@ html, body {
 .actions button:active {
     transform: translateY(0);
     background: var(--bg-3, var(--bg-2));
+}
+
+/* 当前视图模式按钮高亮（与 splitpane data-mode 同步） */
+.actions button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.actions button.active:hover {
+    color: var(--accent-hover);
+    background: var(--accent-soft-hover);
+}
+
+/* 主题切换按钮：暗色显示太阳（点击→亮色），亮色显示月亮（点击→暗色）。
+   图标在 HTML 中成对存在，由 CSS 按 data-theme 控制显隐。 */
+.actions button[data-action="toggle-theme"] .icon-moon { display: none; }
+:root[data-theme="light"] .actions button[data-action="toggle-theme"] .icon-sun { display: none; }
+:root[data-theme="light"] .actions button[data-action="toggle-theme"] .icon-moon { display: block; }
+
+/* 分隔符：竖线 */
+.actions .sep {
+    display: inline-block;
+    width: 1px;
+    height: 18px;
+    margin: 0 4px;
+    background: var(--border);
+}
+
+/* 自定义 tooltip：纯 CSS 实现 0.6s 延迟显示
+   - 默认 opacity:0 + visibility:hidden，避免遮挡相邻按钮的点击
+   - :hover 时通过 transition-delay 延迟 0.6s 才切换到可见态，
+     满足「悬停 0.5–1 秒」需求，且鼠标移开立即隐藏（delay:0s） */
+.actions button .tip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-2px);
+    padding: 4px 8px;
+    background: var(--bg-3);
+    color: var(--fg-0);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-sans);
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+    transition-delay: 0s;
+}
+
+.actions button .tip::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 7px;
+    height: 7px;
+    background: var(--bg-3);
+    border-left: 1px solid var(--border-strong);
+    border-top: 1px solid var(--border-strong);
+}
+
+.actions button:hover .tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    /* 关键：延迟 0.6s 才显示，落在用户要求的 0.5–1s 区间内 */
+    transition-delay: 0.6s;
+}
+
+/* 最右侧按钮（主题切换）的 tooltip 改为右对齐，
+   防止居中定位导致气泡溢出视口右缘被裁剪 */
+.actions button:last-child .tip {
+    left: auto;
+    right: 0;
+    transform: translateY(-2px);
+}
+
+.actions button:last-child:hover .tip {
+    transform: translateY(0);
+}
+
+/* 气泡箭头同步右移至按钮中心（按钮宽 28px → 中心距右缘 14px，
+   箭头宽 7px → right ≈ 10.5px 使箭头中心对齐 14px） */
+.actions button:last-child .tip::before {
+    left: auto;
+    right: 10.5px;
+    transform: rotate(45deg);
 }
 
 .meta {
@@ -389,7 +550,7 @@ html, body {
     width: 2px;
     height: 32px;
     margin-top: -16px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--handle-dot);
     border-radius: 2px;
 }
 
@@ -423,7 +584,7 @@ html, body {
     margin: 0.8em 0;
     padding: 0.6em 1em;
     border-left: 3px solid var(--accent);
-    background: rgba(88, 166, 255, 0.04);
+    background: var(--accent-faint);
     color: var(--fg-1);
     border-radius: 0 var(--radius) var(--radius) 0;
 }
@@ -446,6 +607,7 @@ html, body {
 .preview pre code {
     background: transparent;
     border: none;
+    border-radius: 0;
     padding: 0;
 }
 .preview a {
@@ -457,9 +619,9 @@ html, body {
     border-radius: 3px;
 }
 .preview a:hover {
-    color: #79B8FF;
+    color: var(--accent-hover);
     border-bottom-color: currentColor;
-    background: rgba(88, 166, 255, 0.08);
+    background: var(--accent-faint);
 }
 .preview code {
     background: var(--bg-2);
@@ -468,27 +630,6 @@ html, body {
     border-radius: 3px;
     font-family: var(--font-mono);
     font-size: 0.92em;
-}
-.preview pre {
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 16px;
-    overflow-x: auto;
-}
-.preview pre code {
-    background: transparent;
-    padding: 0;
-    border-radius: 0;
-}
-.preview blockquote {
-    margin: 0.6em 0;
-    padding: 0.2em 0 0.2em 0.9em;
-    border-left: 3px solid var(--md-quote);
-    color: var(--md-quote);
-}
-.preview ul, .preview ol {
-    padding-left: 1.6em;
 }
 .preview table {
     border-collapse: collapse;
@@ -519,7 +660,7 @@ html, body {
 }
 .preview a.wiki-link:hover {
     background: var(--accent);
-    color: white;
+    color: var(--accent-fg);
     border-bottom-style: solid;
     border-radius: 2px;
 }
@@ -784,12 +925,56 @@ kbd {
 
 .litemd-dialog button.danger:hover {
     background: var(--danger);
-    color: white;
+    color: var(--bg-0); /* 暗色下白字配 #F85149 仅 3.55:1,改随主题底色保证 ≥4.5:1 */
 }
 
 .litemd-dialog button[autofocus] {
     background: var(--accent);
     border-color: var(--accent);
-    color: #0D1117;
+    color: var(--accent-fg);
     font-weight: 600;
+}
+
+/* ===== 键盘可达性：焦点指示（WCAG 2.4.7） =====
+   .pane-handle 原为 outline:none 但带 tabindex=0，键盘用户完全失去焦点反馈；
+   其余交互元素统一用 :focus-visible 提供高对比描边，不影响鼠标操作。 */
+.actions button:focus-visible,
+.tab .close:focus-visible,
+.pane-handle:focus-visible,
+.frontmatter-panel summary:focus-visible,
+.litemd-dialog button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.pane-handle:focus-visible {
+    outline-offset: -2px; /* 6px 宽的把手，描边内收避免溢出 */
+}
+
+/* ===== 主题切换过渡 =====
+   仅在切换瞬间由 JS 给 <html> 加 .theme-anim（约 300ms 后移除）：
+   - 避免全局常驻 transition 带来的持续样式重算开销与首帧闪染
+   - 只过渡颜色类属性，不动布局属性，保证合成性能
+   - prefers-reduced-motion 下完全禁用（WCAG 2.3.3） */
+html.theme-anim,
+html.theme-anim *,
+html.theme-anim *::before,
+html.theme-anim *::after {
+    transition:
+        background-color 0.25s ease,
+        border-color 0.25s ease,
+        color 0.25s ease,
+        fill 0.25s ease,
+        stroke 0.25s ease,
+        box-shadow 0.25s ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.theme-anim,
+    html.theme-anim *,
+    html.theme-anim *::before,
+    html.theme-anim *::after {
+        transition: none !important;
+    }
+    .splash-inner { animation: none; }
+    .splash-spinner span { animation: none; }
 }
