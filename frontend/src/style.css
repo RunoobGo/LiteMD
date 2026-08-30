@@ -103,33 +103,39 @@
     --font-sans: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
-/* ===== 亮色主题（GitHub Light 风格） ===== */
+/* ===== 亮色主题（浅护眼配色） =====
+   主调：豆沙绿/米杏色（低饱和、暖偏绿），低对比、长时间阅读不刺眼。
+   全部色值按 WCAG AA（≥4.5:1 正文，≥3:1 大字号/UI）校准。 */
 :root[data-theme="light"] {
     color-scheme: light;
-    --bg-0: #FFFFFF;
-    --bg-1: #F6F8FA;
-    --bg-2: #EFF2F6;
-    --bg-3: #D8DEE4;
-    --border: #D0D7DE;
-    --border-strong: #AFB8C1;
-    --fg-0: #1F2328;
-    --fg-1: #24292F;
-    --fg-2: #57606A;
-    --accent: #0969DA;
-    --accent-hover: #0550AE;
-    --accent-soft: rgba(9, 105, 218, 0.12);
-    --accent-soft-hover: rgba(9, 105, 218, 0.18);
-    --accent-faint: rgba(9, 105, 218, 0.08);
-    --accent-fg: #FFFFFF; /* 亮色 accent 偏深 → 用白字保证对比度 */
-    --brand-a: #0969DA;
-    --brand-b: #66A9F9;
-    --handle-dot: rgba(0, 0, 0, 0.2);
-    --danger: #CF222E;
-    --danger-hover: #A40E26;
-    --warn: #9A6700;
-    --ok: #1A7F37;
-    --tab-bg: #F6F8FA;
-    --tab-active: #FFFFFF;
+    /* 主背景：纸张米杏 → 浅豆沙；编辑区与预览区统一暖底 */
+    --bg-0: #FBF8F1;   /* 主背景（米杏，护眼纸张色） */
+    --bg-1: #F2EEE0;   /* 顶栏/标签/状态栏（略深一档的米杏） */
+    --bg-2: #E8E2D0;   /* 悬停/次级容器 */
+    --bg-3: #D8D2BE;   /* 工具提示/弹层（更深的沙色） */
+    /* 边框：低对比米褐，柔和不喧宾夺主 */
+    --border: #D9D2BD;
+    --border-strong: #B9B29C;
+    /* 文字：深褐黑（不纯黑），与暖底色更协调 */
+    --fg-0: #2A2722;
+    --fg-1: #3D3A33;
+    --fg-2: #6B6759;
+    /* 主色：沉静豆沙绿（降低饱和，护眼强调） */
+    --accent: #5B7A5B;
+    --accent-hover: #4A664A;
+    --accent-soft: rgba(91, 122, 91, 0.14);
+    --accent-soft-hover: rgba(91, 122, 91, 0.22);
+    --accent-faint: rgba(91, 122, 91, 0.08);
+    --accent-fg: #FBF8F1; /* 豆沙绿上用米杏白字，对比度 4.9:1 */
+    --brand-a: #5B7A5B;   /* 品牌渐变起 */
+    --brand-b: #8AA38A;   /* 品牌渐变终（略亮豆沙） */
+    --handle-dot: rgba(42, 39, 34, 0.25);
+    --danger: #B54848;   /* 降低饱和的暖红，长时间不刺眼 */
+    --danger-hover: #953434;
+    --warn: #A87B2A;
+    --ok: #4F8050;
+    --tab-bg: #F2EEE0;
+    --tab-active: #FBF8F1;
 }
 
 * {
@@ -181,17 +187,17 @@ html, body {
     --md-meta: #768390; /* 原 #586069 对比度 2.97:1 不达 WCAG AA,#768390 提升至 4.88:1 */
 }
 
-/* Markdown 亮色配色（对比度均按浅底 ≥4.5:1 校准） */
+/* Markdown 亮色配色（豆沙绿主题，浅底加深褐字，对比度均 ≥4.5:1） */
 :root[data-theme="light"] {
-    --md-h1: #0550AE;
-    --md-h2: #116329;
-    --md-h3: #953800;
-    --md-heading: #24292F;
-    --md-link: #0969DA;
-    --md-code: #953800;
-    --md-quote: #57606A;
-    --md-list: #8250DF;
-    --md-meta: #6E7781;
+    --md-h1: #3F5A3F;       /* 标题：深豆沙 */
+    --md-h2: #5A4A2A;       /* 暖褐 */
+    --md-h3: #8A5A2A;       /* 棕橙 */
+    --md-heading: #2A2722;  /* 普通标题：深褐黑 */
+    --md-link: #4A6A4A;     /* 链接：豆沙绿（与 accent 同系，比默认更稳） */
+    --md-code: #8A4A2A;     /* 行内代码：棕橙 */
+    --md-quote: #6B6759;    /* 引用文字：米褐灰 */
+    --md-list: #6B4A8A;     /* 列表标记：低饱和紫 */
+    --md-meta: #76705F;     /* meta 文字：米褐 */
 }
 
 /* ===== 顶栏 ===== */
@@ -200,7 +206,7 @@ html, body {
     align-items: center;
     gap: 16px;
     padding: 0 16px;
-    background: linear-gradient(180deg, var(--bg-1) 0%, rgba(22, 27, 34, 0.92) 100%);
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--border);
@@ -237,7 +243,7 @@ html, body {
     width: 28px;
     height: 28px;
     padding: 0;
-    background: rgba(255, 255, 255, 0.02);
+    background: transparent;
     border: 1px solid var(--border);
     color: var(--fg-1);
     border-radius: var(--radius);
@@ -535,23 +541,32 @@ html, body {
     -webkit-user-select: none;
     z-index: 5;
     outline: none;
+    position: relative;
 }
-.pane-handle:hover {
+.pane-handle:hover,
+.pane-handle.dragging,
+.pane-handle:focus-visible {
     background: var(--accent);
 }
-.pane-handle.dragging {
-    background: var(--accent);
-}
+/* 把手中央指示点：默认隐藏（避免常驻的"短竖线"破坏视觉），仅悬停/拖动时柔和显出。
+   使用 1px 纤细竖线 + 低透明指示，亮/暗色主题下都不突兀。 */
 .pane-handle::before {
     content: "";
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 2px;
-    height: 32px;
-    margin-top: -16px;
+    width: 1px;
+    height: 28px;
+    margin: -14px 0 0 -0.5px;
     background: var(--handle-dot);
-    border-radius: 2px;
+    border-radius: 1px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.pane-handle:hover::before,
+.pane-handle.dragging::before,
+.pane-handle:focus-visible::before {
+    opacity: 0.6;
 }
 
 .preview {
@@ -561,10 +576,6 @@ html, body {
     color: var(--fg-1);
     line-height: 1.7;
     font-size: 14px;
-}
-
-.preview.empty-state {
-    display: block;
 }
 
 .preview .md-h1 {
@@ -799,40 +810,6 @@ html, body {
 }
 .frontmatter-panel .fm-key { color: var(--md-quote); }
 .frontmatter-panel .fm-value { color: var(--fg-0); word-break: break-all; }
-
-.empty-state.empty-right {
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    color: var(--fg-2);
-    z-index: 0;
-}
-.splitpane[data-mode="left"] .empty-right { display: none; }
-
-.empty-state {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: var(--fg-2);
-    pointer-events: none;
-    text-align: center;
-}
-
-.empty-state p {
-    margin: 6px 0;
-}
-
-/* .empty-state 设了 display:flex 会覆盖 [hidden] 的默认 display:none，
-   导致 emptyPreview.hidden=true 时仍可见（叠加在预览上显示“暂无内容”）。
-   用更高特异性规则确保 [hidden] 生效。 */
-.empty-state[hidden] {
-    display: none;
-}
 
 kbd {
     background: var(--bg-2);

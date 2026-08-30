@@ -46,7 +46,6 @@ const cmHost = $<HTMLDivElement>("cmHost");
 const tabbar = $<HTMLDivElement>("tabbar");
 const statusPath = $<HTMLSpanElement>("statusPath");
 const statusPos = $<HTMLSpanElement>("statusPos");
-const emptyPreview = $<HTMLDivElement>("emptyPreview");
 const meta = $<HTMLDivElement>("meta");
 const splitRoot = $<HTMLDivElement>("splitpane");
 const fmPanel = $<HTMLDetailsElement>("frontmatterPanel") as unknown as HTMLDetailsElement;
@@ -223,7 +222,24 @@ function initEditorAndPreview() {
 
 function refreshActiveEditor() {
     const a = tm.active;
-    if (!a) return;
+    if (!a) {
+        // 关闭最后一个标签后：清空工作区并自动新建一个空标签，保证界面始终可用
+        if (editor) {
+            editor.setContent("");
+            lastRenderedActiveId = null;
+        }
+        if (preview) renderPreviewNow("");
+        renderFrontmatterPanel();
+        updateMeta();
+        // 异步新建标签，避免在 onChange 通知链路中修改 TabManager 状态
+        queueMicrotask(() => {
+            if (tm.order.length === 0) {
+                tm.newTab();
+                requestAnimationFrame(() => editor?.focus());
+            }
+        });
+        return;
+    }
     if (editor && lastRenderedActiveId !== a.id) {
         editor.setContent(a.liveContent);
         lastRenderedActiveId = a.id;
@@ -237,10 +253,8 @@ function renderPreview(content: string) {
     if (!preview) return;
     if (!content.trim()) {
         preview.clear();
-        emptyPreview.hidden = false;
     } else {
         preview.render(content);
-        emptyPreview.hidden = true;
     }
 }
 
@@ -405,15 +419,37 @@ async function handleOpen() {
         const path = await pickOpenPath();
         if (!path) return;
         const payload = await openFile(path);
-        openFilePayload(payload);
+        // 在空新建页上打开 → 覆盖当前标签;其他情况 → 追加新标签
+        openInCurrentIfEmpty(payload);
     } catch (e) {
         showError("打开失败", (e as Error).message ?? String(e));
     }
 }
 
-/** 打开文件载荷的公共路径:开标签 + 记录最近文件 */
-function openFilePayload(payload: { path: string; content: string }): void {
-    tm.openTab(payload.path, payload.content);
+/**
+ * "在新建页打开文件"专用路径：如果当前活动标签是「未保存的空新建页」，
+ * 则把内容就地写入该标签（覆盖），而不是再追加一个新标签。
+ * 这与显式 `Ctrl+N` 新建（`handleNew`）不同 —— 后者总应产生新标签。
+ * 注意：若当前活动标签是已关联磁盘路径或存在未保存修改，绝不覆盖，避免数据丢失。
+ */
+function openInCurrentIfEmpty(payload: { path: string; content: string }): void {
+    const a = tm.active;
+    const isEmptyUntitled = !!a && !a.path && !a.dirty && a.liveContent === "";
+    if (isEmptyUntitled) {
+        // 复用该 tab：写入路径与内容、重置 dirty 状态、改标题
+        tm.replaceTabContent(a!.id, payload);
+        // onChange 回调仅刷新 UI，但 lastRenderedActiveId === a.id 会跳过
+        // editor.setContent（id 缓存策略），需手动把内容灌入编辑器并重置缓存。
+        if (editor) {
+            editor.setContent(payload.content);
+            lastRenderedActiveId = a!.id;
+        }
+        if (preview) renderPreviewNow(payload.content);
+        renderFrontmatterPanel();
+        updateMeta();
+    } else {
+        tm.openTab(payload.path, payload.content);
+    }
     pushRecent(payload.path).catch(console.warn);
 }
 
@@ -426,7 +462,8 @@ async function consumeStartupFile(): Promise<boolean> {
     try {
         const payload = await ConsumeStartupFile();
         if (!payload?.path) return false;
-        openFilePayload(payload);
+        // 启动时初始 bootTab 是空新建页,用覆盖策略避免出现两个 tab
+        openInCurrentIfEmpty(payload);
         return true;
     } catch (e) {
         // 读取失败(文件被移动/权限等):提示但不阻塞启动,回退到新建文档

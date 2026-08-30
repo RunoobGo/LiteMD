@@ -74,6 +74,26 @@ export class TabManager {
         return tab;
     }
 
+    /**
+     * 就地替换指定标签的内容与元数据（保持 id/order/activeId 不变），
+     * 用于"在空新建页上打开文件"——避免出现"新 tab + 旧空 tab"两个标签。
+     * 调用方需自行保证该标签是"未保存且为空"的安全覆盖目标。
+     */
+    replaceTabContent(id: string, payload: { path: string; content: string }): Tab | null {
+        const t = this.tabs.get(id);
+        if (!t) return null;
+        t.path = payload.path;
+        t.title = payload.path.split(/[\\/]/).pop() || payload.path;
+        t.baseline = payload.content;
+        t.liveContent = payload.content;
+        t.dirty = false;
+        t.diskMtime = Date.now() / 1000;
+        t.frontmatter = null;
+        this.activeId = id;
+        this.notify();
+        return t;
+    }
+
     /** 切换激活标签 */
     activate(id: string) {
         if (this.tabs.has(id)) {

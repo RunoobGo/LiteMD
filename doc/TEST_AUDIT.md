@@ -1,6 +1,6 @@
 # LiteMD — 测试体系审查报告
 
-> 审查日期：2026-08-12 ｜ 审查范围：4 个 Go 测试、3 个前端单测、5 个 E2E 脚本（共 12 个测试文件，合计 2890 行测试代码）
+> 审查日期：2026-08-12 ｜ 最近更新：2026-08-30 ｜ 审查范围：4 个 Go 测试、3 个前端单测、5 个 E2E 脚本（共 12 个测试文件，合计 2890 行测试代码）
 > 配套文档：[TECHNICAL_REVIEW.md](./TECHNICAL_REVIEW.md) ｜ [CODE_WIKI.md](./CODE_WIKI.md)
 
 ---
@@ -43,18 +43,18 @@
 
 | 类别 | 文件 | 行数 | 用例数 | 工具 |
 | --- | --- | --- | --- | --- |
-| Go 单测 | [config_test.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config_test.go) | 271 | 17 | `go test` + `t.TempDir` |
-| Go 单测 | [fileio_test.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio_test.go) | 227 | 11 | `go test` + `t.TempDir` |
-| Go 单测 | [updater_test.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater_test.go) | 324 | 18 | `go test` + `httptest.Server` |
-| Go 单测 | [app_test.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app_test.go) | 126 | 10 | `go test` + 纯 binding stub |
-| 前端单测 | [preview.test.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.test.ts) | 52 | 16 | `tsx` + `jsdom` |
-| 前端单测 | [obsidian.test.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.test.ts) | 216 | 30 | `tsx` + `jsdom` |
-| 前端单测 | [preview.test-bootstrap.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.test-bootstrap.ts) | 19 | - | 启动夹具 |
-| E2E | [sprint1.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint1.sh) | 195 | 18 | `agent-browser` CLI |
-| E2E | [sprint2.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint2.sh) | 248 | 22 | `agent-browser` CLI |
-| E2E | [sprint3.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint3.sh) | 232 | 20 | `agent-browser` CLI |
-| E2E | [sprint4.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint4.sh) | 135 | 12 | `agent-browser` CLI |
-| E2E | [sprint5.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint5.sh) | 135 | 10 | `agent-browser` CLI |
+| Go 单测 | [config_test.go](file:///Volumes/fx/Object/LiteMD/internal/config/config_test.go) | 271 | 17 | `go test` + `t.TempDir` |
+| Go 单测 | [fileio_test.go](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio_test.go) | 227 | 11 | `go test` + `t.TempDir` |
+| Go 单测 | [updater_test.go](file:///Volumes/fx/Object/LiteMD/internal/updater/updater_test.go) | 324 | 18 | `go test` + `httptest.Server` |
+| Go 单测 | [app_test.go](file:///Volumes/fx/Object/LiteMD/app_test.go) | 126 | 10 | `go test` + 纯 binding stub |
+| 前端单测 | [preview.test.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.test.ts) | 52 | 16 | `tsx` + `jsdom` |
+| 前端单测 | [obsidian.test.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.test.ts) | 216 | 30 | `tsx` + `jsdom` |
+| 前端单测 | [preview.test-bootstrap.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.test-bootstrap.ts) | 19 | - | 启动夹具 |
+| E2E | [sprint1.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint1.sh) | 195 | 18 | `agent-browser` CLI |
+| E2E | [sprint2.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint2.sh) | 248 | 22 | `agent-browser` CLI |
+| E2E | [sprint3.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint3.sh) | 232 | 20 | `agent-browser` CLI |
+| E2E | [sprint4.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint4.sh) | 135 | 12 | `agent-browser` CLI |
+| E2E | [sprint5.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint5.sh) | 135 | 10 | `agent-browser` CLI |
 | **合计** | **11 个文件** | **Go 44 + 前端 58** | **102 用例** | — |
 
 ---
@@ -73,9 +73,9 @@
 
 | # | 严重度 | 位置 | 问题 | 修复状态 |
 | --- | --- | --- | --- | --- |
-| T8 | 🟡 中 | [app_test.go L119-138](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app_test.go#L119-L138) | `TestAppSaveFileAs_NilCtxSafe` 用 `t.Logf` 代替 `t.Fatalf`，**没有失败分支**（weak assertion）。 | ✅ 已修复 — 改为三段断言：① err!=nil 判断含"not ready" ② 其他 err 可接受但显式 log ③ err==nil 必须验证 gotPath 非空才通过 |
-| T9 | 🟢 低 | [app_test.go L142-212](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app_test.go#L142-L212) | 缺 `PushRecent` happy-path 真实场景测试（去重/持久化/10 条上限），仅覆盖 nil-ctx。 | ✅ 已修复 — 新增 `TestAppPushRecent_HappyPath_PersistAndDedup`（3 次 push + 重复推入 LRU + 跨实例读盘验证）与 `TestAppPushRecent_Limit10`（15 条推入仅保留最近 10 条）。 |
-| T10 | 🟢 低 | [config_test.go L97-117](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config_test.go#L97-L117) | `TestLoadCorruptJSONFallsBackToDefault` 仅验证 err 非 nil，未验证降级后配置值为 Default() 全字段。 | ✅ 已修复 — 改用 `reflect.DeepEqual(cfg, Default())` 逐项比较（Theme/FontFamily/FontSize/RecentFiles/Window* 等），不再只比较 Theme。 |
+| T8 | 🟡 中 | [app_test.go L119-138](file:///Volumes/fx/Object/LiteMD/app_test.go#L119-L138) | `TestAppSaveFileAs_NilCtxSafe` 用 `t.Logf` 代替 `t.Fatalf`，**没有失败分支**（weak assertion）。 | ✅ 已修复 — 改为三段断言：① err!=nil 判断含"not ready" ② 其他 err 可接受但显式 log ③ err==nil 必须验证 gotPath 非空才通过 |
+| T9 | 🟢 低 | [app_test.go L142-212](file:///Volumes/fx/Object/LiteMD/app_test.go#L142-L212) | 缺 `PushRecent` happy-path 真实场景测试（去重/持久化/10 条上限），仅覆盖 nil-ctx。 | ✅ 已修复 — 新增 `TestAppPushRecent_HappyPath_PersistAndDedup`（3 次 push + 重复推入 LRU + 跨实例读盘验证）与 `TestAppPushRecent_Limit10`（15 条推入仅保留最近 10 条）。 |
+| T10 | 🟢 低 | [config_test.go L97-117](file:///Volumes/fx/Object/LiteMD/internal/config/config_test.go#L97-L117) | `TestLoadCorruptJSONFallsBackToDefault` 仅验证 err 非 nil，未验证降级后配置值为 Default() 全字段。 | ✅ 已修复 — 改用 `reflect.DeepEqual(cfg, Default())` 逐项比较（Theme/FontFamily/FontSize/RecentFiles/Window* 等），不再只比较 Theme。 |
 
 ### 2.3 各包深入分析
 
@@ -118,9 +118,9 @@
 
 | # | 严重度 | 位置 | 问题 | 修复状态 |
 | --- | --- | --- | --- | --- |
-| T6 | 🟡 中 | [obsidian.test.ts L106](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.test.ts#L106) | `assert(full.startsWith("# Heading") \|\| full.includes("# Heading"))` 用 `\|\|` 弱化断言。实际上如果两个条件任意一个成立都通过，但 `startsWith` 和 `includes` 是包含关系（startsWith 真 ⇒ includes 真），**逻辑等价于只判断 includes**，前面条件冗余，弱化了预期。应改为严格断言（直接判断期望的子串）。 | 待修复 |
-| T11 | 🟡 中 | [preview.test.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.test.ts) | F10 link 加固新增了 DOM harden，但缺**负向案例**：内部锚点（`#/wiki/...`）与相对路径不应被修改 `target/rel`。当前仅验证外链被加固，未验证内部链接未被误加固。 | 待修复 |
-| T12 | 🟢 低 | [obsidian.test.ts parseFrontmatter](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.test.ts) | 缺少 Windows CRLF（`\r\n`）场景测试，F17 刚修复但未验证。 | 待修复 |
+| T6 | 🟡 中 | [obsidian.test.ts L106](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.test.ts#L106) | `assert(full.startsWith("# Heading") \|\| full.includes("# Heading"))` 用 `\|\|` 弱化断言。实际上如果两个条件任意一个成立都通过，但 `startsWith` 和 `includes` 是包含关系（startsWith 真 ⇒ includes 真），**逻辑等价于只判断 includes**，前面条件冗余，弱化了预期。应改为严格断言（直接判断期望的子串）。 | 待修复 |
+| T11 | 🟡 中 | [preview.test.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.test.ts) | F10 link 加固新增了 DOM harden，但缺**负向案例**：内部锚点（`#/wiki/...`）与相对路径不应被修改 `target/rel`。当前仅验证外链被加固，未验证内部链接未被误加固。 | 待修复 |
+| T12 | 🟢 低 | [obsidian.test.ts parseFrontmatter](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.test.ts) | 缺少 Windows CRLF（`\r\n`）场景测试，F17 刚修复但未验证。 | 待修复 |
 | T13 | 🟢 低 | editor / splitpane / tabs / unsaved-guard | 4 个关键模块没有单元测试（仅有 E2E 间接验证）。 | 低优 |
 
 ### 3.3 preview.test.ts 覆盖分析
@@ -173,7 +173,7 @@
 
 | 问题 | 严重度 | 详情 |
 | --- | --- | --- |
-| **E4** | 🔴 **高** | **断言语法错误**：[sprint2.sh L174](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint2.sh#L174) `if [[ "$RATIO3" == 50*% ]];` — `50*%` 既不是有效 glob pattern（应该是 `*50%*`），也与 splitpane.ts 中 `--split-ratio` 的实际存储格式（CSS property 小数 `0.5`）不匹配。**断言永久失败**，`$RATIO3` 读 CSS 变量 `style.getPropertyValue("--split-ratio")` 后值为 `50%` 字符串（splitpane.ts 设置的是 `style.setProperty("--split-ratio", (v/clientWidth * 100) + "%")`），所以正确值应该包含 `50%`，但 pattern `50*%` 的 bash `[[ == ]]` glob match 语义是 `50 任意字符 %`——`50hello%` 会匹配，但 `50%` 本身没有任何字符匹配，表达式等价于 `[[ "50%" == "50" + "*" + "%" ]]` ⇒ **false**。所以 sprint2 的场景 5 双击重置断言将**永久 FAIL**。 |
+| **E4** | 🔴 **高** | **断言语法错误**：[sprint2.sh L174](file:///Volumes/fx/Object/LiteMD/e2e/sprint2.sh#L174) `if [[ "$RATIO3" == 50*% ]];` — `50*%` 既不是有效 glob pattern（应该是 `*50%*`），也与 splitpane.ts 中 `--split-ratio` 的实际存储格式（CSS property 小数 `0.5`）不匹配。**断言永久失败**，`$RATIO3` 读 CSS 变量 `style.getPropertyValue("--split-ratio")` 后值为 `50%` 字符串（splitpane.ts 设置的是 `style.setProperty("--split-ratio", (v/clientWidth * 100) + "%")`），所以正确值应该包含 `50%`，但 pattern `50*%` 的 bash `[[ == ]]` glob match 语义是 `50 任意字符 %`——`50hello%` 会匹配，但 `50%` 本身没有任何字符匹配，表达式等价于 `[[ "50%" == "50" + "*" + "%" ]]` ⇒ **false**。所以 sprint2 的场景 5 双击重置断言将**永久 FAIL**。 |
 | E6 静默漏判 | 🟡 中 | CodeMirror 15 秒超时没有 `fail` 调用，仅 ok 分支打 log，超时后**静默跳过**不报错。 |
 | **E12** | 🟡 中 | 同 E12 共性：缺 `set -e`。 |
 

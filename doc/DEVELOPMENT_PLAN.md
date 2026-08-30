@@ -1,6 +1,6 @@
 # LiteMD 开发计划（基于《LiteMD 应用开发手册》）
 
-> 编制时间：2026-08-12
+> 编制时间：2026-08-12 ｜ 最近更新：2026-08-30
 > 编制人：WorkBuddy
 > 目标平台：Windows x64（开发主机当前为 Linux sandbox，需注意交叉编译问题）
 > 技术栈：Wails v2 (Go + WebView) + CodeMirror 6 (TypeScript)
@@ -179,12 +179,12 @@
 
 | 路径 | 类型 | 用途 |
 | --- | --- | --- |
-| `/workspace/LiteMD/build/bin/LiteMD.exe` | 二进制（8.3 MB） | Windows x64 安装包主体（远低于手册 15 MB 目标） |
-| `/workspace/LiteMD/frontend/dist/*.{html,js,css}` | 前端资源（24 KB） | 内嵌到 .exe 内 |
-| `/workspace/LiteMD/app.go` + `internal/{config,fileio}/*.go` | 后端 | bindings + 持久化 + 文件 IO |
-| `/workspace/LiteMD/frontend/src/*.ts` + `style.css` | 前端 | 多标签 + 编辑器 + 未保存拦截 |
-| `/workspace/LiteMD/e2e/sprint1.sh` | E2E 脚本 | agent-browser 自动化验收 |
-| `/workspace/LiteMD/e2e/sprint1-screenshot.png` | 截图 | 视觉回归基准 |
+| `./build/bin/LiteMD.exe` | 二进制（8.3 MB） | Windows x64 安装包主体（远低于手册 15 MB 目标） |
+| `./frontend/dist/*.{html,js,css}` | 前端资源（24 KB） | 内嵌到 .exe 内 |
+| `./app.go` + `internal/{config,fileio}/*.go` | 后端 | bindings + 持久化 + 文件 IO |
+| `./frontend/src/*.ts` + `style.css` | 前端 | 多标签 + 编辑器 + 未保存拦截 |
+| `./e2e/sprint1.sh` | E2E 脚本 | agent-browser 自动化验收 |
+| `./e2e/sprint1-screenshot.png` | 截图 | 视觉回归基准 |
 
 ### 8.3 关键设计要点
 
@@ -452,7 +452,7 @@ LiteMD/
 
 LiteMD 完整开发周期 **2026-08-11 ~ 2026-08-12（2 天）**，跨 5 个 Sprint 完成 100% 手册要求 + 3 项扩展（自动更新 / 安装器 / 启动屏）。
 
-### 15.1 最终交付物清单（`/workspace/LiteMD-dist/`）
+### 15.1 最终交付物清单（`/Volumes/fx/Object/LiteMD/`）
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |

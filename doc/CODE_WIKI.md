@@ -1,7 +1,7 @@
 # LiteMD — Code Wiki
 
 > 极致轻量 Markdown 编辑器（Windows x64）
-> 版本：v0.2.0 ｜ 文档生成日期：2026-08-12
+> 版本：v0.2.0 ｜ 文档生成日期：2026-08-12 ｜ 最近更新：2026-08-30
 > 技术栈：Wails v2.14（Go 1.25）+ CodeMirror 6 + TypeScript + Vite + marked + DOMPurify
 
 本文档为 LiteMD 项目的结构化代码百科，覆盖整体架构、模块职责、关键类与函数、依赖关系及运行方式，便于新成员快速上手与后续维护。
@@ -36,6 +36,7 @@
 10. [项目运行方式](#10-项目运行方式)
 11. [关键设计原则与约定](#11-关键设计原则与约定)
 12. [数据目录与配置](#12-数据目录与配置)
+13. [主题配色方案](#13-主题配色方案)
 
 ---
 
@@ -158,7 +159,7 @@ LiteMD/
 
 ### 4.1 入口层 main.go
 
-[main.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/main.go)
+[main.go](file:///Volumes/fx/Object/LiteMD/main.go)
 
 职责：嵌入前端资源、创建 Wails 应用实例、注册生命周期钩子与绑定。
 
@@ -187,7 +188,7 @@ func main() {
 
 ### 4.2 应用绑定层 app.go
 
-[app.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go)
+[app.go](file:///Volumes/fx/Object/LiteMD/app.go)
 
 `App` 是 Wails 应用主体，前端通过自动生成的 `wailsjs/go/main/App` 访问其方法。这是前后端的唯一桥梁。
 
@@ -244,7 +245,7 @@ type AppInfo struct {
 
 ### 4.3 internal/config 配置管理
 
-[internal/config/config.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go)
+[internal/config/config.go](file:///Volumes/fx/Object/LiteMD/internal/config/config.go)
 
 职责：用户配置的线程安全加载/保存，存储于 `~/.litemd/config.json`。
 
@@ -280,7 +281,7 @@ type Config struct {
 
 ### 4.4 internal/fileio 文件 IO
 
-[internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio.go)
+[internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio.go)
 
 职责：封装文件读写，提供 Markdown 编辑器所需的基础 IO 能力。
 
@@ -318,7 +319,7 @@ type FileMeta struct {
 
 ### 4.5 internal/updater 自动更新
 
-[internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go)
+[internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go)
 
 职责：通过 GitHub Releases API 检查新版本，按 semver 语义比较。
 
@@ -366,7 +367,7 @@ type CheckResult struct {
 
 ### 5.1 main.ts 主入口与编排
 
-[frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts)
+[frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts)
 
 职责：应用的顶层编排，串联标签管理、编辑器、预览、分屏、文件操作、快捷键、更新检查。
 
@@ -389,7 +390,7 @@ type CheckResult struct {
 
 ### 5.2 editor.ts 编辑器封装
 
-[frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/editor.ts)
+[frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/editor.ts)
 
 职责：封装 CodeMirror 6，提供 Markdown 编辑能力。
 
@@ -417,7 +418,7 @@ type CheckResult struct {
 
 ### 5.3 preview.ts 预览与 XSS 防护
 
-[frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts)
+[frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts)
 
 职责：Markdown → 安全 HTML 渲染，多层 XSS 防护。
 
@@ -444,7 +445,7 @@ obsidian.preprocessAll → marked.parse(同步) → DOMPurify 严格清洗 → l
 
 ### 5.4 tabs.ts 多标签状态
 
-[frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/tabs.ts)
+[frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/tabs.ts)
 
 职责：多标签缓冲区状态管理，dirty 标志与磁盘保存解耦。
 
@@ -469,6 +470,7 @@ interface Tab {
 | --- | --- |
 | `newTab()` | 创建空标签并激活 |
 | `openTab(path, content)` | 从文件打开；**路径去重**：已打开则激活 |
+| `replaceTabContent(id, payload)` | **就地**替换指定标签的 path/title/baseline/liveContent（id/order/activeId 不变），用于「在空新建页上打开文件」时覆盖而非新增 |
 | `activate(id)` | 切换激活标签，触发 `notify` |
 | `closeTab(id, force)` | 关闭；dirty 且非 force 返回 `{closed:false, reason:"dirty"}` |
 | `syncLiveContent(id, content)` | 同步实时内容，自动重算 dirty |
@@ -480,11 +482,12 @@ interface Tab {
 - `dirty` 与「是否已保存到磁盘」完全解耦：内存改动即视为脏。
 - `liveContent` 跟踪编辑器实时内容，`baseline` 是最近干净状态，二者比较得 dirty。
 - 切 tab 时 `main.ts` 用 `setContent` 把 active tab 的 `liveContent` 灌回编辑器。
-- 关闭最后一个 tab 后 `activeId = null`。
+- **空新建页覆盖打开**：`main.ts.openInCurrentIfEmpty` 检测到当前活动标签为「未保存 + 无路径 + 内容为空」时，走 `replaceTabContent` 就地载入文件，避免出现「新 tab + 旧空 tab」两个标签；否则回退 `openTab` 追加新标签。已关联路径或有修改的标签永不覆盖（防数据丢失）。
+- **关闭最后一个标签**：`closeTab` 将 `activeId = null`；随后 `main.ts.refreshActiveEditor` 检测到无活动标签时清空编辑器/预览/状态栏并隐藏 frontmatter 面板，再 `queueMicrotask` 自动新建一个空标签，保证界面始终可用（不会残留已关闭标签的内容）。
 
 ### 5.5 obsidian.ts 语法兼容层
 
-[frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts)
+[frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts)
 
 职责：Obsidian 三大语法兼容 + 图片资产辅助。
 
@@ -511,7 +514,7 @@ parseFrontmatter（剥 frontmatter） → preprocessCallouts → preprocessWikiL
 
 ### 5.6 file-ops.ts 文件操作抽象
 
-[frontend/src/file-ops.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/file-ops.ts)
+[frontend/src/file-ops.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/file-ops.ts)
 
 职责：抽象「打开/保存/配置/资产」调用，统一 mock 与真实绑定的 fallback。
 
@@ -532,7 +535,7 @@ function bind(name: string) {
 
 ### 5.7 splitpane.ts 分屏容器
 
-[frontend/src/splitpane.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/splitpane.ts)
+[frontend/src/splitpane.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/splitpane.ts)
 
 职责：可拖拽分屏，三模式（both/left/right）。
 
@@ -543,9 +546,11 @@ function bind(name: string) {
 - 双击 handle 重置为 0.5。
 - 比例通过 CSS 变量 `--split-ratio` 驱动布局。
 
+**把手指示点（`.pane-handle::before`）：** 中央 1×28px 的细竖线**默认隐藏**（`opacity:0`），仅在悬停/拖拽/键盘聚焦时淡出显示（`opacity:0.6`），配合强调色高亮，避免「常驻短竖线」破坏浅色主题的视觉一致性（改为按需显示，交互与 macOS 分栏一致）。
+
 ### 5.8 unsaved-guard.ts 未保存拦截
 
-[frontend/src/unsaved-guard.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/unsaved-guard.ts)
+[frontend/src/unsaved-guard.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/unsaved-guard.ts)
 
 职责：两层未保存保护。
 
@@ -554,7 +559,7 @@ function bind(name: string) {
 
 ### 5.9 mocks.ts / dev-bootstrap.ts 浏览器 Mock
 
-[frontend/src/mocks.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/mocks.ts) ｜ [frontend/src/dev-bootstrap.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/dev-bootstrap.ts)
+[frontend/src/mocks.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/mocks.ts) ｜ [frontend/src/dev-bootstrap.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/dev-bootstrap.ts)
 
 职责：浏览器/E2E 环境下模拟 Wails Go 绑定。
 
@@ -666,7 +671,7 @@ app.go (Go)
 
 ### 8.1 前端构建（Vite 双入口）
 
-[vite.config.js](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/vite.config.js)
+[vite.config.js](file:///Volumes/fx/Object/LiteMD/frontend/vite.config.js)
 
 - 双入口：`index.html`（生产）+ `dev.html`（浏览器/E2E）。
 - `npm run build` = `tsc && vite build`，产物输出到 `frontend/dist/`。
@@ -674,7 +679,7 @@ app.go (Go)
 
 ### 8.2 Wails 构建
 
-[wails.json](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/wails.json)
+[wails.json](file:///Volumes/fx/Object/LiteMD/wails.json)
 
 - `frontend:install` = `npm install`，`frontend:build` = `npm run build`。
 - `outputfilename: "workspace"`。
@@ -682,7 +687,7 @@ app.go (Go)
 
 ### 8.3 Windows 打包
 
-[build_windows/installer/project.nsi](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_windows/installer/project.nsi)
+[build_windows/installer/project.nsi](file:///Volumes/fx/Object/LiteMD/build_windows/installer/project.nsi)
 
 1. `wails build -platform windows/amd64` 产出 `LiteMD.exe`。
 2. UPX 压缩：`upx --best --lzma build/bin/LiteMD.exe`（~30% 压缩比，10MB→3MB）。
@@ -699,7 +704,7 @@ app.go (Go)
 
 ### 8.4 macOS 打包
 
-[build_darwin/Info.plist](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_darwin/Info.plist) 与 `Info.dev.plist` 提供 macOS 应用配置（含 `LiteMD.app/Contents/` 结构），`build/bin/LiteMD.app` 为产物。
+[build_darwin/Info.plist](file:///Volumes/fx/Object/LiteMD/build_darwin/Info.plist) 与 `Info.dev.plist` 提供 macOS 应用配置（含 `LiteMD.app/Contents/` 结构），`build/bin/LiteMD.app` 为产物。
 
 ---
 
@@ -722,7 +727,7 @@ app.go (Go)
 - `obsidian.test.ts`（30 项）：双链/Callout/Frontmatter 边界。
 - `preview.test-bootstrap.ts` 用 `tsx` 在 jsdom 中跑。
 
-**E2E 特点（[e2e/sprint1.sh](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint1.sh) 等）：**
+**E2E 特点（[e2e/sprint1.sh](file:///Volumes/fx/Object/LiteMD/e2e/sprint1.sh) 等）：**
 - 基于 `agent-browser` CLI，通过 `eval` 注入 JS、读 `window.__litemd__*` 钩子断言。
 - 按 phase 独立 `fresh_open` 重载页面，规避 chrome 长 session CDP 卡顿。
 - `cm_inject` 通过 CodeMirror dispatch 注入文本，`cm_get` 读 `view.state.doc`。
@@ -845,6 +850,41 @@ cd build_windows/installer && makensis project.nsi
   "lastUpdateCheck": "0001-01-01T00:00:00Z"
 }
 ```
+
+---
+
+## 13. 主题配色方案
+
+LiteMD 采用 CSS 变量驱动双主题，所有组件只引用变量而不写死色值，保证两套主题下视觉结构与对比度一致（正文按 WCAG AA ≥4.5:1 校准）。通过 `<html data-theme="dark|light">` 切换，持久化到 `localStorage("litemd:theme")`，默认暗色。
+
+### 13.1 暗色主题（默认）— GitHub Dark 风格
+
+| 变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--bg-0 / --bg-1 / --bg-2 / --bg-3` | `#0D1117 / #161B22 / #21262D / #30363D` | 背景梯度 |
+| `--fg-0 / --fg-1 / --fg-2` | `#F0F6FC / #C9D1D9 / #8B949E` | 文字层级 |
+| `--accent` | `#58A6FF`（蓝） | 强调色 / 交互高亮 |
+| `--brand-a / --brand-b` | `#58A6FF / #A5D6FF` | 品牌渐变 |
+| `--danger / --warn / --ok` | `#F85149 / #D29922 / #3FB950` | 状态色 |
+
+### 13.2 亮色主题 — 浅护眼配色（豆沙绿/米杏）
+
+> v0.2.x 迭代优化：由原 GitHub Light（纯白 + 蓝 accent）改为低饱和暖色系，长时间阅读不刺眼。
+
+| 变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--bg-0` | `#FBF8F1`（米杏） | 主背景（护眼纸张色） |
+| `--bg-1` | `#F2EEE0` | 顶栏/标签栏/状态栏 |
+| `--bg-2 / --bg-3` | `#E8E2D0 / #D8D2BE` | 悬停 / 弹层 |
+| `--border / --border-strong` | `#D9D2BD / #B9B29C` | 低对比米褐边框 |
+| `--fg-0 / --fg-1 / --fg-2` | `#2A2722 / #3D3A33 / #6B6759` | 深褐黑文字（非纯黑，与暖底协调） |
+| `--accent` | `#5B7A5B`（豆沙绿） | 强调色（低饱和，护眼） |
+| `--accent-fg` | `#FBF8F1` | 强调色上文字（对比度 4.9:1） |
+| `--brand-a / --brand-b` | `#5B7A5B / #8AA38A` | 品牌渐变 |
+| `--danger / --warn / --ok` | `#B54848 / #A87B2A / #4F8050` | 降饱和状态色 |
+
+**Markdown 元素配色**（`--md-*`）在亮色下同步重校：标题深豆沙/暖褐、链接豆沙绿、行内代码棕橙、引用米褐、列表低饱和紫，均与主界面暖色系协调。
+**顶栏**：双变量渐变 `var(--bg-1)→var(--bg-0)`（不引用硬编码暗色），顶栏按钮背景对亮色用 `transparent`；**分屏把手**的中央竖线默认隐藏、仅悬停/拖动时按需淡出（见 §5.7）。
 
 ---
 

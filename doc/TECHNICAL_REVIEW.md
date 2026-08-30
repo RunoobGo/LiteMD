@@ -1,8 +1,10 @@
 # LiteMD — 项目技术审查文档
 
-> 文档版本：v1.0 ｜ 审查日期：2026-08-12
+> 文档版本：v1.0 ｜ 审查日期：2026-08-12 ｜ 最近更新：2026-08-30
 > 审查范围：LiteMD v0.2.0 全量源代码（Go 1.25 + TypeScript + 构建脚本 + 测试）
 > 审查目标：评估架构合理性、代码质量、安全性、性能、可维护性，识别风险并给出改进建议
+>
+> 说明：本审查是对 2026-08-12 时点代码的静态快照。之后代码有迭代（如 UI 浅护眼主题、标签生命周期行为调整等），本报告中的风险/建议结论保留初始状态作为历史基线，实际已修复项以 [CODE_WIKI.md](./CODE_WIKI.md) 与代码为准。
 
 本文档配合 [CODE_WIKI.md](./CODE_WIKI.md) 使用：CODE_WIKI 侧重「是什么 / 怎么用」，本审查侧重「好不好 / 有什么风险 / 怎么改」。
 
@@ -102,7 +104,7 @@
 
 ### 3.1 main.go — 入口
 
-[main.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/main.go)
+[main.go](file:///Volumes/fx/Object/LiteMD/main.go)
 
 **✅ 优点：**
 - `//go:embed all:frontend/dist` 单文件分发，符合轻量定位。
@@ -123,7 +125,7 @@ if err != nil {
 
 ### 3.2 app.go — 应用绑定层
 
-[app.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go)
+[app.go](file:///Volumes/fx/Object/LiteMD/app.go)
 
 **✅ 优点：**
 - 12 个 binding 方法职责单一，命名清晰。
@@ -136,10 +138,10 @@ if err != nil {
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| B2 | 🟡 中 | [L208](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go#L208) | `CheckForUpdate` 中 `_ = a.store.Save(cfg)` 忽略保存错误。若保存失败，下次启动会重复发网络请求，破坏 24h 节流契约 | 至少 `log.Printf("save lastUpdateCheck failed: %v", err)`，或返回 warning 给前端 |
-| B3 | 🟢 低 | [L240](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go#L240) | `AppInfo.Os` 硬编码 `"windows-amd64"`，与实际运行平台解耦，但 macOS 构建时仍返回该值 | 改用 `runtime.GOOS + "-" + runtime.GOARCH`，或从构建标签注入 |
-| B4 | 🟢 低 | [L75-81](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go#L75-L81) | `OpenFile` 中 `abs, _ := filepath.Abs(path)` 忽略 Abs 错误。极端场景（路径超长）可能拿到空 abs | 检查 err，失败时回退原 path 或返回 error |
-| B5 | 🟢 低 | [L44-46](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go#L44-L46) | `shutdown` 钩子空实现，未持久化未保存配置 | 若有 in-memory 脏配置应在此 flush；当前架构配置即时保存，可保留但加注释说明 |
+| B2 | 🟡 中 | [L208](file:///Volumes/fx/Object/LiteMD/app.go#L208) | `CheckForUpdate` 中 `_ = a.store.Save(cfg)` 忽略保存错误。若保存失败，下次启动会重复发网络请求，破坏 24h 节流契约 | 至少 `log.Printf("save lastUpdateCheck failed: %v", err)`，或返回 warning 给前端 |
+| B3 | 🟢 低 | [L240](file:///Volumes/fx/Object/LiteMD/app.go#L240) | `AppInfo.Os` 硬编码 `"windows-amd64"`，与实际运行平台解耦，但 macOS 构建时仍返回该值 | 改用 `runtime.GOOS + "-" + runtime.GOARCH`，或从构建标签注入 |
+| B4 | 🟢 低 | [L75-81](file:///Volumes/fx/Object/LiteMD/app.go#L75-L81) | `OpenFile` 中 `abs, _ := filepath.Abs(path)` 忽略 Abs 错误。极端场景（路径超长）可能拿到空 abs | 检查 err，失败时回退原 path 或返回 error |
+| B5 | 🟢 低 | [L44-46](file:///Volumes/fx/Object/LiteMD/app.go#L44-L46) | `shutdown` 钩子空实现，未持久化未保存配置 | 若有 in-memory 脏配置应在此 flush；当前架构配置即时保存，可保留但加注释说明 |
 
 **审查代码：**
 ```go
@@ -150,7 +152,7 @@ _ = a.store.Save(cfg)  // 应至少记日志
 
 ### 3.3 internal/config — 配置管理
 
-[internal/config/config.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go)
+[internal/config/config.go](file:///Volumes/fx/Object/LiteMD/internal/config/config.go)
 
 **✅ 优点：**
 - `sync.Mutex` 保证线程安全。
@@ -162,13 +164,13 @@ _ = a.store.Save(cfg)  // 应至少记日志
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| B6 | 🟢 低 | [L60-64](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go#L60-L64) | `Path()` 每次调用都 `os.MkdirAll`，虽然 `MkdirAll` 对已存在目录是 no-op，但仍有 syscall 开销 | 缓存路径或用 `sync.Once` 初始化 |
-| B7 | 🟢 低 | [L82-87](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go#L82-L87) | `Load` 中 `json.Unmarshal` 失败时返回 `(Default(), error)`，调用方需注意：拿到了默认值但 err 非 nil。语义略模糊 | 明确文档：err 非 nil 时 cfg 仍可用（已是默认值） |
-| B8 | 🟢 低 | [L122-143](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go#L122-L143) | `PushRecent` 当 `max <= 0` 时改为 10，但函数内 `out = out[:max]` 在 max=0 时会 panic（虽然已被前置兜底） | 加测试覆盖 max=0 边界 |
+| B6 | 🟢 低 | [L60-64](file:///Volumes/fx/Object/LiteMD/internal/config/config.go#L60-L64) | `Path()` 每次调用都 `os.MkdirAll`，虽然 `MkdirAll` 对已存在目录是 no-op，但仍有 syscall 开销 | 缓存路径或用 `sync.Once` 初始化 |
+| B7 | 🟢 低 | [L82-87](file:///Volumes/fx/Object/LiteMD/internal/config/config.go#L82-L87) | `Load` 中 `json.Unmarshal` 失败时返回 `(Default(), error)`，调用方需注意：拿到了默认值但 err 非 nil。语义略模糊 | 明确文档：err 非 nil 时 cfg 仍可用（已是默认值） |
+| B8 | 🟢 低 | [L122-143](file:///Volumes/fx/Object/LiteMD/internal/config/config.go#L122-L143) | `PushRecent` 当 `max <= 0` 时改为 10，但函数内 `out = out[:max]` 在 max=0 时会 panic（虽然已被前置兜底） | 加测试覆盖 max=0 边界 |
 
 ### 3.4 internal/updater — 自动更新
 
-[internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go)
+[internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go)
 
 **✅ 优点：**
 - semver 解析正则严谨，支持 `v1.2.3` / `1.2.3` / `1.2.3-rc1` / `1.2.3+build.1`。
@@ -180,11 +182,11 @@ _ = a.store.Save(cfg)  // 应至少记日志
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| B9 | 🔴 高 | [updater_test.go L101-123](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater_test.go#L101-L123) | `TestFetchLatest_Success` 创建了 `httptest.Server` 但**未实际调用** `FetchLatest`，仅 `_ = srv` 注释掉。覆盖率造假 | ✅ 已修复 — 见 B10 重构 + T1，用 `fetchBaseURL` 变量替换到 mock server 真实 HTTP，现覆盖 200/404/500 三条路径 |
-| B10 | 🟡 中 | [L118](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go#L118) | `GitHubRepo` 是常量，无法在测试中替换为 mock server，导致 B9 | ✅ 已修复 — `const GitHubRepo` 改包级 `var GitHubRepo = "litemd/litemd"`，同时增加 `fetchBaseURL` 变量便于测试替换 endpoint |
-| B11 | 🟡 中 | [L64-80](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go#L64-L80) | `IsNewer` 对预发布版本（`1.2.3-rc1`）按主版本比较，`0.2.0-rc1` 会被视为 `0.2.0`，与正式版相同则不更新。语义上 rc1 < 正式版，应提示更新 | ✅ 已修复 — `parseSemver` 返回 `preRelease` 字段，`IsNewer` 增加"正式版 > 同名预发布版"语义，同时同为预发布时按字典序比较 |
-| B12 | 🟢 低 | [L136](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go#L136) | HTTP 4xx 错误响应体只读 512 字节，可能截断有用错误信息 | ✅ 已修复 — 4xx body limit 从 512 字节 → 2048 字节（`2<<10`），`User-Agent: LiteMD-Updater/1.0` 头也已补充 |
-| B13 | 🟢 低 | [L88-114](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go#L88-L114) | `pickWindowsAsset` 用 `strings.HasPrefix(name, "LiteMD-Setup")` 严格匹配，若未来改名（如 `LiteMD-Pro-Setup`）会漏 | ✅ 已修复 — 改用 `strings.Contains(lname,"litemd") && Contains("setup") && HasSuffix(".exe")` 三条件组合，fallback 分支也支持 LiteMD-portable.exe 等变体，并新增测试覆盖 Pro/Enterprise 变体与 source 不误匹配 |
+| B9 | 🔴 高 | [updater_test.go L101-123](file:///Volumes/fx/Object/LiteMD/internal/updater/updater_test.go#L101-L123) | `TestFetchLatest_Success` 创建了 `httptest.Server` 但**未实际调用** `FetchLatest`，仅 `_ = srv` 注释掉。覆盖率造假 | ✅ 已修复 — 见 B10 重构 + T1，用 `fetchBaseURL` 变量替换到 mock server 真实 HTTP，现覆盖 200/404/500 三条路径 |
+| B10 | 🟡 中 | [L118](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go#L118) | `GitHubRepo` 是常量，无法在测试中替换为 mock server，导致 B9 | ✅ 已修复 — `const GitHubRepo` 改包级 `var GitHubRepo = "litemd/litemd"`，同时增加 `fetchBaseURL` 变量便于测试替换 endpoint |
+| B11 | 🟡 中 | [L64-80](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go#L64-L80) | `IsNewer` 对预发布版本（`1.2.3-rc1`）按主版本比较，`0.2.0-rc1` 会被视为 `0.2.0`，与正式版相同则不更新。语义上 rc1 < 正式版，应提示更新 | ✅ 已修复 — `parseSemver` 返回 `preRelease` 字段，`IsNewer` 增加"正式版 > 同名预发布版"语义，同时同为预发布时按字典序比较 |
+| B12 | 🟢 低 | [L136](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go#L136) | HTTP 4xx 错误响应体只读 512 字节，可能截断有用错误信息 | ✅ 已修复 — 4xx body limit 从 512 字节 → 2048 字节（`2<<10`），`User-Agent: LiteMD-Updater/1.0` 头也已补充 |
+| B13 | 🟢 低 | [L88-114](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go#L88-L114) | `pickWindowsAsset` 用 `strings.HasPrefix(name, "LiteMD-Setup")` 严格匹配，若未来改名（如 `LiteMD-Pro-Setup`）会漏 | ✅ 已修复 — 改用 `strings.Contains(lname,"litemd") && Contains("setup") && HasSuffix(".exe")` 三条件组合，fallback 分支也支持 LiteMD-portable.exe 等变体，并新增测试覆盖 Pro/Enterprise 变体与 source 不误匹配 |
 
 **审查代码（B9 的造假测试）：**
 ```go
@@ -200,7 +202,7 @@ func TestFetchLatest_Success(t *testing.T) {
 
 ### 3.5 internal/fileio — 文件 IO
 
-[internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio.go)
+[internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio.go)
 
 **✅ 优点：**
 - `ErrNotFound` / `ErrIsBinary` 语义化错误，前端可 `errors.Is` 分类。
@@ -212,9 +214,9 @@ func TestFetchLatest_Success(t *testing.T) {
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| B14 | 🟢 低 | [L46-50](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio.go#L46-L50) | `ReadText` 对 UTF-8 BOM (`\xEF\xBB\xBF`) 未处理，会导致首行有隐藏字符 | ✅ 已修复 — `data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))` 在 UTF-8 校验前执行，注释也已同步说明 |
+| B14 | 🟢 低 | [L46-50](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio.go#L46-L50) | `ReadText` 对 UTF-8 BOM (`\xEF\xBB\xBF`) 未处理，会导致首行有隐藏字符 | ✅ 已修复 — `data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))` 在 UTF-8 校验前执行，注释也已同步说明 |
 | B15 | 🟢 低 | 全文 | `ReadText` 无文件大小上限，读取超大文件可能 OOM | ✅ 已修复 — 新增 `const MaxReadSize = 50 << 20`（50MB），`ReadText` 入口用 `os.Stat` 预检并返回 `ErrTooLarge` 包装错误 |
-| B16 | 🟢 低 | [L114](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio.go#L114) | `WriteBase64File` 用 `strings.Index` 找逗号，若 data URI 多个逗号会截断错误 | ✅ 已修复 — 改用 `strings.LastIndex`，保留 `strings.HasPrefix(base64Data,"data:")` 保护避免对普通 base64 串误截 |
+| B16 | 🟢 低 | [L114](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio.go#L114) | `WriteBase64File` 用 `strings.Index` 找逗号，若 data URI 多个逗号会截断错误 | ✅ 已修复 — 改用 `strings.LastIndex`，保留 `strings.HasPrefix(base64Data,"data:")` 保护避免对普通 base64 串误截 |
 
 ---
 
@@ -222,7 +224,7 @@ func TestFetchLatest_Success(t *testing.T) {
 
 ### 4.1 main.ts — 主入口
 
-[frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts)
+[frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts)
 
 **✅ 优点：**
 - 顶层编排清晰，TabManager 回调驱动渲染分层。
@@ -234,12 +236,12 @@ func TestFetchLatest_Success(t *testing.T) {
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F1 | 🟡 中 | [L130](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L130), [L309](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L309), [L326](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L326), [L343](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L343) | 4 处 `alert()` 直接拼接用户输入/错误信息。若错误信息含恶意内容（如来自文件名），虽然 WebView2 alert 不执行 HTML，但 UX 粗糙且无法复制 | 改用 `<dialog>` 统一错误提示组件，与 `unsavedDialog` 风格一致 |
-| F2 | 🟡 中 | [L82-87](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L82-L87) | 图片拖入转 base64 用 `String.fromCharCode.apply(null, Array.from(...))` 分块，0x8000 阈值在某些引擎仍可能栈溢出 | 改用 `btoa(String.fromCharCode(...bytes))` 或更稳的 `FileReader.readAsDataURL` |
-| F3 | 🟢 低 | [L91](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L91) | `assetDir` 拼接用 `a.path.replace(/[^/\\]+$/, "")`，若 path 含特殊字符可能出错 | 用 `path.slice(0, path.lastIndexOf("/") + 1) || path.slice(0, path.lastIndexOf("\\") + 1)` |
-| F4 | 🟢 低 | [L120-128](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L120-L128) | wiki-link 查找用 `(window as any).__litemd__mockfs`，生产环境该字段不存在，靠 try/catch 兜底。逻辑正确但类型不安全 | 抽 `findWikiTargetInMockFs(target): string \| null` 工具函数 |
-| F5 | 🟢 低 | [L450-460](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L450-L460) | `showUpdateDialog` 的 `addEventListener("close", once)` 用 `{ once: true }` 但函数内又 `removeEventListener`，冗余 | 保留一种即可 |
-| F6 | 🟢 低 | [L478-486](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts#L478-L486) | 启动屏版本号注入 `w.go?.main?.App?.AppInfo?.()` 用可选链 + try/catch 双重防御，略冗余 | 可选链已足够，try/catch 可删 |
+| F1 | 🟡 中 | [L130](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L130), [L309](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L309), [L326](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L326), [L343](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L343) | 4 处 `alert()` 直接拼接用户输入/错误信息。若错误信息含恶意内容（如来自文件名），虽然 WebView2 alert 不执行 HTML，但 UX 粗糙且无法复制 | 改用 `<dialog>` 统一错误提示组件，与 `unsavedDialog` 风格一致 |
+| F2 | 🟡 中 | [L82-87](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L82-L87) | 图片拖入转 base64 用 `String.fromCharCode.apply(null, Array.from(...))` 分块，0x8000 阈值在某些引擎仍可能栈溢出 | 改用 `btoa(String.fromCharCode(...bytes))` 或更稳的 `FileReader.readAsDataURL` |
+| F3 | 🟢 低 | [L91](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L91) | `assetDir` 拼接用 `a.path.replace(/[^/\\]+$/, "")`，若 path 含特殊字符可能出错 | 用 `path.slice(0, path.lastIndexOf("/") + 1) || path.slice(0, path.lastIndexOf("\\") + 1)` |
+| F4 | 🟢 低 | [L120-128](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L120-L128) | wiki-link 查找用 `(window as any).__litemd__mockfs`，生产环境该字段不存在，靠 try/catch 兜底。逻辑正确但类型不安全 | 抽 `findWikiTargetInMockFs(target): string \| null` 工具函数 |
+| F5 | 🟢 低 | [L450-460](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L450-L460) | `showUpdateDialog` 的 `addEventListener("close", once)` 用 `{ once: true }` 但函数内又 `removeEventListener`，冗余 | 保留一种即可 |
+| F6 | 🟢 低 | [L478-486](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts#L478-L486) | 启动屏版本号注入 `w.go?.main?.App?.AppInfo?.()` 用可选链 + try/catch 双重防御，略冗余 | 可选链已足够，try/catch 可删 |
 
 **审查代码（F1 的 alert 拼接）：**
 ```typescript
@@ -251,7 +253,7 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 ### 4.2 editor.ts — CodeMirror 封装
 
-[frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/editor.ts)
+[frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/editor.ts)
 
 **✅ 优点：**
 - 扩展装配完整：lineNumbers / foldGutter / history / autocompletion / search / markdown。
@@ -264,13 +266,13 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F7 | 🟢 低 | [L75](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/editor.ts#L75) | `markdown({ base: markdownLanguage })` 不传 `codeLanguages`，fenced code block 内部无语法高亮。Sprint 4 主动取舍，符合轻量目标但需文档说明 | 注释已说明，可接受 |
-| F8 | 🟢 低 | [L132-137](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/editor.ts#L132-L137) | `setContent` 先比较 `doc.toString() === content` 再 dispatch，若内容相同跳过。但 `toString()` 对大文档有开销 | 可接受，CodeMirror 6 内部已优化 |
+| F7 | 🟢 低 | [L75](file:///Volumes/fx/Object/LiteMD/frontend/src/editor.ts#L75) | `markdown({ base: markdownLanguage })` 不传 `codeLanguages`，fenced code block 内部无语法高亮。Sprint 4 主动取舍，符合轻量目标但需文档说明 | 注释已说明，可接受 |
+| F8 | 🟢 低 | [L132-137](file:///Volumes/fx/Object/LiteMD/frontend/src/editor.ts#L132-L137) | `setContent` 先比较 `doc.toString() === content` 再 dispatch，若内容相同跳过。但 `toString()` 对大文档有开销 | 可接受，CodeMirror 6 内部已优化 |
 | F9 | 🟢 低 | 全文 | 缺单元测试，仅靠 E2E 间接验证 | 补 `editor.test.ts`：setContent 不污染 undo、setTheme 切换、imageDrop 回调 |
 
 ### 4.3 preview.ts — 预览与 XSS 防护
 
-[frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts)
+[frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts)
 
 **✅ 优点：**
 - 渲染管线清晰：`preprocessAll → marked → DOMPurify → link 加固 → DOM scrub`。
@@ -282,13 +284,13 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F10 | 🟡 中 | [L65-70](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts#L65-L70) | link 二次加固用正则 `<a\s+([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>`，对单引号 href、跨行属性、属性含 `>` 的边界场景失败 | 改用 DOM 操作：`root.querySelectorAll("a[href]").forEach(...)` 设置 rel/target |
-| F11 | 🟢 低 | [L100-105](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts#L100-L105) | `render` 直接 `host.innerHTML = html`，对超大文档（100KB+）可能触发重排卡顿 | 已有 debounce 缓解；可考虑 `requestAnimationFrame` 包裹 |
-| F12 | 🟢 低 | [L114-125](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts#L114-L125) | `scrub` 用 `querySelectorAll("*")` 遍历所有元素，大文档性能开销大 | DOMPurify 已清洗，scrub 是兜底，可加 `if (process.env.NODE_ENV === 'production') return` 跳过 |
+| F10 | 🟡 中 | [L65-70](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts#L65-L70) | link 二次加固用正则 `<a\s+([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>`，对单引号 href、跨行属性、属性含 `>` 的边界场景失败 | 改用 DOM 操作：`root.querySelectorAll("a[href]").forEach(...)` 设置 rel/target |
+| F11 | 🟢 低 | [L100-105](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts#L100-L105) | `render` 直接 `host.innerHTML = html`，对超大文档（100KB+）可能触发重排卡顿 | 已有 debounce 缓解；可考虑 `requestAnimationFrame` 包裹 |
+| F12 | 🟢 低 | [L114-125](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts#L114-L125) | `scrub` 用 `querySelectorAll("*")` 遍历所有元素，大文档性能开销大 | DOMPurify 已清洗，scrub 是兜底，可加 `if (process.env.NODE_ENV === 'production') return` 跳过 |
 
 ### 4.4 tabs.ts — 多标签状态
 
-[frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/tabs.ts)
+[frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/tabs.ts)
 
 **✅ 优点：**
 - `dirty` 与磁盘保存解耦，`liveContent !== baseline` 即脏，语义清晰。
@@ -300,13 +302,13 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F13 | 🟢 低 | [L22](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/tabs.ts#L22) | `genId` 用 `Date.now()-${_nextId++}`，并发场景可能重复（虽然单线程不会） | 改用 `crypto.randomUUID()` 或保持现状（单线程安全） |
-| F14 | 🟢 低 | [L96-104](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/tabs.ts#L96-L104) | `closeTab` 关闭最后一个 tab 后 `activeId = null`，但 `main.ts` 未处理 null 场景的 UI 状态（如 `renderFrontmatterPanel` 已处理） | 已正确处理，可加测试覆盖 |
+| F13 | 🟢 低 | [L22](file:///Volumes/fx/Object/LiteMD/frontend/src/tabs.ts#L22) | `genId` 用 `Date.now()-${_nextId++}`，并发场景可能重复（虽然单线程不会） | 改用 `crypto.randomUUID()` 或保持现状（单线程安全） |
+| F14 | 🟢 低 | [L96-104](file:///Volumes/fx/Object/LiteMD/frontend/src/tabs.ts#L96-L104) | `closeTab` 关闭最后一个 tab 后 `activeId = null`，但 `main.ts` 未处理 null 场景的 UI 状态（如 `renderFrontmatterPanel` 已处理） | 已正确处理，可加测试覆盖 |
 | F15 | 🟢 低 | 全文 | 缺单元测试 | 补 `tabs.test.ts`：newTab/openTab 去重/closeTab dirty 拦截/syncLiveContent dirty 计算 |
 
 ### 4.5 obsidian.ts — 语法兼容层
 
-[frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts)
+[frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts)
 
 **✅ 优点：**
 - 三大语法（Wiki Link / Callout / Frontmatter）解析完整。
@@ -319,14 +321,14 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F16 | 🟡 中 | [L45](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts#L45) | `preprocessWikiLinks` 用 `href="#/wiki/${encodeURIComponent(safeTargetAttr)}"`，但 `safeTargetAttr` 已经过滤了 `<>""'`，再 `encodeURIComponent` 会对空格等编码。整体安全但路径规则不一致 | ✅ 已修复 — 统一为 `encodeURIComponent(rawTarget)`（直接对原始未过滤 target 编码），`data-wikilink` 属性仍保留过滤后安全值（HTML 属性不能含引号尖括号）。前后锚点匹配路径语义一致 |
-| F17 | 🟢 低 | [L147](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts#L147) | `FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\s*(?:\n|$)/` 要求 `---` 后必须换行，Windows CRLF 文件会匹配失败 | ✅ 已修复 — 正则改为 `/^---\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/`，并新增 obsidian 单测 `fmcrlf = "---\r\nfoo: bar..."` 验证解析正确 |
-| F18 | 🟢 低 | [L160-172](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts#L160-L172) | `parseFrontmatter` 对 `tags: [a, b]` 这种数组值解析为字符串 `"[a, b]"`，未转数组 | 🔧 保留现状（低优）：LiteMD frontmatter 展示只读，数组字符串不影响渲染；如需结构化可后续扩展 |
-| F19 | 🟢 低 | [L64](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts#L64) | `CALLOUT_RE` 用 `(>+\s*\[!\w+\]...)`，`>+` 允许多个 `>`，但 `findCallouts` 内 `replace(/^>\s?/, "")` 只剥一个 | 🔧 保留现状（低优）：多级 blockquote callout 极少出现，当前剥一级不影响渲染 |
+| F16 | 🟡 中 | [L45](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts#L45) | `preprocessWikiLinks` 用 `href="#/wiki/${encodeURIComponent(safeTargetAttr)}"`，但 `safeTargetAttr` 已经过滤了 `<>""'`，再 `encodeURIComponent` 会对空格等编码。整体安全但路径规则不一致 | ✅ 已修复 — 统一为 `encodeURIComponent(rawTarget)`（直接对原始未过滤 target 编码），`data-wikilink` 属性仍保留过滤后安全值（HTML 属性不能含引号尖括号）。前后锚点匹配路径语义一致 |
+| F17 | 🟢 低 | [L147](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts#L147) | `FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\s*(?:\n|$)/` 要求 `---` 后必须换行，Windows CRLF 文件会匹配失败 | ✅ 已修复 — 正则改为 `/^---\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/`，并新增 obsidian 单测 `fmcrlf = "---\r\nfoo: bar..."` 验证解析正确 |
+| F18 | 🟢 低 | [L160-172](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts#L160-L172) | `parseFrontmatter` 对 `tags: [a, b]` 这种数组值解析为字符串 `"[a, b]"`，未转数组 | 🔧 保留现状（低优）：LiteMD frontmatter 展示只读，数组字符串不影响渲染；如需结构化可后续扩展 |
+| F19 | 🟢 低 | [L64](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts#L64) | `CALLOUT_RE` 用 `(>+\s*\[!\w+\]...)`，`>+` 允许多个 `>`，但 `findCallouts` 内 `replace(/^>\s?/, "")` 只剥一个 | 🔧 保留现状（低优）：多级 blockquote callout 极少出现，当前剥一级不影响渲染 |
 
 ### 4.6 file-ops.ts — 文件操作抽象
 
-[frontend/src/file-ops.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/file-ops.ts)
+[frontend/src/file-ops.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/file-ops.ts)
 
 **✅ 优点：**
 - `bind()` 双模式 fallback 优雅，mock 与真实绑定透明切换。
@@ -336,11 +338,11 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F20 | 🟢 低 | [L19](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/file-ops.ts#L19) | `wailsBindings as any` 绕过类型检查，丢失类型安全 | 用 `keyof typeof wailsBindings` 约束 name |
+| F20 | 🟢 低 | [L19](file:///Volumes/fx/Object/LiteMD/frontend/src/file-ops.ts#L19) | `wailsBindings as any` 绕过类型检查，丢失类型安全 | 用 `keyof typeof wailsBindings` 约束 name |
 
 ### 4.7 splitpane.ts — 分屏
 
-[frontend/src/splitpane.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/splitpane.ts)
+[frontend/src/splitpane.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/splitpane.ts)
 
 **✅ 优点：**
 - Pointer Events 标准 API，支持触屏。
@@ -352,7 +354,7 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 ### 4.8 unsaved-guard.ts — 未保存拦截
 
-[frontend/src/unsaved-guard.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/unsaved-guard.ts)
+[frontend/src/unsaved-guard.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/unsaved-guard.ts)
 
 **✅ 优点：**
 - 基于 `<dialog>` 原生组件，ESC 支持完善。
@@ -363,7 +365,7 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 ### 4.9 mocks.ts — 浏览器 Mock
 
-[frontend/src/mocks.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/mocks.ts)
+[frontend/src/mocks.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/mocks.ts)
 
 **✅ 优点：**
 - 内存文件系统 `InMemoryMockFs` 设计清晰，`files` + `savedFiles` 双 Map。
@@ -374,7 +376,7 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| F21 | 🟢 低 | [L29-93](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/mocks.ts#L29-L93) | `(window as any).go = {...}` 直接覆盖，若其他库也用 `window.go` 会冲突 | 检查 `window.go` 是否存在再合并 |
+| F21 | 🟢 低 | [L29-93](file:///Volumes/fx/Object/LiteMD/frontend/src/mocks.ts#L29-L93) | `(window as any).go = {...}` 直接覆盖，若其他库也用 `window.go` 会冲突 | 检查 `window.go` 是否存在再合并 |
 
 ---
 
@@ -468,9 +470,9 @@ alert(`Wiki link 目标未找到：${target}\n（创建文件 "${target}.md" 后
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| M1 | 🟡 中 | [app.css](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/app.css) | 该文件是 Wails 模板遗留的 `#logo` / `.input-box` 样式，与 LiteMD 实际 UI 无关，未被任何 HTML 引用 | 删除该文件，减少混淆 |
-| M2 | 🟢 低 | [main.go L34](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/main.go#L34) | `println` 非 Go 标准日志方式 | 改用 `log` 包 |
-| M3 | 🟢 低 | [wails.json L4](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/wails.json#L4) | `"outputfilename": "workspace"` 与实际产物 `LiteMD.exe` 不一致，可能是 Wails 模板默认值未改 | 改为 `"LiteMD"` 或确认 Wails 是否自动覆盖 |
+| M1 | 🟡 中 | [app.css](file:///Volumes/fx/Object/LiteMD/frontend/src/app.css) | 该文件是 Wails 模板遗留的 `#logo` / `.input-box` 样式，与 LiteMD 实际 UI 无关，未被任何 HTML 引用 | 删除该文件，减少混淆 |
+| M2 | 🟢 低 | [main.go L34](file:///Volumes/fx/Object/LiteMD/main.go#L34) | `println` 非 Go 标准日志方式 | 改用 `log` 包 |
+| M3 | 🟢 低 | [wails.json L4](file:///Volumes/fx/Object/LiteMD/wails.json#L4) | `"outputfilename": "workspace"` 与实际产物 `LiteMD.exe` 不一致，可能是 Wails 模板默认值未改 | 改为 `"LiteMD"` 或确认 Wails 是否自动覆盖 |
 
 ### 7.2 模块耦合度
 
@@ -504,7 +506,7 @@ main.ts (编排层)
 
 ### 8.1 前端构建（Vite）
 
-[vite.config.js](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/vite.config.js)
+[vite.config.js](file:///Volumes/fx/Object/LiteMD/frontend/vite.config.js)
 
 **✅ 优点：**
 - 双入口配置清晰（`index.html` 生产 + `dev.html` 浏览器）。
@@ -515,18 +517,18 @@ main.ts (编排层)
 
 ### 8.2 Wails 构建
 
-[wails.json](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/wails.json)
+[wails.json](file:///Volumes/fx/Object/LiteMD/wails.json)
 
 **⚠️ 问题：**
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| P1 | 🟢 低 | [wails.json L4](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/wails.json#L4) | `"outputfilename": "workspace"` 与产物名不一致 | 改为 `"LiteMD"` |
-| P2 | 🟢 低 | [wails.json L9-12](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/wails.json#L9-L12) | `author.name/email` 为空 | 填写作者信息 |
+| P1 | 🟢 低 | [wails.json L4](file:///Volumes/fx/Object/LiteMD/wails.json#L4) | `"outputfilename": "workspace"` 与产物名不一致 | 改为 `"LiteMD"` |
+| P2 | 🟢 低 | [wails.json L9-12](file:///Volumes/fx/Object/LiteMD/wails.json#L9-L12) | `author.name/email` 为空 | 填写作者信息 |
 
 ### 8.3 Windows NSIS 打包
 
-[build_windows/installer/project.nsi](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_windows/installer/project.nsi)
+[build_windows/installer/project.nsi](file:///Volumes/fx/Object/LiteMD/build_windows/installer/project.nsi)
 
 **✅ 优点：**
 - 基于 Wails 官方 `wails_tools.nsh` 宏，稳定可靠。
@@ -538,13 +540,13 @@ main.ts (编排层)
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| P3 | 🟡 中 | [project.nsi L72](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_windows/installer/project.nsi#L72) | `OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe"` 输出文件名含 `${ARCH}`，但 README 称产物为 `LiteMD-Setup-v0.2.0.exe`，命名不一致 | 统一命名规则，或在构建脚本中 rename |
-| P4 | 🟢 低 | [project.nsi L57](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_windows/installer/project.nsi#L57) | `MUI_PAGE_LICENSE` 被注释，无 EULA 页 | MIT 许可证可加 EULA 页或保持现状 |
-| P5 | 🟢 低 | [project.nsi L67-68](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/build_windows/installer/project.nsi#L67-L68) | `signtool` 签名被注释 | 生产建议加代码签名，避免 SmartScreen 警告 |
+| P3 | 🟡 中 | [project.nsi L72](file:///Volumes/fx/Object/LiteMD/build_windows/installer/project.nsi#L72) | `OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe"` 输出文件名含 `${ARCH}`，但 README 称产物为 `LiteMD-Setup-v0.2.0.exe`，命名不一致 | 统一命名规则，或在构建脚本中 rename |
+| P4 | 🟢 低 | [project.nsi L57](file:///Volumes/fx/Object/LiteMD/build_windows/installer/project.nsi#L57) | `MUI_PAGE_LICENSE` 被注释，无 EULA 页 | MIT 许可证可加 EULA 页或保持现状 |
+| P5 | 🟢 低 | [project.nsi L67-68](file:///Volumes/fx/Object/LiteMD/build_windows/installer/project.nsi#L67-L68) | `signtool` 签名被注释 | 生产建议加代码签名，避免 SmartScreen 警告 |
 
 ### 8.4 .gitignore 审查
 
-[.gitignore](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/.gitignore)
+[.gitignore](file:///Volumes/fx/Object/LiteMD/.gitignore)
 
 **✅ 优点：**
 - 9 大类分层覆盖完整（系统/Go/Wails/前端/IDE/日志/密钥/E2E）。
@@ -569,9 +571,9 @@ main.ts (编排层)
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| T1 | 🔴 高 | [updater_test.go L101-123](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater_test.go#L101-L123) | `TestFetchLatest_Success` 创建 mock server 但未调用 `FetchLatest`，测试造假（B9） | 修复 B10 后补真实 HTTP 测试 |
-| T2 | 🟡 中 | [updater_test.go L125-143](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater_test.go#L125-L143) | `TestCheck_NoUpdate` / `TestCheck_404` 依赖真实网络，CI 不稳定 | 用 mock server 替换 |
-| T3 | 🟢 低 | [app_test.go L119-126](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app_test.go#L119-L126) | `TestAppSaveFileAs_NilCtxSafe` 注释说"在某些环境 ctx 不为 nil"，逻辑不严谨 | 明确注入 nil ctx 测试 |
+| T1 | 🔴 高 | [updater_test.go L101-123](file:///Volumes/fx/Object/LiteMD/internal/updater/updater_test.go#L101-L123) | `TestFetchLatest_Success` 创建 mock server 但未调用 `FetchLatest`，测试造假（B9） | 修复 B10 后补真实 HTTP 测试 |
+| T2 | 🟡 中 | [updater_test.go L125-143](file:///Volumes/fx/Object/LiteMD/internal/updater/updater_test.go#L125-L143) | `TestCheck_NoUpdate` / `TestCheck_404` 依赖真实网络，CI 不稳定 | 用 mock server 替换 |
+| T3 | 🟢 低 | [app_test.go L119-126](file:///Volumes/fx/Object/LiteMD/app_test.go#L119-L126) | `TestAppSaveFileAs_NilCtxSafe` 注释说"在某些环境 ctx 不为 nil"，逻辑不严谨 | 明确注入 nil ctx 测试 |
 
 ### 9.2 前端测试
 
@@ -584,9 +586,9 @@ main.ts (编排层)
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| T4 | 🟡 中 | [preview.test.ts L29](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.test.ts#L29) | `assert(xss1.includes("alert(1)") || !xss1.toLowerCase().includes("alert"), ...)` 用 `||` 导致断言永远通过（若 alert 被剥离则左侧 false，右侧 true） | 改为 `&&` 或明确断言 |
+| T4 | 🟡 中 | [preview.test.ts L29](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.test.ts#L29) | `assert(xss1.includes("alert(1)") || !xss1.toLowerCase().includes("alert"), ...)` 用 `||` 导致断言永远通过（若 alert 被剥离则左侧 false，右侧 true） | 改为 `&&` 或明确断言 |
 | T5 | 🟡 中 | 全文 | 缺 `editor.ts` / `tabs.ts` / `splitpane.ts` / `unsaved-guard.ts` 单元测试 | 补齐 |
-| T6 | 🟢 低 | [obsidian.test.ts L106](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.test.ts#L106) | `assert(full.startsWith("# Heading") || full.includes("# Heading"), ...)` 用 `||` 弱化断言 | 明确预期 |
+| T6 | 🟢 低 | [obsidian.test.ts L106](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.test.ts#L106) | `assert(full.startsWith("# Heading") || full.includes("# Heading"), ...)` 用 `||` 弱化断言 | 明确预期 |
 
 ### 9.3 E2E 测试
 
@@ -600,9 +602,9 @@ main.ts (编排层)
 
 | # | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
-| T7 | 🟡 中 | [sprint5.sh L24-27](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint5.sh#L24-L27) | `curl -s -o /dev/null -w ""` 检测 vite 是否启动，但 `-w ""` 不输出状态码，判断失效 | 改为 `curl -sf -o /dev/null http://...` 检查退出码 |
+| T7 | 🟡 中 | [sprint5.sh L24-27](file:///Volumes/fx/Object/LiteMD/e2e/sprint5.sh#L24-L27) | `curl -s -o /dev/null -w ""` 检测 vite 是否启动，但 `-w ""` 不输出状态码，判断失效 | 改为 `curl -sf -o /dev/null http://...` 检查退出码 |
 | T8 | 🟢 低 | 全文 | E2E 脚本依赖 `agent-browser` CLI，未文档化安装方式 | README 补充 `agent-browser` 安装说明 |
-| T9 | 🟢 低 | [sprint1.sh L11](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/e2e/sprint1.sh#L11) | URL 默认 `http://127.0.0.1:5174/dev.html`，但 vite.config 配置端口为 5173，需手动起 `vite preview --port 5174` | 统一端口配置 |
+| T9 | 🟢 低 | [sprint1.sh L11](file:///Volumes/fx/Object/LiteMD/e2e/sprint1.sh#L11) | URL 默认 `http://127.0.0.1:5174/dev.html`，但 vite.config 配置端口为 5173，需手动起 `vite preview --port 5174` | 统一端口配置 |
 
 ---
 
@@ -670,16 +672,16 @@ B9/T1：updater 测试造假。修复方式详见 §3.4.3，现 `TestFetchLatest
 
 | 文件 | 行数 | 关键职责 |
 | --- | --- | --- |
-| [main.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/main.go) | 36 | Go 入口，嵌入前端资源 |
-| [app.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/app.go) | 261 | 12 个 binding 方法 |
-| [internal/config/config.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/config/config.go) | 143 | 配置原子读写 |
-| [internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/fileio/fileio.go) | 142 | 文件 IO + base64 |
-| [internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/internal/updater/updater.go) | 198 | GitHub Releases 检查 |
-| [frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/main.ts) | 508 | 前端编排 |
-| [frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/editor.ts) | 171 | CodeMirror 6 封装 |
-| [frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/preview.ts) | 129 | XSS 多层防护 |
-| [frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/tabs.ts) | 158 | 多标签状态 |
-| [frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD-dist/LiteMD/frontend/src/obsidian.ts) | 216 | Obsidian 语法兼容 |
+| [main.go](file:///Volumes/fx/Object/LiteMD/main.go) | 36 | Go 入口，嵌入前端资源 |
+| [app.go](file:///Volumes/fx/Object/LiteMD/app.go) | 261 | 12 个 binding 方法 |
+| [internal/config/config.go](file:///Volumes/fx/Object/LiteMD/internal/config/config.go) | 143 | 配置原子读写 |
+| [internal/fileio/fileio.go](file:///Volumes/fx/Object/LiteMD/internal/fileio/fileio.go) | 142 | 文件 IO + base64 |
+| [internal/updater/updater.go](file:///Volumes/fx/Object/LiteMD/internal/updater/updater.go) | 198 | GitHub Releases 检查 |
+| [frontend/src/main.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/main.ts) | 508 | 前端编排 |
+| [frontend/src/editor.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/editor.ts) | 171 | CodeMirror 6 封装 |
+| [frontend/src/preview.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/preview.ts) | 129 | XSS 多层防护 |
+| [frontend/src/tabs.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/tabs.ts) | 158 | 多标签状态 |
+| [frontend/src/obsidian.ts](file:///Volumes/fx/Object/LiteMD/frontend/src/obsidian.ts) | 216 | Obsidian 语法兼容 |
 
 ### 11.2 审查工具与方法
 
