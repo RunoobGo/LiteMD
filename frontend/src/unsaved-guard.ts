@@ -44,3 +44,43 @@ export function installBeforeUnloadGuard(tabManager: TabManager) {
         }
     });
 }
+
+// ============================================================================
+// #3 修复：退出前协商（Wails v2 无 OnBeforeClose 异步协商，自绘关闭按钮
+// 直调 Quit() 会静默丢弃全部未保存修改——beforeunload 在该路径不触发）
+// ============================================================================
+
+export type QuitChoice = "quit" | "cancel";
+
+/**
+ * 退出放行的纯决策函数（与 DOM 解耦，可单测）：
+ *   - 无脏标签 → 直接放行（不弹窗打扰）
+ *   - 有脏标签 → 仅当用户显式选择「退出」才放行；取消/ESC/关闭对话框均拦截
+ */
+export function quitDecision(hasDirty: boolean, choice: QuitChoice | null): boolean {
+    if (!hasDirty) return true;
+    return choice === "quit";
+}
+
+/**
+ * 退出前协商：无脏直接放行；有脏弹 quitDialog 确认。
+ * 返回 true 表示可以调用 Quit()。
+ */
+export async function confirmQuit(tabManager: TabManager): Promise<boolean> {
+    if (!tabManager.hasAnyDirty()) return true;
+    const dlg = document.getElementById("quitDialog") as HTMLDialogElement | null;
+    // 兜底：对话框缺失（模板被改坏等）时拒绝退出，宁可不关也不能丢数据
+    if (!dlg) return false;
+    const hint = document.getElementById("quitHint");
+    if (hint) hint.textContent = "关闭窗口将丢失未保存的内容。";
+    if (!dlg.open) dlg.showModal();
+    return new Promise<boolean>((resolve) => {
+        const handler = () => {
+            // dialog close：returnValue 由 form method="dialog" 的按钮 value 自动设置
+            const v = dlg.returnValue || "cancel";
+            dlg.removeEventListener("close", handler);
+            resolve(quitDecision(true, v === "quit" ? "quit" : "cancel"));
+        };
+        dlg.addEventListener("close", handler, { once: true });
+    });
+}

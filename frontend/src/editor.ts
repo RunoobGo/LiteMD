@@ -6,7 +6,7 @@
 //   - 光标移动时通过 onCursorChange 回调 → 状态栏显示行列位置
 //   - 主题：跟随 SetConfig 配置（dark/light，未配置则用 one-dark 默认）
 
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -139,11 +139,21 @@ export class MarkdownEditor {
         this.imageDropHandler = handler;
     }
 
-    /** 替换文档内容（用于切换 tab 时）—— 通过 toString + update 模式，避免进 undo 历史 */
+    /**
+     * 替换文档内容（用于切换 tab 时）。
+     *
+     * **必须**通过 `Transaction.addToHistory.of(false)` 标注不进 undo 历史：
+     * CodeMirror 的 history() 扩展默认会把所有 transaction 记入历史；若不加标注，
+     * 切换标签后用户按 Ctrl+Z（本意是撤销自己的编辑）会把 A 文件的内容还原到 B
+     * 文件里，进而触发保存逻辑把 A 内容写进 B 文件 —— 跨文件数据污染。
+     */
     setContent(content: string) {
         if (this.view.state.doc.toString() === content) return;
         this.view.dispatch({
             changes: { from: 0, to: this.view.state.doc.length, insert: content },
+            annotations: Transaction.addToHistory.of(false),
+            selection: { anchor: 0 },
+            scrollIntoView: true,
         });
     }
 
@@ -173,11 +183,6 @@ export class MarkdownEditor {
     /** 焦点到编辑器 */
     focus() {
         this.view.focus();
-    }
-
-    /** 销毁 */
-    destroy() {
-        this.view.destroy();
     }
 
     private buildBaseTheme(base: "light" | "dark") {

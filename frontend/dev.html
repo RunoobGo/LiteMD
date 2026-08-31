@@ -108,6 +108,19 @@
                 </button>
             </nav>
             <div class="meta" id="meta">未保存</div>
+            <!-- 无边框窗口控制：浏览器 mock 端无窗口运行时，titlebar.ts 会隐藏该组按钮 -->
+            <div class="window-controls" id="windowControls" aria-label="窗口控制">
+                <button class="wc-btn" data-wc="min" aria-label="最小化" title="最小化">
+                    <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M1 5h8"/></svg>
+                </button>
+                <button class="wc-btn" data-wc="max" aria-label="最大化" title="最大化">
+                    <svg class="icon-max" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" rx="0.5"/></svg>
+                    <svg class="icon-restore" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M3 1.5h4.5A1 1 0 0 1 8.5 2.5V7"/><rect x="1.5" y="3" width="5.5" height="5.5" rx="0.5"/></svg>
+                </button>
+                <button class="wc-btn wc-close" data-wc="close" aria-label="关闭" title="关闭">
+                    <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>
+                </button>
+            </div>
         </header>
         <div class="tabbar" id="tabbar" role="tablist"></div>
         <details class="frontmatter-panel" id="frontmatterPanel" hidden>
@@ -151,6 +164,18 @@
             <p id="errorBody" class="muted"></p>
             <menu>
                 <button value="ok" autofocus>知道了</button>
+            </menu>
+        </form>
+    </dialog>
+
+    <!-- #3 修复：退出前协商（与 index.html 保持一致） -->
+    <dialog id="quitDialog" class="litemd-dialog">
+        <form method="dialog">
+            <h3>存在未保存的修改</h3>
+            <p id="quitHint" class="muted"></p>
+            <menu>
+                <button value="cancel" autofocus>取消</button>
+                <button value="quit" class="danger">退出并放弃修改</button>
             </menu>
         </form>
     </dialog>

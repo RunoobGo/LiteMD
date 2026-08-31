@@ -26,10 +26,17 @@ func main() {
 	}
 
 	// Create application with options
+	// 无边框自定义标题栏：最小化/最大化/关闭由前端绘制（见 frontend/src/titlebar.ts）。
+	// 拖动依赖 Wails 内建 dragTest：标题栏容器 CSS 变量 --wails-draggable: drag，
+	// mousedown→mousemove 后由 Wails 发送 WM_NCLBUTTONDOWN(HTCAPTION) 进入系统拖动。
+	// MinWidth/MinHeight 限制窗口最小尺寸，避免编辑区被挤压到不可用。
 	err := wails.Run(&options.App{
-		Title:  "LiteMD",
-		Width:  1024,
-		Height: 768,
+		Title:     "LiteMD",
+		Width:     1024,
+		Height:    768,
+		MinWidth:  800,
+		MinHeight: 600,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

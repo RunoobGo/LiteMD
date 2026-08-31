@@ -98,6 +98,22 @@
     --ok: #3FB950;
     --tab-bg: #161B22;
     --tab-active: #0D1117;
+    /* Callout 语义色（#8 修复：随主题变量化，替代旧版硬编码暗色值）。
+       每类两个变量：主色（边框/图标）+ 淡背景。 */
+    --callout-note: #79C0FF;
+    --callout-note-bg: rgba(121, 192, 255, 0.08);
+    --callout-tip: #56D364;
+    --callout-tip-bg: rgba(86, 211, 100, 0.08);
+    --callout-warning: #E3B341;
+    --callout-warning-bg: rgba(227, 179, 65, 0.08);
+    --callout-danger: #F85149;
+    --callout-danger-bg: rgba(248, 81, 73, 0.08);
+    --callout-success: #2EA043;
+    --callout-success-bg: rgba(46, 160, 67, 0.08);
+    --callout-example: #D2A8FF;
+    --callout-example-bg: rgba(210, 168, 255, 0.08);
+    --callout-quote: #8B949E;
+    --callout-quote-bg: rgba(139, 148, 158, 0.08);
     --radius: 6px;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
     --font-sans: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -136,6 +152,22 @@
     --ok: #4F8050;
     --tab-bg: #F2EEE0;
     --tab-active: #FBF8F1;
+    /* Callout 亮色适配：深色化主色（米杏底上对比度 ≥4.5:1），
+       背景透明度提到 0.10（浅底上 0.08 几乎不可见） */
+    --callout-note: #3D6B99;
+    --callout-note-bg: rgba(61, 107, 153, 0.10);
+    --callout-tip: #3F7A46;
+    --callout-tip-bg: rgba(63, 122, 70, 0.10);
+    --callout-warning: #8A6A1F;
+    --callout-warning-bg: rgba(138, 106, 31, 0.10);
+    --callout-danger: #A63D3D;
+    --callout-danger-bg: rgba(166, 61, 61, 0.10);
+    --callout-success: #357438;
+    --callout-success-bg: rgba(53, 116, 56, 0.10);
+    --callout-example: #6B4A8A;
+    --callout-example-bg: rgba(107, 74, 138, 0.10);
+    --callout-quote: #6B6759;
+    --callout-quote-bg: rgba(107, 103, 89, 0.10);
 }
 
 * {
@@ -202,16 +234,27 @@ html, body {
 
 /* ===== 顶栏 ===== */
 .topbar {
+    /* 无边框窗口的标题栏拖动区。
+       Wails v2 拖动机制（internal/frontend/runtime/desktop/main.js dragTest）：
+       mousedown 时检查事件目标 computed style 的 CSS 变量
+       --wails-draggable === "drag"，mousemove 后触发系统拖动
+       （WM_NCLBUTTONDOWN/HTCAPTION）。该变量可继承——topbar 设 drag 后
+       其中所有非交互内容（文本/空白）均为拖动区；可交互元素
+       （.actions / .window-controls）必须显式覆盖为 no-drag，否则
+       点击按钮时手抖 1px 即进入系统模态拖动循环，click 被吞、
+       按钮"失效"。
+       注意：-webkit-app-region 是 Electron 专有属性，WebView2/Wails 不识别。 */
+    --wails-draggable: drag;
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 0 16px;
+    min-height: 40px;   /* 兼任标题栏，保证足够的抓取/双击面积 */
+    padding: 0 0 0 16px; /* 右侧由 .window-controls 贴边（Win11 规范） */
     background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--border);
     user-select: none;
-    -webkit-app-region: drag; /* 让 Wails 把顶栏算入可拖动区域 */
 }
 
 .brand {
@@ -230,7 +273,9 @@ html, body {
     align-items: center;
     flex-shrink: 0;
     gap: 4px;
-    -webkit-app-region: no-drag;
+    /* 顶栏设了 --wails-draggable: drag 且 CSS 变量可继承，
+       工具按钮必须覆盖为 no-drag 才能正常接收 click */
+    --wails-draggable: no-drag;
 }
 
 /* 图标按钮：正方形、内容居中、无文字。position:relative 作为 .tip 定位锚点 */
@@ -364,12 +409,70 @@ html, body {
 }
 
 .meta {
-    margin-left: auto;
     color: var(--fg-2);
     font-size: 12px;
     font-family: var(--font-mono);
-    -webkit-app-region: no-drag;
 }
+
+/* ===== 无边框窗口控制按钮（Win11 规范：贴右缘、方形、悬停浅底、关闭悬停红底）===== */
+.window-controls {
+    /* 必须覆盖继承来的 drag：这是按钮区，mousedown 不允许进入拖动状态 */
+    --wails-draggable: no-drag;
+    display: flex;
+    align-items: stretch;
+    align-self: stretch;
+    margin-left: auto;   /* 推到顶栏最右；左侧剩余空白随 topbar 继承 drag，可拖动 */
+    flex-shrink: 0;
+}
+
+.window-controls[hidden] {
+    display: none; /* 浏览器 mock 端无窗口运行时，整组隐藏 */
+}
+
+.window-controls .wc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;          /* Win11 风格：直角贴边 */
+    color: var(--fg-1);
+    cursor: pointer;
+    line-height: 0;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.window-controls .wc-btn svg {
+    pointer-events: none;      /* 与 .actions 一致：确保 e.target 恒为按钮 */
+}
+
+.window-controls .wc-btn:hover {
+    background: var(--bg-2);
+    color: var(--fg-0);
+}
+
+.window-controls .wc-btn:active {
+    background: var(--bg-3);
+}
+
+/* 关闭按钮：悬停转 Windows 标准警示红（两种主题统一），白叉保证对比度 */
+.window-controls .wc-close:hover {
+    background: #E81123;
+    color: #FFFFFF;
+}
+
+.window-controls .wc-close:active {
+    background: #C50F1F;
+    color: #FFFFFF;
+}
+
+/* 最大化/还原图标切换：is-maximised 由 titlebar.ts 查询 Wails 后同步 */
+.window-controls .icon-restore { display: none; }
+.topbar.is-maximised .window-controls .icon-max { display: none; }
+.topbar.is-maximised .window-controls .icon-restore { display: block; }
+
 
 /* ===== 标签栏 ===== */
 .tabbar {
@@ -448,30 +551,8 @@ html, body {
 }
 
 /* ===== 编辑区 ===== */
-.editor {
-    position: relative;
-    display: flex;
-    background: var(--bg-0);
-}
-
-#editor {
-    flex: 1;
-    width: 100%;
-    height: 100%;
-    padding: 16px 20px;
-    border: none;
-    outline: none;
-    background: var(--bg-0);
-    color: var(--fg-0);
-    font-family: var(--font-mono);
-    font-size: 14px;
-    line-height: 1.7;
-    resize: none;
-}
-
-#editor[hidden] {
-    display: none;
-}
+/* 编辑器为 CodeMirror 6（.cm-host 容器），样式见下方 .cm-host 系列；
+   旧版 textarea（.editor / #editor）已随迁移移除（#13）。 */
 
 /* ===== 分屏布局 ===== */
 .splitpane {
@@ -578,15 +659,17 @@ html, body {
     font-size: 14px;
 }
 
-.preview .md-h1 {
+/* 标题选择器用标签形式：marked 输出的是裸 <h1>~<h6> 标签（无 class），
+   旧版 .md-h1 等 class 选择器永不命中，字号/主题色/标题线全部失效（修复 #1）。 */
+.preview h1 {
     font-size: 1.8em;
     color: var(--md-h1);
     margin: 0.4em 0 0.4em;
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.2em;
 }
-.preview .md-h2 { font-size: 1.45em; color: var(--md-h2); margin: 0.6em 0 0.4em; }
-.preview .md-h3 { font-size: 1.2em; color: var(--md-h3); margin: 0.5em 0 0.3em; }
+.preview h2 { font-size: 1.45em; color: var(--md-h2); margin: 0.6em 0 0.4em; }
+.preview h3 { font-size: 1.2em; color: var(--md-h3); margin: 0.5em 0 0.3em; }
 .preview h4, .preview h5, .preview h6 { color: var(--md-heading); }
 .preview p { margin: 0.7em 0; line-height: 1.7; }
 .preview ul, .preview ol { padding-left: 1.5em; }
@@ -660,6 +743,47 @@ html, body {
     margin: 1em 0;
 }
 
+/* ===== LaTeX 公式（KaTeX） ===== */
+/* 说明：公式 HTML 在 DOMPurify 之后注入，因此 KaTeX 依赖的 inline style 与
+   MathML 标签能完整保留。这里只做暗色主题与排版适配。 */
+.preview .katex {
+    /* KaTeX 默认 1.21em，在本主题下偏大 */
+    font-size: 1.08em;
+    color: var(--fg-0);
+    /* 数学字体优先，\text{中文} 等场景回退到系统中文字体 */
+    font-family: KaTeX_Main, var(--font-sans, system-ui), "Microsoft YaHei", sans-serif;
+}
+/* 块级公式：居中独占行；超宽时横向滚动而非撑破布局 */
+.preview .katex-display {
+    margin: 1em 0;
+    padding: 2px 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.preview .katex-display > .katex {
+    /* 滚动容器已居中，内部按实际宽度排版 */
+    display: inline-block;
+    white-space: nowrap;
+}
+/* 行内公式不与行内代码背景冲突 */
+.preview :not(pre) > code .katex {
+    font-size: 1em;
+}
+/* KaTeX 渲染失败时的降级提示（throwOnError: false） */
+.preview .katex .katex-error,
+.preview code.latex-error {
+    color: var(--danger);
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.35);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    /* 原样呈现源码，便于定位语法错误 */
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 /* ===== Obsidian Wiki Links ===== */
 .preview a.wiki-link {
     color: var(--accent);
@@ -675,10 +799,8 @@ html, body {
     border-bottom-style: solid;
     border-radius: 2px;
 }
-.preview a.wiki-link[data-broken="true"] {
-    color: var(--danger);
-    border-bottom-color: var(--danger);
-}
+/* 注：曾有的 .wiki-link[data-broken] 规则已删除——preview.ts 从不产生
+   data-broken 属性（#13 死代码清理）。断链样式如需恢复应连同逻辑一起实现。 */
 
 /* ===== Obsidian Callouts ===== */
 .preview .callout {
@@ -711,57 +833,59 @@ html, body {
 .preview .callout-body p:first-child { margin-top: 0; }
 .preview .callout-body p:last-child { margin-bottom: 0; }
 
+/* #8 修复：全部引用语义变量，暗/亮主题自动切换（变量定义见 :root 与
+   [data-theme="light"] 块），替代旧版硬编码暗色系值。 */
 .preview .callout-note {
-    border-left-color: #79C0FF;
-    background: rgba(121, 192, 255, 0.08);
+    border-left-color: var(--callout-note);
+    background: var(--callout-note-bg);
 }
-.preview .callout-note .callout-icon { background: #79C0FF; }
+.preview .callout-note .callout-icon { background: var(--callout-note); }
 
 .preview .callout-tip,
 .preview .callout-info {
-    border-left-color: #56D364;
-    background: rgba(86, 211, 100, 0.08);
+    border-left-color: var(--callout-tip);
+    background: var(--callout-tip-bg);
 }
 .preview .callout-tip .callout-icon,
-.preview .callout-info .callout-icon { background: #56D364; }
+.preview .callout-info .callout-icon { background: var(--callout-tip); }
 
 .preview .callout-warning,
 .preview .callout-bug {
-    border-left-color: #E3B341;
-    background: rgba(227, 179, 65, 0.08);
+    border-left-color: var(--callout-warning);
+    background: var(--callout-warning-bg);
 }
 .preview .callout-warning .callout-icon,
-.preview .callout-bug .callout-icon { background: #E3B341; }
+.preview .callout-bug .callout-icon { background: var(--callout-warning); }
 
 .preview .callout-danger,
 .preview .callout-failure {
-    border-left-color: #F85149;
-    background: rgba(248, 81, 73, 0.08);
+    border-left-color: var(--callout-danger);
+    background: var(--callout-danger-bg);
 }
 .preview .callout-danger .callout-icon,
-.preview .callout-failure .callout-icon { background: #F85149; }
+.preview .callout-failure .callout-icon { background: var(--callout-danger); }
 
 .preview .callout-success {
-    border-left-color: #2EA043;
-    background: rgba(46, 160, 67, 0.08);
+    border-left-color: var(--callout-success);
+    background: var(--callout-success-bg);
 }
-.preview .callout-success .callout-icon { background: #2EA043; }
+.preview .callout-success .callout-icon { background: var(--callout-success); }
 
 .preview .callout-example,
 .preview .callout-question {
-    border-left-color: #D2A8FF;
-    background: rgba(210, 168, 255, 0.08);
+    border-left-color: var(--callout-example);
+    background: var(--callout-example-bg);
 }
 .preview .callout-example .callout-icon,
-.preview .callout-question .callout-icon { background: #D2A8FF; }
+.preview .callout-question .callout-icon { background: var(--callout-example); }
 
 .preview .callout-quote,
 .preview .callout-abstract {
-    border-left-color: #8B949E;
-    background: rgba(139, 148, 158, 0.08);
+    border-left-color: var(--callout-quote);
+    background: var(--callout-quote-bg);
 }
 .preview .callout-quote .callout-icon,
-.preview .callout-abstract .callout-icon { background: #8B949E; }
+.preview .callout-abstract .callout-icon { background: var(--callout-quote); }
 
 /* ===== Frontmatter 折叠面板 ===== */
 .frontmatter-panel {

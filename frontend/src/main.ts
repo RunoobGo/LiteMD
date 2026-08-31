@@ -2,13 +2,17 @@
 
 // 全局样式必须在 main 入口导入，确保 index.html（生产/Wails 桌面入口）也能加载到样式。
 // 否则仅 dev.html（浏览器 mock 入口）经 dev-bootstrap.ts 导入样式，桌面端将整体无样式。
+//
+// KaTeX 样式必须先于 style.css 加载：后者内含针对暗色主题的公式适配规则，
+// 需要在层叠顺序上压过 katex.min.css 的默认值。
+import "katex/dist/katex.min.css";
 import "./style.css";
 
 import { TabManager } from "./tabs";
 import { MarkdownEditor } from "./editor";
 import { Preview } from "./preview";
 import { SplitPane, type SplitMode } from "./splitpane";
-import { askUnsaved, installBeforeUnloadGuard } from "./unsaved-guard";
+import { askUnsaved, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
 import {
     openFile,
     pickOpenPath,
@@ -18,8 +22,10 @@ import {
     copyImageAsset,
 } from "./file-ops";
 import { parseFrontmatter } from "./obsidian";
+import { buildImageMarkdown, normalizeImagePath } from "./md-escape";
 import { ConsumeStartupFile } from "../wailsjs/go/main/App";
-import { EventsOn } from "../wailsjs/runtime/runtime";
+import { EventsOn, WindowIsMaximised, WindowMinimise, WindowToggleMaximise, Quit } from "../wailsjs/runtime/runtime";
+import { initTitlebar } from "./titlebar";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
@@ -171,9 +177,11 @@ function initEditorAndPreview() {
                 const lastSlash = Math.max(a.path.lastIndexOf("/"), a.path.lastIndexOf("\\"));
                 assetDir = lastSlash >= 0 ? a.path.slice(0, lastSlash + 1) + "assets/" : "assets/";
             }
-            const assetPath = `${assetDir}${ts}_${safe}`;
+            // #9 修复：路径归一为正斜杠（Windows 反斜杠在 Markdown URL 中是转义前缀）
+            const assetPath = normalizeImagePath(`${assetDir}${ts}_${safe}`);
             await copyImageAsset(assetPath, b64);
-            const md = `\n![${file.name}](${assetPath})\n`;
+            // #9 修复：alt 与 URL 分别转义/编码，文件名含 ]、目录含空格括号不再破坏语法
+            const md = `\n${buildImageMarkdown(file.name, assetPath)}\n`;
             if (editor) editor.setContent(editor.getContent() + md);
         } catch (e) {
             console.warn("image drop failed", e);
@@ -556,6 +564,21 @@ window.addEventListener("keydown", (e) => {
 });
 
 installBeforeUnloadGuard(tm);
+
+// =============================================================================
+// 无边框标题栏：窗口控制按钮 + 双击最大化 + 最大化图标同步。
+// 浏览器 mock 端无 window.runtime，传 null 使控制按钮整组隐藏。
+// =============================================================================
+initTitlebar((window as any).runtime ? {
+    minimise: () => WindowMinimise(),
+    toggleMaximise: () => WindowToggleMaximise(),
+    isMaximised: () => WindowIsMaximised(),
+    // #3 修复：退出前协商——Wails v2 无 OnBeforeClose 异步协商，Quit() 不触发
+    // beforeunload；有未保存修改时先弹 quitDialog，用户确认后才退出。
+    quit: () => {
+        confirmQuit(tm).then((ok) => { if (ok) Quit(); });
+    },
+} : null);
 
 // =============================================================================
 // 启动
