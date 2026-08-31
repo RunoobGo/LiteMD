@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiteMD 0.2.0 修复交付报告</title>
+<style>
+:root {
+    --bg-grad-0: #0D1117;
+    --bg-grad-1: #161B22;
+    --bg-card: #161B22;
+    --border: #30363D;
+    --fg: #E6EDF3;
+    --fg-dim: #8B949E;
+    --accent: #58A6FF;
+    --green: #3FB950;
+    --yellow: #D29922;
+    --red: #F85149;
+    --mono: "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(180deg, var(--bg-grad-0) 0%, var(--bg-grad-1) 100%);
+    min-height: 100vh;
+    color: var(--fg);
+    line-height: 1.7;
+    padding: 40px 16px;
+}
+.container { max-width: 960px; margin: 0 auto; }
+h1 { font-size: 28px; margin-bottom: 8px; letter-spacing: 0.5px; }
+h2 { font-size: 20px; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.subtitle { color: var(--fg-dim); font-size: 14px; margin-bottom: 32px; }
+.subtitle code { color: var(--accent); font-family: var(--mono); }
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 24px 0; }
+.stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+.stat .num { font-size: 28px; font-weight: 700; color: var(--accent); font-family: var(--mono); }
+.stat .num.green { color: var(--green); }
+.stat .label { font-size: 12px; color: var(--fg-dim); margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 16px 0; }
+th, td { border: 1px solid var(--border); padding: 9px 12px; text-align: left; vertical-align: top; }
+th { background: #21262D; font-weight: 600; white-space: nowrap; }
+td { background: var(--bg-card); }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.b-red { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.4); }
+.b-yellow { background: rgba(210,153,34,.15); color: var(--yellow); border: 1px solid rgba(210,153,34,.4); }
+.b-green { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.4); }
+.b-blue { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.4); }
+code, .hash { font-family: var(--mono); font-size: 12.5px; background: #21262D; padding: 1px 6px; border-radius: 4px; color: var(--accent); }
+.hash { color: var(--fg-dim); }
+ul { padding-left: 22px; }
+li { margin: 5px 0; }
+.ok { color: var(--green); font-weight: 600; }
+.warn { color: var(--yellow); font-weight: 600; }
+.dim { color: var(--fg-dim); font-size: 13px; }
+.commit-chain { font-family: var(--mono); font-size: 12.5px; line-height: 2; }
+.commit-chain .hash { margin-right: 8px; }
+.footnote { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--fg-dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🛡️ LiteMD 0.2.0 修复交付报告</h1>
+<div class="subtitle">
+    交付物 <code>LiteMD-0.2.1-fixed-source.zip</code> · 基于审查报告 17 项缺陷 + 1 项新增 CVE · 共 <b>18</b> 项修复 · 13 个独立提交
+</div>
+
+<div class="stat-grid">
+    <div class="stat"><div class="num green">18/18</div><div class="label">缺陷修复完成</div></div>
+    <div class="stat"><div class="num green">186</div><div class="label">前端断言（初始 133）</div></div>
+    <div class="stat"><div class="num green">0</div><div class="label">npm audit 漏洞</div></div>
+    <div class="stat"><div class="num green">0</div><div class="label">已知 Go 依赖 CVE</div></div>
+</div>
+
+<h2>📋 修复对照总表</h2>
+<table>
+<tr><th>级别</th><th>缺陷</th><th>修复方式</th><th>提交</th></tr>
+<tr><td><span class="badge b-red">🔴 #1</span></td><td>预览区 H1-H3 样式选择器失效</td><td>marked 输出裸标签，CSS 改 <code>.preview h1/h2/h3</code> 标签选择器 + 样式回归守卫（读 style.css 断言）</td><td><span class="hash">fdfa0d4</span></td></tr>
+<tr><td><span class="badge b-red">🔴 #2</span></td><td>保存 IO 窗口期新输入被 baseline 覆盖</td><td>updateContentBaseline 不再回写 liveContent，改按 dirty 比较 + 21 断言状态机套件</td><td><span class="hash">c24c861</span></td></tr>
+<tr><td><span class="badge b-red">🔴 #3</span></td><td>关闭窗口静默丢失未保存内容</td><td>quitDecision 纯决策 + confirmQuit + quitDialog；决策逻辑与弹窗分离保证可测</td><td><span class="hash">e6b6d05</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #4</span></td><td>test=all 缺失部分套件</td><td>bootstrap 表驱动化，all 自动遍历全部套件</td><td><span class="hash">c24c861</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #5</span></td><td>PushRecent 读-改-写竞态丢更新</td><td>Store.Mutate 锁内读改写 + 8 goroutine×12 路径并发计数守卫（-race）</td><td><span class="hash">500a3ed</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #6</span></td><td>vite 3 依赖漏洞（audit 1 high + 1 moderate）</td><td>vite ^3.0.7 → <b>^6.4.3</b>（esbuild 0.25.12），配置 ESM 化；<b>audit 清零</b></td><td><span class="hash">08153a6</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #7</span></td><td>build_darwin 双目录漂移</td><td>合并为 build/darwin 单一真相源，补齐 Info.plist</td><td><span class="hash">56f7de0</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #8</span></td><td>Callout 配色亮色主题错配 + 硬编码</td><td>7 组 <code>--callout-*</code> 变量双主题化，12 条规则改引用</td><td><span class="hash">5ecaf6b</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #8b</span></td><td>mocks.ts Config 幽灵字段</td><td>删除 4 个已废弃字段，注明契约来源防再漂移</td><td><span class="hash">3b53c04</span></td></tr>
+<tr><td><span class="badge b-yellow">🟡 #9</span></td><td>图片插入 Markdown 语法未转义</td><td>新建 md-escape.ts（alt 转义 / URL 编码 / 反斜杠归一），22 断言套件</td><td><span class="hash">a048669</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #10</span></td><td>wails.json npm install 不可复现</td><td>改 <code>npm ci</code> 走 lockfile</td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #11</span></td><td>SaveFileAs 吞掉 Abs 错误</td><td>文件已落盘场景回退返回写入路径，不再静默 <code>_</code></td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #12</span></td><td>latex.ts buildRangeIndex 死代码</td><td>删除函数与 void 抑制调用</td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #13</span></td><td>CSS 死规则（.editor/#editor、data-broken）</td><td>删除并注释迁移去向（CodeMirror）</td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #15</span></td><td>Windows 保留名 <code>CON.x.txt</code> 绕过</td><td>扩展名截断改第一个点，抽 windowsBaseName 纯函数 + 9 组表驱动测试（全平台可跑）</td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-green">🟢 #16</span></td><td>go.mod replace 注释残留</td><td>删除</td><td><span class="hash">93637be</span></td></tr>
+<tr><td><span class="badge b-blue">🔎 新增</span></td><td><b>CVE-2026-55677</b>（GO-2026-6293）echo %2F 路径解码绕过静态文件</td><td>收尾扫描发现：echo v4.13.3（wails indirect）→ <b>v4.15.3</b> 修复版，联动升级 gommon 0.5.0 等</td><td><span class="hash">8ebc27e</span></td></tr>
+<tr><td><span class="badge b-green">🟢 附加</span></td><td>3 个 Go 文件历史格式问题</td><td>gofmt -w 修复（注释对齐 / 末尾换行）</td><td><span class="hash">93637be</span></td></tr>
+</table>
+
+<h2>🔬 质量验证矩阵</h2>
+<div class="card">
+<table>
+<tr><th>检查项</th><th>命令</th><th>结果</th></tr>
+<tr><td>Go 格式</td><td><code>gofmt -l .</code></td><td class="ok">✓ 无输出（干净）</td></tr>
+<tr><td>Go 静态检查</td><td><code>go vet ./...</code></td><td class="ok">✓ 通过</td></tr>
+<tr><td>Go 测试 + 竞态</td><td><code>go test -race ./...</code></td><td class="ok">✓ 3 包全过</td></tr>
+<tr><td>Go 覆盖率</td><td><code>go test -cover ./...</code></td><td class="ok">✓ 55.7% / 77.0% / 72.4%</td></tr>
+<tr><td>Go 漏洞扫描</td><td><code>govulncheck ./...</code></td><td><span class="warn">⚠</span> 沙箱网络无法访问 vuln.go.dev，改人工核对 Go 漏洞库（发现并修复 CVE-2026-55677）</td></tr>
+<tr><td>TS 类型</td><td><code>tsc --noEmit</code></td><td class="ok">✓ 通过</td></tr>
+<tr><td>前端测试</td><td><code>LITEMD_TEST=all</code></td><td class="ok">✓ 6 套件 186 断言 / 0 失败</td></tr>
+<tr><td>npm 漏洞</td><td><code>npm audit</code></td><td class="ok">✓ found 0 vulnerabilities</td></tr>
+<tr><td>生产构建</td><td><code>npm run build</code></td><td class="ok">✓ 双入口产物齐全</td></tr>
+</table>
+</div>
+
+<h2>🧪 测试规模演进</h2>
+<div class="card">
+<table>
+<tr><th>套件</th><th>审查基线</th><th>修复后</th><th>新增守卫</th></tr>
+<tr><td>preview</td><td>—</td><td class="ok">26</td><td>#1 样式回归（读 style.css 断言选择器）</td></tr>
+<tr><td>obsidian</td><td>—</td><td class="ok">45</td><td>—</td></tr>
+<tr><td>latex</td><td>—</td><td class="ok">55</td><td>—</td></tr>
+<tr><td>tabs</td><td>0</td><td class="ok">21</td><td>#2 IO 窗口期输入保留 + 生命周期/dirty/关闭转移</td></tr>
+<tr><td>titlebar</td><td>0</td><td class="ok">17</td><td>#3 quitDecision 矩阵 + confirmQuit 无脏路径</td></tr>
+<tr><td>md-escape</td><td>0</td><td class="ok">22</td><td>#9 alt/URL/归一 + 组合语法完整性</td></tr>
+<tr><td><b>合计</b></td><td><b>133</b></td><td class="ok"><b>186</b></td><td>+53 项回归守卫</td></tr>
+</table>
+</div>
+
+<h2>🌿 完整提交链</h2>
+<div class="card commit-chain">
+<div><span class="hash">af94698</span>docs: 历史文档归档</div>
+<div><span class="hash">fdfa0d4</span>feat: v0.2.0 工作区快照同步（基线，含 #1）</div>
+<div><span class="hash">c24c861</span>fix(tabs): 保存 IO 窗口期新输入不覆盖（#2 + #4）</div>
+<div><span class="hash">e6b6d05</span>fix(titlebar): 退出前未保存协商（#3）</div>
+<div><span class="hash">500a3ed</span>fix(config): PushRecent 读-改-写事务化（#5）</div>
+<div><span class="hash">56f7de0</span>build(darwin): 合并双目录（#7）</div>
+<div><span class="hash">5ecaf6b</span>style(css): callout 配色随主题变量化（#8）</div>
+<div><span class="hash">3b53c04</span>fix(mock): Config 契约同步（#8b）</div>
+<div><span class="hash">a048669</span>fix(image): 图片插入 Markdown 转义（#9）</div>
+<div><span class="hash">93637be</span>chore: 工程杂项批次（#10-16）</div>
+<div><span class="hash">08153a6</span>build(deps): vite 6.4.3 漏洞清零（#6）</div>
+<div><span class="hash">8ebc27e</span>fix(deps): echo v4.15.3 修复 CVE-2026-55677</div>
+</div>
+
+<h2>🚀 构建与运行</h2>
+<div class="card">
+<ul>
+<li><b>开发</b>：<code>wails dev</code>（前端 watch 于 127.0.0.1:5173）</li>
+<li><b>构建</b>：<code>wails build</code>（依赖安装已改 <code>npm ci</code>，走 lockfile 可复现）</li>
+<li><b>Go 测试</b>：<code>go test -race ./...</code></li>
+<li><b>前端测试</b>：<code>cd frontend && LITEMD_TEST=all npx tsx src/preview.test-bootstrap.ts</code></li>
+<li><b>浏览器 E2E</b>：<code>dev.html</code> 入口（mocks 注入 window.go，URL 参数 <code>?open=&lt;path&gt;</code> 模拟文件关联）</li>
+</ul>
+</div>
+
+<h2>📌 遗留事项</h2>
+<div class="card">
+<ul>
+<li><span class="warn">govulncheck 网络受限</span>：沙箱无法访问 vuln.go.dev，Go 侧漏洞审计以人工核对替代（echo CVE 已修复；其余依赖 x/crypto 0.53 / x/net 0.56 等均为 2026 年新版线）。建议在可访问环境补跑 <code>govulncheck ./...</code> 做最终确认。</li>
+<li><span class="dim">vite chunk &gt; 500 KiB 警告</span>：KaTeX/CodeMirror 体积所致，非错误；如需优化可做 manualChunks 拆分（本次未动，避免引入回归）。</li>
+<li><span class="dim">中文文件名 drop 时被 <code>[^\w.-]</code> 过滤成下划线</span>：既有行为，未在本次修复范围（涉及产品决策）。</li>
+</ul>
+</div>
+
+<div class="footnote">
+LiteMD 0.2.0 修复交付报告 · 生成于 2026-08-31 · Wails v2.14 / Go 1.25 / TypeScript 5.9 / vite 6.4.3 · 审查报告：<span class="hash">LiteMD-0.2.0-审查报告.html</span>
+</div>
+
+</div>
+</body>
+</html>

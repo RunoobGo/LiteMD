@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LiteMD v0.2.0 全量代码审查报告</title>
+<style>
+:root {
+    --bg-0: #0D1117; --bg-1: #161B22; --bg-2: #21262D; --bg-3: #30363D;
+    --border: #30363D; --border-strong: #484F58;
+    --fg-0: #F0F6FC; --fg-1: #C9D1D9; --fg-2: #8B949E;
+    --accent: #58A6FF; --accent-soft: rgba(88,166,255,.12);
+    --danger: #F85149; --warn: #D29922; --ok: #3FB950;
+    --font-mono: ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    --font-sans: system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0; color: var(--fg-1); font-family: var(--font-sans); font-size: 15px; line-height: 1.75;
+    background: linear-gradient(160deg, #0D1117 0%, #161B22 60%, #0D1117 100%);
+    background-attachment: fixed;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 32px 80px; }
+header.hero {
+    border: 1px solid var(--border); border-radius: 12px; padding: 32px 36px; margin-bottom: 32px;
+    background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(22,27,34,.6));
+}
+h1 { color: var(--fg-0); font-size: 28px; margin: 0 0 6px; }
+.hero .sub { color: var(--fg-2); font-size: 13px; font-family: var(--font-mono); }
+h2 {
+    color: var(--fg-0); font-size: 20px; margin: 48px 0 16px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;
+}
+h2 .num { color: var(--accent); font-family: var(--font-mono); font-size: 15px; }
+h3 { color: var(--fg-0); font-size: 16px; margin: 28px 0 12px; }
+code {
+    font-family: var(--font-mono); font-size: .88em; background: var(--bg-2);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: #79C0FF;
+}
+pre {
+    background: var(--bg-0); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+}
+pre code { background: none; border: none; padding: 0; color: var(--fg-1); }
+table { border-collapse: collapse; width: 100%; margin: 14px 0 22px; font-size: 13.5px; }
+th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+th { background: var(--bg-2); color: var(--fg-0); font-weight: 600; white-space: nowrap; }
+tr:nth-child(even) td { background: rgba(33,38,45,.35); }
+.badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px;
+    font-weight: 600; white-space: nowrap;
+}
+.b-red   { background: rgba(248,81,73,.15); color: #FF7B72; border: 1px solid rgba(248,81,73,.4); }
+.b-yellow{ background: rgba(210,153,34,.15); color: #E3B341; border: 1px solid rgba(210,153,34,.4); }
+.b-green { background: rgba(63,185,80,.15); color: #56D364; border: 1px solid rgba(63,185,80,.4); }
+.b-blue  { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(88,166,255,.4); }
+.card {
+    border: 1px solid var(--border); border-radius: 10px; background: rgba(22,27,34,.55);
+    padding: 20px 24px; margin: 14px 0;
+}
+.finding { border-left: 3px solid var(--border-strong); padding: 14px 20px; margin: 16px 0; background: rgba(22,27,34,.5); border-radius: 0 10px 10px 0; }
+.finding.red { border-left-color: var(--danger); }
+.finding.yellow { border-left-color: var(--warn); }
+.finding.green { border-left-color: var(--ok); }
+.finding .f-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.finding .f-title { color: var(--fg-0); font-weight: 600; font-size: 15px; }
+.finding .f-loc { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.finding p { margin: 6px 0; }
+.finding .fix { margin-top: 8px; padding: 10px 14px; background: rgba(63,185,80,.07); border: 1px solid rgba(63,185,80,.25); border-radius: 6px; font-size: 13.5px; }
+.finding .fix::before { content: "🛠 修复建议："; color: #56D364; font-weight: 600; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 18px 0; }
+.kpi { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-align: center; background: var(--bg-1); }
+.kpi .v { color: var(--fg-0); font-size: 24px; font-weight: 700; font-family: var(--font-mono); }
+.kpi .l { color: var(--fg-2); font-size: 12px; margin-top: 4px; }
+.kpi.good .v { color: #56D364; }
+.kpi.bad .v { color: #FF7B72; }
+blockquote {
+    margin: 14px 0; padding: 10px 18px; border-left: 3px solid var(--accent);
+    background: var(--accent-soft); border-radius: 0 8px 8px 0; color: var(--fg-1);
+}
+ul.check { list-style: none; padding-left: 0; }
+ul.check li { padding: 4px 0 4px 28px; position: relative; }
+ul.check li::before { position: absolute; left: 2px; }
+ul.check.pass li::before { content: "✅"; }
+ul.check.warn li::before { content: "⚠️"; }
+ul.check.fail li::before { content: "❌"; }
+.tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--bg-3); color: var(--fg-2); font-family: var(--font-mono); margin-left: 6px; }
+.score-bar { display: flex; gap: 4px; margin: 6px 0 14px; }
+.score-bar span { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-3); }
+.score-bar .fill { background: linear-gradient(90deg, #1F6FEB, #58A6FF); }
+footer { margin-top: 60px; color: var(--fg-2); font-size: 12px; text-align: center; border-top: 1px solid var(--border); padding-top: 20px; font-family: var(--font-mono); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+    <h1>📝 LiteMD v0.2.0 全量审查报告</h1>
+    <div class="sub">审查范围：项目结构 · 架构设计 · 全量 Go/TS 代码 · UI/UX · 安全模型 · 测试体系 · 构建脚本 · 技术文档<br/>
+    审查日期：2026-08-31 · 审查方式：静态精读 + 沙箱动态验证（build / vet / test -race / tsc / 全部前端套件 / npm audit）</div>
+</header>
+
+<!-- ============================================================ -->
+<h2><span class="num">01</span>审查概览</h2>
+
+<h3>📊 项目名片</h3>
+<table>
+<tr><th style="width:130px">项目</th><td>LiteMD — 极致轻量 Markdown 编辑器（Wails v2.14 + Go 1.25 + WebView2）</td></tr>
+<tr><th>定位</th><td>Windows 11 x64 桌面单机应用，安装包 3.43MB，对标「轻量 + Obsidian 兼容」</td></tr>
+<tr><th>技术栈</th><td>Go 后端（文件 IO/配置/单实例锁）+ 原生 TypeScript 前端（无框架）+ CodeMirror 6 + marked + DOMPurify + KaTeX</td></tr>
+<tr><th>代码规模</th><td>Go 源码 ≈825 行 / Go 测试 ≈762 行 / TS 源码 ≈2100 行 / TS 测试 ≈645 行 / CSS 1069 行 / E2E 脚本 ≈1030 行</td></tr>
+<tr><th>文档</th><td>TECHNICAL.md（328 行，与代码同步度高）+ CHANGELOG + 5 份归档文档 ≈130KB</td></tr>
+<tr><th>Git 历史</th><td>9 次提交，feat/fix/chore 规范化，单人开发节奏</td></tr>
+</table>
+
+<h3>✅ 动态验证结果（本审查沙箱实测）</h3>
+<div class="kpi-grid">
+    <div class="kpi good"><div class="v">PASS</div><div class="l">go build ./...</div></div>
+    <div class="kpi good"><div class="v">PASS</div><div class="l">go vet ./...</div></div>
+    <div class="kpi good"><div class="v">3/3</div><div class="l">go test -race（包）</div></div>
+    <div class="kpi good"><div class="v">PASS</div><div class="l">tsc --noEmit</div></div>
+    <div class="kpi good"><div class="v">133/133</div><div class="l">前端断言全过</div></div>
+    <div class="kpi bad"><div class="v">2</div><div class="l">npm audit 漏洞</div></div>
+</div>
+
+<blockquote>测试明细：preview 22 + obsidian 45 + latex 55（<code>LITEMD_TEST=all</code>）+ titlebar 11（单独运行）＝ <b>133 项断言全部通过</b>。Go 侧含竞态检测全绿。npm audit 报 esbuild 开发服务器漏洞 1 高危 + 1 中危（仅影响开发态，详见缺陷 #6）。</blockquote>
+
+<h3>🎯 总体结论</h3>
+<div class="card">
+<p><b>这是一个工程质量显著高于同规模个人项目的水准之作。</b>后端原子写、安全纵深、ReDoS 防护、并发队列、错误语义设计均有生产级考量；文档与代码的同步率罕见地高，待办清单自带优先级与根因分析。</p>
+<p>但存在 <b>3 个 🔴 级缺陷</b>（1 个 UI 渲染 bug 为本次审查实测发现、2 个数据丢失路径为已知待办的升级确认）、8 个 🟡 中等问题、9 个 🟢 轻微问题。核心矛盾集中在：<b>「保存/关闭链路的数据安全」</b>与<b>「文档承诺 vs 实际行为」的偏差</b>。</p>
+<div class="score-bar"><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span></span></div>
+<div style="color:var(--fg-2);font-size:13px">综合评分：<b style="color:var(--fg-0)">8.0 / 10</b> — 架构与安全设计 9 分，数据链路完整性 6.5 分，文档真实性 7 分，测试 8.5 分</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">02</span>项目结构分析</h2>
+
+<pre><code>LiteMD/
+├── main.go                  # 入口：Frameless 窗口、单实例锁、文件关联入队
+├── app.go                   # Wails binding 层：文件/配置/图片 API（299 行）
+├── startupfile.go           # 启动文件队列（并发安全 FIFO）
+├── internal/
+│   ├── config/              # ~/.litemd/config.json（原子写 + 线程安全）
+│   └── fileio/              # ReadText 守卫 + 原子写 + safeWritePath
+├── frontend/src/            # 11 个 TS 模块，职责划分清晰
+│   ├── main.ts              # 应用主入口（641 行，全项目最大文件）
+│   ├── preview/latex/obsidian.ts   # 渲染管线三剑客
+│   ├── tabs/editor/titlebar/splitpane/unsaved-guard/file-ops
+│   └── 5 个 .test.ts        # 自制断言框架
+├── build-win11-x64.sh       # 一键交叉编译（体积优化策略有实测数据）
+├── build_windows/           # NSIS 安装脚本
+├── build_darwin/            # ⚠️ 与 build/ 并存，内容漂移
+├── doc/ + doc/archive/      # 文档体系完整
+└── e2e/                     # sprint1-5 E2E 脚本</code></pre>
+
+<h3>结构评价</h3>
+<ul class="check pass">
+<li><b>Go 侧分层标准</b>：<code>internal/</code> 按领域分包（config/fileio），binding 层（app.go）不掺业务逻辑、错误带哨兵值供前端 <code>errors.Is</code> 分流——教科书式 Wails 项目布局</li>
+<li><b>前端模块边界清晰</b>：titlebar.ts 通过依赖注入接收窗口操作、测试零依赖运行；file-ops.ts 统一 mock/真实 binding 的切换点，设计有想法</li>
+<li><b>复杂度右对齐</b>：无框架、无状态库、无 DI 容器——对单机编辑器是正确的克制，没有过度设计</li>
+</ul>
+<ul class="check warn">
+<li><b>main.ts 641 行偏胖</b>：主题、快捷键、标签渲染、图片拖入、启动流程全在一个文件；目前尚可维护，但再加 2 个功能就该拆（如 theme.ts / shortcuts.ts）</li>
+<li><b>build/ 与 build_darwin/ 双真相源</b>：两处 Info.dev.plist 内容已漂移（见缺陷 #7），Wails 实际读取 build/，macOS 构建配置存在用错文件的风险</li>
+<li><b>源码分发包含 .git（2.3MB）与 node_modules</b>：2.9MB 包体中约 90% 是冗余，且含平台特定二进制；建议改用 <code>git archive</code> 或补 .gitignore 导出规则</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2><span class="num">03</span>架构与后端代码质量</h2>
+
+<h3>✅ 亮点（值得肯定的设计）</h3>
+
+<div class="finding green">
+<div class="f-head"><span class="f-title">原子写实现完整且解释了「为什么」</span><span class="f-loc">internal/fileio/fileio.go:90-124</span></div>
+<p>临时文件 → <code>Sync()</code> → <code>Rename()</code> 三段式，并在注释中明确说明了缺失 Sync 时「rename 元数据可能先于数据持久化，掉电后目标文件长度正确但内容为空」的根因。config.go 的 Save 采用同源实现。<b>这是很多生产项目都会写错的细节。</b></p>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="f-title">读取路径的防御纵深完整</span><span class="f-loc">internal/fileio/fileio.go:47-82</span></div>
+<p><code>IsRegular</code> 拒绝 FIFO/设备（防 <code>/dev/zero</code> OOM 与 FIFO 挂起）→ 50MB 上限 → <code>LimitReader</code> 兜底（防 Stat 后文件被替换的 TOCTOU）→ BOM 剥除 → UTF-8 校验。每层守卫都对应一类真实故障模式。</p>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="f-title">并发时序处理成熟</span><span class="f-loc">app.go:35-70 / startupfile.go:58-83</span></div>
+<p>ctx 读写锁保护 + pendingNotify CAS 补发机制，正确处理了「二实例回调先于 startup 钩子到达」的竞态；startupFileQueue 的生产者-消费者模型有并发测试覆盖（8 生产者 × 50 条）。</p>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="f-title">ReDoS 防护有量化证据</span><span class="f-loc">frontend/src/obsidian.ts:21-36 / latex.ts:69-93</span></div>
+<p>WIKI_RE 用字符类排除 + 有界量词替代惰性匹配，注释给出实测数据（8000 个 <code>[</code> 输入：191ms → &lt;1ms）；围栏扫描改按行状态机 O(n)。测试中还有「大输入 &lt; 500ms」的回归守卫断言。</p>
+</div>
+
+<h3>后端缺陷</h3>
+
+<div class="finding red">
+<div class="f-head"><span class="badge b-red">🔴 #2</span><span class="f-title">保存期间的并发输入会被回滚（数据丢失路径）</span><span class="f-loc">frontend/src/main.ts:487-489 → tabs.ts:139-151</span></div>
+<p><code>handleSave</code> 先取 <code>editor.getContent()</code> 快照，<code>await saveFile(...)</code> 的 IO 窗口期内用户继续打字会更新 <code>liveContent</code>；保存成功后 <code>updateContentBaseline</code> 执行 <code>t.liveContent = content</code>，<b>用旧快照覆盖了用户的新输入</b>。表现为：打字很快的用户按 Ctrl+S 后，那一瞬间敲下的字符凭空消失。</p>
+<div class="fix">baseline 推进时不要回写 liveContent——仅更新 <code>baseline = content</code> 并重算 <code>dirty = liveContent !== baseline</code>；编辑器内容以 CodeMirror 为唯一事实源，不反向覆盖。（作者已在 TECHNICAL.md §8.2 列为 P1，本审查确认其真实性并补充了具体丢失路径。）</div>
+</div>
+
+<div class="finding red">
+<div class="f-head"><span class="badge b-red">🔴 #3</span><span class="f-title">关闭窗口不触发未保存协商（数据丢失路径）</span><span class="f-loc">frontend/src/titlebar.ts:62-64 / unsaved-guard.ts:38-46</span></div>
+<p>自绘标题栏的关闭按钮直接调 <code>Quit()</code>，Wails v2.14 该路径<b>不触发 beforeunload</b>（titlebar.ts 注释自证），unsaved-guard 的拦截形同虚设。README 宣传「关闭未保存提示」，实际点 X = 静默丢弃所有未保存修改。</p>
+<div class="fix">短期：关闭按钮改为先检查 <code>tm.hasAnyDirty()</code>，脏时弹 unsavedDialog 确认后再 Quit。长期：接 Wails <code>OnBeforeClose</code> 异步协商（作者已列为 P1-E 待办，与 #2 同属发版前必修）。</div>
+</div>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #5</span><span class="f-title">PushRecent 读-改-写非事务化（TOCTOU 竞态）</span><span class="f-loc">app.go:249-259 / internal/config/config.go:40-45</span></div>
+<p><code>Load() → PushRecent() → Save()</code> 三步之间锁已释放，Store.mu 只保护单次调用。快速连续保存两个文件时存在丢更新窗口（前端 <code>pushRecent(...).catch(warn)</code> 是 fire-and-forget，恰好放大了触发概率）。后果限于最近文件列表错乱，不损坏文档。</p>
+<div class="fix">在 config.Store 上加 <code>Mutate(func(Config) Config)</code> 方法，锁内完成读-改-写全序列；App.PushRecent 改调它。单一消费者场景下优先级不高，但修复成本仅约 20 行。</div>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="badge b-green">🟢 #11</span><span class="f-title">SaveFileAs 忽略 Abs 错误</span><span class="f-loc">app.go:180</span></div>
+<p><code>abs, _ := filepath.Abs(target)</code> 吞掉错误，极端场景（路径含非法字符）返回值不可靠。影响极小。</p>
+<div class="fix">失败时回退 <code>abs = target</code>，与 OpenFile 的处理方式对齐（app.go:99-103 有正确示范，两处行为应一致）。</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">04</span>UI / UX 设计审查</h2>
+
+<h3>✅ 设计亮点（超出个人项目平均水准）</h3>
+<ul class="check pass">
+<li><b>WCAG AA 对比度做了量化校准</b>：注释直接标注色值对比度（如 <code>--md-meta 从 #586069 的 2.97:1 提升至 #768390 的 4.88:1</code>、<code>危险按钮文字随主题底色保证 ≥4.5:1</code>）——style.css:187,1017</li>
+<li><b>键盘可达性完整</b>：全交互元素 <code>:focus-visible</code> 高对比描边，分屏把手 <code>tabindex=0</code> 且描边内收防溢出（style.css:1027-1040）</li>
+<li><b>prefers-reduced-motion 适配</b>：主题过渡动画、启动屏动画全部尊重用户系统设置（style.css:1060-1069）</li>
+<li><b>主题切换性能意识</b>：仅切换瞬间挂 <code>.theme-anim</code> 类（300ms 后移除），避免常驻 <code>transition: all</code> 的样式重算开销（main.ts:70-84）</li>
+<li><b>启动防闪烁</b>：HTML 头部内联脚本在读到 CSS 前先设 <code>data-theme</code>，杜绝暗色用户的白屏闪烁（index.html:7-13）</li>
+<li><b>无边框窗口机制研究透彻</b>：两条铁律（<code>--wails-draggable: drag</code> 变量而非 Electron 的 app-region；可交互元素显式 no-drag 防拖动吞 click）以注释形式固化在 style.css:204-226，后来者不会重蹈覆辙</li>
+<li><b>信息架构合理</b>：顶栏（工具+窗口控制）→ 标签栏 → frontmatter 折叠面板 → 分屏工作区 → 状态栏，grid 行显式锁定（style.css:163-170 注释解释了为何不能靠自动放置）</li>
+</ul>
+
+<h3>UI 缺陷</h3>
+
+<div class="finding red">
+<div class="f-head"><span class="badge b-red">🔴 #1</span><span class="f-title">预览区 H1–H3 样式全部失效（实测确认）</span><span class="f-loc">frontend/src/style.css:652-660</span></div>
+<p>CSS 写的是 <code>.preview .md-h1 { font-size:1.8em; color:var(--md-h1); border-bottom:... }</code>，但 marked 输出的是<b>裸 <code>&lt;h1&gt;</code> 标签，不带任何 class</b>（本审查沙箱实测 <code>renderMarkdown("# 标题一")</code> → <code>&lt;h1&gt;标题一&lt;/h1&gt;</code>）。选择器永远不命中——预览区标题退化为浏览器默认样式，设计的字号层级、主题色、标题下划线全部丢失；而 h4–h6 反而用了标签选择器有样式。属于「设计了但从未生效」的静默失效。</p>
+<div class="fix">把三行选择器改为标签形式：<code>.preview h1 {...} .preview h2 {...} .preview h3 {...}</code>（或用 marked renderer 注入 class）。一行修复，收益立竿见影；建议顺手加一个「渲染 # Hello 断言含 style 特征」的回归测试防再犯。</div>
+</div>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #8</span><span class="f-title">Callout 配色未随亮色主题变量化</span><span class="f-loc">frontend/src/style.css:826-876</span></div>
+<p>12 种 callout 的边框色/背景/图标色全部硬编码暗色系值（<code>#79C0FF</code>、<code>rgba(121,192,255,.08)</code> 等）。亮色米杏底上呈饱和度错配：蓝色系在浅底偏灰暗、rgba 背景近乎不可见，视觉层级弱于暗色主题。项目明明已有完整的 CSS 变量体系，此处是唯一成片的「逃逸区」。</p>
+<div class="fix">为 callout 定义 <code>--callout-note</code> 等语义变量，暗/亮两套值放入 :root 与 [data-theme="light"] 块，与主色体系对齐。</div>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="badge b-green">🟢 #13</span><span class="f-title">CSS 死代码与不可达选择器</span><span class="f-loc">frontend/src/style.css:521-545, 790-793</span></div>
+<p><code>.editor / #editor</code> 是旧 textarea 时代的遗留样式块（现用 .cm-host）；<code>.wiki-link[data-broken="true"]</code> 无任何代码路径设置 data-broken 属性，断链标红功能「设计了选择器、没写逻辑」。</p>
+<div class="fix">删除两处死代码；data-broken 若是规划中的断链检测，在 main.ts 的 onWikiLinkClick 找不到目标时回写该属性即可点亮。</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">05</span>安全模型审查</h2>
+
+<p>项目实现了 <b>8 层纵深防御</b>（TECHNICAL.md §4 与代码逐层核对一致），本审查重点验证了渲染管线的两条硬约束与占位符防伪设计：</p>
+
+<pre><code>Markdown 源文本
+  → ① extractLatex（随机盐占位符）      ← latex.ts，防 marked 破坏公式
+  → ② preprocessAll（双链/callout）      ← obsidian.ts
+  → ③ marked.parse
+  → ④ DOMPurify 严格白名单               ← preview.ts:45-58
+  → ⑤ hardenLinks（DOM 级外链加固）      ← preview.ts:70-83
+  → ⑥ restoreLatex（仅 &gt;...&lt; 文本节点）  ← 关键：不触碰属性上下文
+  → ⑦ DOM 兜底 scrub                     ← preview.ts:124-135
+  → ⑧ safeWritePath 写路径守卫            ← Go 侧 safepath.go</code></pre>
+
+<ul class="check pass">
+<li><b>顺序约束正确且有注释论证</b>：公式先提取（防 <code>a_i * b_j</code> 被斜体破坏）、后还原（防 DOMPurify 剥离 KaTeX 的 style/MathML）——两处「为什么」都写进了代码注释</li>
+<li><b>占位符防伪双保险经得起推敲</b>：每次随机盐 + 提取前剥除用户文本中的占位符形态（<code>PH_LIKE_RE</code>），即使攻击者伪造 <code>LTMDPHLX...ZX</code> 也无法把 KaTeX HTML 注入属性上下文；测试有 5 项专项覆盖（wiki-link 别名/img title 属性/盐唯一性等）</li>
+<li><b>KaTeX trust:false + maxSize/maxExpand</b>：禁 \href/\htmlClass 等注入命令，宏展开炸弹有测试；KaTeX 0.16.47 高于 CVE-2025-23207 的修复版本 0.16.21 ✓</li>
+<li><b>hardenLinks 用 DOMParser 而非正则</b>：覆盖单引号/跨行/属性含 <code>&gt;</code> 的边界（F10 修复有注释溯源）</li>
+<li><b>DOMPurify 配置审读无漏洞</b>：ALLOWED_URI_REGEXP 白名单协议；style 属性对 KaTeX 的放行依赖「还原发生在清洗之后 + trust:false」，设计上是声明过的受控例外</li>
+</ul>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #6</span><span class="f-title">依赖漏洞：esbuild 开发服务器任意请求读取（1 高危 + 1 中危）</span><span class="f-loc">frontend/package.json:16（vite ^3.0.7）</span></div>
+<p><code>npm audit</code> 实测报 GHSA-67mh-4wv8-2f99：esbuild ≤0.24.2 开发服务器可被任意网站跨域读取响应。<b>仅影响 <code>wails dev</code> / <code>vite dev</code> 开发场景</b>（生产产物不含 dev server，Wails 打包的是静态 dist），不构成线上风险。但 vite 3 已停止维护两年余，后续升级路径越拖越陡。</p>
+<div class="fix">升级 vite 至 5.x/6.x（devDependencies 变更不影响产物体积；需同步验证双入口 rollupOptions 与 katexWoff2Only 插件兼容性）；CI 加 <code>npm audit --audit-level=high</code> 门禁。作者已列为 P1，建议与 #4 一并处理。</div>
+</div>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #9</span><span class="f-title">图片插入的 Markdown 转义缺失</span><span class="f-loc">frontend/src/main.ts:171-182</span></div>
+<p><code>![${file.name}](${assetPath})</code> 直接拼接：文件名含 <code>)</code> / <code>]</code> / 空格会截断 markdown 结构；Windows 绝对路径的反斜杠在 markdown URL 中是转义字符（<code>C:\Users</code> → <code>C:Users</code>）；alt 文本含 <code>[</code> 同理破坏。作者已列为 P2。</p>
+<div class="fix">URL 侧做 <code>encodeURI</code> + 反斜杠→正斜杠替换（Obsidian 也用 <code>/</code>），alt 侧转义 <code>[</code> <code>]</code>；同时考虑改插相对路径（相对 .md 文件目录）而非绝对路径，笔记库整体搬迁时图片不失效。</div>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="badge b-green">🟢 #15</span><span class="f-title">Windows 保留设备名判定用最后一个点剥扩展名</span><span class="f-loc">internal/fileio/safepath.go:48-49</span></div>
+<p><code>CON.x.md</code> 按最后一个点剥除得 <code>CON.x</code>（不拦截），但 Windows 对第一个点前的保留名同样可能解析为设备。极边缘场景（本地单用户应用、攻击面需要先突破前端）。</p>
+<div class="fix">改用 <code>strings.Index(base, ".")</code> 取第一个点前段判定，覆盖多级扩展名形态。</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">06</span>测试体系审查</h2>
+
+<table>
+<tr><th>套件</th><th>规模</th><th>质量评价</th></tr>
+<tr><td>Go 单元 + 集成</td><td>≈45 个 Test 函数</td><td>🟢 表驱动 + t.Run 子测试命名、t.TempDir 隔离、t.Setenv 控制 HOME、并发测试、错误语义断言（errors.Is）——规范度高</td></tr>
+<tr><td>Go race</td><td>—</td><td>🟢 <code>-race -count=1</code> 全绿（本审查沙箱复跑确认）</td></tr>
+<tr><td>preview.test.ts</td><td>22 断言</td><td>🟢 XSS 专项覆盖 script/javascript:/onerror/iframe/onclick 五类向量 + T11 负向用例（内部锚点不误加固）</td></tr>
+<tr><td>obsidian.test.ts</td><td>45 断言</td><td>🟢 含 ReDoS 防护 9 项 + XSS 过滤用例</td></tr>
+<tr><td>latex.test.ts</td><td>55 断言</td><td>🟢 占位符防伪 5 项 + ReDoS 守卫 2 项 + trust:false 注入向量 + 宏炸弹限制——安全测试密度是全项目亮点</td></tr>
+<tr><td>titlebar.test.ts</td><td>11 断言</td><td>🟢 依赖注入设计使窗口逻辑可零依赖测试；<b>但不在 <code>all</code> 集合内（见 #4）</b></td></tr>
+<tr><td>E2E sprint1-5</td><td>≈1030 行</td><td>🟡 依赖 agent-browser CLI（环境绑定强）；文档自认 sprint1/2/4/5 部分断言失效待修</td></tr>
+</table>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #4</span><span class="f-title"><code>LITEMD_TEST=all</code> 实际不含 titlebar 套件（文档与实现不符）</span><span class="f-loc">frontend/src/preview.test-bootstrap.ts:26-30</span></div>
+<p>代码只导入 preview/obsidian/latex 三套；而 README:57-58 与 TECHNICAL.md:265-266 均声称 all 包含 titlebar。本次审查是单独跑 <code>LITEMD_TEST=titlebar</code> 才验证的 11 项通过。<b>CI 若按文档跑 all，titlebar 回归将静默缺席。</b></p>
+<div class="fix">bootstrap 的 all 分支补 <code>import("./titlebar.test")</code>；同时把 <code>test:unit</code> 脚本改为默认全量（作者 P3 待办提前实施，成本一行）。</div>
+</div>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #8b</span><span class="f-title">mocks.ts 契约与真实 Config 结构漂移</span><span class="f-loc">frontend/src/mocks.ts:53-62, 106-115</span></div>
+<p>mock 的 GetConfig/PushRecent 仍返回 <code>windowWidth/windowHeight/keyMap/customCssPath</code>——这些字段已于 2026-08-31 从 config.go 移除（config.go:17-19 注释记录了移除决定）。前端目前不消费 GetConfig 故未爆雷，但契约漂移会让后续接入配置功能的人被 mock 误导。</p>
+<div class="fix">同步 mocks.ts 至当前 Config 四字段（theme/fontFamily/fontSize/recentFiles），删掉幽灵字段。</div>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="badge b-green">🟢 #12</span><span class="f-title">extractLatex 每次白建一个丢弃的二分索引</span><span class="f-loc">frontend/src/latex.ts:210-211</span></div>
+<p><code>void buildRangeIndex(ranges)</code> 构建后即弃（注释自认「抑制未使用警告」）。区间遍历用的是游标顺序扫描，索引本无用武之地，纯浪费 O(R) 分配。</p>
+<div class="fix">直接删除该调用与 buildRangeIndex（git 历史可随时找回）；或真用起来替代游标扫描。另注：main.ts:329 与 latex.ts:96 重复实现了 escapeHtml，可合并到共享 util。</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">07</span>构建与工程化</h2>
+
+<ul class="check pass">
+<li><b>build-win11-x64.sh 质量高</b>：set -euo pipefail、依赖预检、产物体积下限校验（zip 空壳防御，注释溯源了「曾偶发 1.8KB 空壳退出码仍 0」的真实故障）、UPX 失败不拖垮主构建、trap 清理临时目录</li>
+<li><b>体积优化全部有实测数据支撑</b>：安装包 6.01→3.43MB（WebView2 检测宏替代内嵌）、dist 2.2→1.2MB（KaTeX woff2 裁剪插件）、-s -w -trimpath 可复现构建——每个决策附量化依据，是本项目的鲜明风格</li>
+<li><b>NSIS 脚本规范</b>：SHCTX 注册表写法、四扩展名关联（md/markdown/mdown/mkd）、WebView2 缺失提示不阻断安装</li>
+</ul>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #7</span><span class="f-title">build/ 与 build_darwin/ 双目录并存且内容漂移</span><span class="f-loc">build/darwin/Info.dev.plist ↔ build_darwin/Info.dev.plist</span></div>
+<p>实测两份 Info.dev.plist 内容不一致。Wails v2 标准读取 <code>build/</code>，build_darwin 是 macOS 构建遗留；真相源不清晰，macOS 产物可能用错配置。TECHNICAL.md 的目录树也只记载了 build_windows/ 未提 build_darwin/，文档同样失真。</p>
+<div class="fix">合并到 build/darwin/ 单一真相源后删除 build_darwin/；或在文档中明确两者的角色分工。</div>
+</div>
+
+<div class="finding yellow">
+<div class="f-head"><span class="badge b-yellow">🟡 #10</span><span class="f-title">wails.json 与构建脚本的依赖安装方式不一致</span><span class="f-loc">wails.json:5 ↔ build-win11-x64.sh:57</span></div>
+<p>脚本用 <code>npm ci</code>（严格按 lockfile，可复现），wails.json 的 frontend:install 是 <code>npm install</code>（可能更新 lockfile）。构建脚本声称「跨构建 exe SHA256 一致」，但走 wails build 内部安装路径时依赖版本可能漂移，破坏该承诺。</p>
+<div class="fix">wails.json 的 frontend:install 改为 <code>npm ci</code>。</div>
+</div>
+
+<div class="finding green">
+<div class="f-head"><span class="badge b-green">🟢 #17</span><span class="f-title">源码分发包含 .git 与 node_modules</span><span class="f-loc">分发包整体</span></div>
+<p>2.9MB 源码包中 .git 占 2.3MB，node_modules 亦被打入（含对 Windows 构建无意义的 darwin 二进制）。</p>
+<div class="fix">发布源码用 <code>git archive --format=zip -o LiteMD-src.zip HEAD</code>，自动排除未跟踪内容；或打包含 .gitignore 规则过滤的 tar。</div>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">08</span>文档审查</h2>
+
+<ul class="check pass">
+<li><b>TECHNICAL.md 是同类项目的范本级</b>：架构图、数据流时序、渲染管线顺序约束的「为什么」、安全模型分层表、已知限制与带优先级的待办——且「最后更新对齐代码快照」的自我要求让文档可信度高</li>
+<li><b>归档策略正确</b>：历史评审/计划移入 doc/archive/ 并注明「保留初始状态作为历史基线，实际已修复项以代码为准」——避免陈旧文档误导</li>
+<li><b>CHANGELOG 遵循 Keep a Changelog 规范</b>，修复条目带根因描述（如 P0 加固的占位符防伪演进）</li>
+</ul>
+<ul class="check warn">
+<li><b>两处文档失真</b>：README/TECHNICAL 声称 test=all 含 titlebar（实不含，#4）；目录树未反映 build_darwin/ 双目录现实（#7）</li>
+<li><b>README 快捷键表列了 Ctrl+F / Ctrl+Shift+F</b>：实际由 CodeMirror searchKeymap 内建提供（Mod-f），功能真实存在，但文档未说明来源是编辑器内建而非应用层绑定——Ctrl+F 需焦点在编辑器内才生效，读者可能困惑（轻微）</li>
+<li><b>已知限制诚实披露</b>：macOS 双击打开失效（OnFileOpen 未配）、前端不消费 GetConfig、无外部变更检测——自我认知清晰，值得肯定</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2><span class="num">09</span>缺陷总表与影响分析</h2>
+
+<table>
+<tr><th style="width:64px">级别</th><th style="width:56px">编号</th><th style="width:270px">问题</th><th>影响</th><th style="width:88px">作者已知?</th></tr>
+<tr><td><span class="badge b-red">🔴</span></td><td>#1</td><td>预览 H1–H3 样式失效（选择器永不命中）</td><td>预览视觉层级退化，设计的主题色/字号/标题线全部无效</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-red">🔴</span></td><td>#2</td><td>保存 IO 窗口期新输入被 baseline 回写覆盖</td><td>快速打字 + Ctrl+S 场景字符凭空丢失</td><td>✅ P1 已列</td></tr>
+<tr><td><span class="badge b-red">🔴</span></td><td>#3</td><td>点关闭按钮直接退出，不触发未保存协商</td><td>所有未保存修改静默丢失；README 宣传与实际行为不符</td><td>✅ P1 已列</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#4</td><td>test=all 不含 titlebar 套件</td><td>标题栏回归静默缺席，文档误导 CI 配置</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#5</td><td>PushRecent 读-改-写竞态</td><td>最近文件列表偶发丢更新（不损文档）</td><td>✅ P1 已列</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#6</td><td>vite 3.x 过老 + esbuild 2 漏洞</td><td>开发服务器可被恶意网页跨域读取（不进产物）</td><td>✅ P1 已列</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#7</td><td>build/ 与 build_darwin/ 内容漂移</td><td>macOS 构建配置可能用错真相源</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#8</td><td>Callout 配色未随亮色主题变量化</td><td>亮色主题下 callout 视觉层级弱化</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#8b</td><td>mocks.ts Config 契约漂移（4 个幽灵字段）</td><td>误导后续接入配置功能的开发</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#9</td><td>图片插入无 Markdown 转义</td><td>特殊字符文件名破坏文档结构</td><td>✅ P2 已列</td></tr>
+<tr><td><span class="badge b-yellow">🟡</span></td><td>#10</td><td>wails.json 用 npm install 而非 ci</td><td>破坏可复现构建承诺</td><td>❌ 新发现</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#11</td><td>SaveFileAs 吞 Abs 错误</td><td>极端路径场景返回值不可靠</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#12</td><td>buildRangeIndex 死代码 + escapeHtml 重复</td><td>每帧白做 O(R) 分配；维护噪音</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#13</td><td>CSS 死代码（.editor/#editor/data-broken）</td><td>维护噪音；断链标红功能缺后半段</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#15</td><td>保留设备名按最后点剥除</td><td>CON.x.md 边缘形态漏拦</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#16</td><td>go.mod replace 注释残留</td><td>清理项</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#17</td><td>源码包含 .git/node_modules</td><td>分发体积膨胀 ~10×</td><td>—</td></tr>
+<tr><td><span class="badge b-green">🟢</span></td><td>#18</td><td>statusEncoding 写死 UTF-8</td><td>静态装饰，无检测语义</td><td>—</td></tr>
+</table>
+
+<blockquote><b>📊 影响面速览</b>：3 个 🔴 全部集中在「数据完整性/渲染正确性」主干路径；8 个 🟡 中 5 个为工程流程类（文档失真/构建一致性/依赖健康），不影响最终用户但持续侵蚀项目可信度；9 个 🟢 均为卫生类。<b>新发现 7 项</b>（#1/#4/#7/#8/#8b/#10 及 #17 的量化确认），其余为对作者已知待办的独立验证与路径细化。</blockquote>
+
+<!-- ============================================================ -->
+<h2><span class="num">10</span>修复路线图与趋势预测</h2>
+
+<h3>🚨 P0 — 发下个版本前必修（预计 0.5 人日）</h3>
+<table>
+<tr><th>项</th><th>对应缺陷</th><th>工作量</th><th>验证方式</th></tr>
+<tr><td>H1–H3 选择器改标签形式 + 回归断言</td><td>#1</td><td>10 分钟</td><td>renderMarkdown("# t") 含样式特征</td></tr>
+<tr><td>关闭按钮接 unsaved 协商（脏检查→弹窗→Quit）</td><td>#3</td><td>2 小时</td><td>titlebar.test 补 3 断言</td></tr>
+<tr><td>baseline 推进不回写 liveContent</td><td>#2</td><td>1 小时</td><td>模拟保存窗口期输入的单测</td></tr>
+<tr><td>test=all 补 titlebar 导入</td><td>#4</td><td>1 行</td><td>LITEMD_TEST=all 输出 4 套统计</td></tr>
+</table>
+
+<h3>📦 P1 — 下个迭代（1–2 人日）</h3>
+<ul>
+<li>vite 升级 3→5/6 + <code>npm audit</code> CI 门禁（#6），同时把 wails.json 的 install 改 <code>npm ci</code>（#10）</li>
+<li>build_darwin 合并进 build/darwin 单真相源（#7）+ mocks.ts 契约同步（#8b）</li>
+<li>callout 配色变量化（#8）+ PushRecent 事务化（#5，约 20 行）</li>
+<li>建立最小 CI：lint（gofmt -s + go vet + golangci-lint）→ test -race → tsc + 前端全量 → build 冒烟</li>
+</ul>
+
+<h3>🔭 P2 — 趋势预测</h3>
+<table>
+<tr><th style="width:180px">方向</th><th>预测与建议</th></tr>
+<tr><td><b>main.ts 膨胀曲线</b></td><td>641 行是功能再迭代的拐点信号。若按计划加「最近文件菜单」「字号持久化」（GetConfig 消费方），建议先拆 theme.ts / shortcuts.ts / startup.ts 三块，否则半年内会破 1000 行</td></tr>
+<tr><td><b>测试框架迁移</b></td><td>自制断言框架已暴露过「|| 永真」陷阱（T4 注释自证），vitest 迁移（作者 P3）建议提前——测试文件结构已是 describe/it 风格，迁移成本低，换来 watch 模式与覆盖率报告</td></tr>
+<tr><td><b>E2E 现代化</b></td><td>agent-browser CLI 环境绑定强、5 套中 4 套部分失效。Playwright 是 Wails 生态更主流选择（WebView2 可 attach），长期维护成本更低</td></tr>
+<tr><td><b>用户群扩展</b></td><td>若面向 Obsidian 迁移用户，wiki-link 目前只支持「已打开 tab + mock fs」两级查找，真实磁盘解析（相对当前文件目录 + vault 根）是下一个刚需功能，现有 data-wikilink 架构可直接承载</td></tr>
+<tr><td><b>单实例锁健壮性</b></td><td>现有实现正确；若未来加「多窗口」，startupFileQueue 的单消费者假设需要重新审视（注释已声明该约束，好评）</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2><span class="num">11</span>结语</h2>
+<div class="card">
+<p>LiteMD 展示了「小而正确」的工程审美：<b>原子写知道为什么 Sync、ReDoS 修复附实测毫秒数、体积优化逐项给数据、文档与代码互相校准、待办带根因与优先级</b>。安全设计（8 层纵深 + 占位符盐防伪）在同类 Markdown 编辑器中属于第一梯队。</p>
+<p>短板同样清晰：<b>数据链路的「最后一公里」</b>——保存竞态、关窗协商、标题样式静默失效，三者都是「设计意图存在、落地偏差一格」的缺陷，修复成本低但用户感知强。建议按 P0 清单在 0.2.1 收口，再启动依赖升级与 CI 建设。</p>
+<p style="color:var(--fg-2);font-size:13px;margin-bottom:0">—— 审查方法说明：全部结论基于源码精读 + 沙箱动态验证（go build/vet/test -race、tsc、133 项前端断言、npm audit、渲染输出实测），每项缺陷附文件路径与行号可复核。</p>
+</div>
+
+<footer>LiteMD v0.2.0 全量审查报告 · 2026-08-31 · 3 🔴 / 8 🟡 / 9 🟢 · 综合评分 8.0/10</footer>
+</div>
+</body>
+</html>
