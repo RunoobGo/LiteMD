@@ -27,8 +27,8 @@ ok() { echo "  ✓ $1"; PASS=$((PASS+1)); }
 fail() { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
 log() { echo; echo "── $1 ──"; }
 
-# E10 修复：动态读取版本号（从 package.json / app.go），不再 hardcode v0.2.0
-APP_VERSION=$(grep -Eo '"version"\s*:\s*"[^"]+"' frontend/package.json | head -1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' || echo "0.2.0")
+# E10 修复：动态读取版本号（从 wails.json productVersion，不用 frontend/package.json 的 0.0.0）
+APP_VERSION=$(grep -oE '"productVersion"[[:space:]]*:[[:space:]]*"[^"]+"' wails.json | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' || echo "0.2.0")
 if [[ -z "$APP_VERSION" ]]; then APP_VERSION="0.2.0"; fi
 log "应用版本号: v$APP_VERSION"
 
@@ -69,14 +69,15 @@ TTFB=$(echo "$TIMING" | grep -oE 'ttfb [0-9]+' | awk '{print $2}')
 [[ -n "$TTFB" ]] && ok "TTFB: ${TTFB}ms" || fail "TTFB 未测量"
 
 # ============================================================================
-log "场景 2: CodeMirror 加载（main.js < 800KB）"
+log "场景 2: CodeMirror 加载（main.js < 1000KB）"
+# 含 19 个 KaTeX woff2 字体与渲染代码，阈值 800KB → 1000KB（2026-08-31 起）
 CM_BUNDLE=$(ls -l frontend/dist/assets/main.*.js | awk '{print $5}')
 CM_KB=$((CM_BUNDLE / 1024))
-[[ "$CM_KB" -lt 800 ]] && ok "main.js: ${CM_KB}KB < 800KB" || fail "main.js 过大: ${CM_KB}KB"
+[[ "$CM_KB" -lt 1000 ]] && ok "main.js: ${CM_KB}KB < 1000KB" || fail "main.js 过大: ${CM_KB}KB"
 
 TOTAL=$(du -sb frontend/dist/assets 2>/dev/null | awk '{print $1}')
 TOTAL_KB=$((TOTAL / 1024))
-[[ "$TOTAL_KB" -lt 1024 ]] && ok "Total bundle: ${TOTAL_KB}KB < 1024KB" || fail "Bundle 过大: ${TOTAL_KB}KB"
+[[ "$TOTAL_KB" -lt 1500 ]] && ok "Total bundle: ${TOTAL_KB}KB < 1500KB" || fail "Bundle 过大: ${TOTAL_KB}KB"
 
 # ============================================================================
 log "场景 3: 100KB 文档注入 + 渲染（< 500ms）"

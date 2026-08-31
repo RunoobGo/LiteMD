@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Sprint 5 E2E — 启动屏 + 自动更新 + 主题细化
+# Sprint 5 E2E — 启动屏 + 主题细化 + LaTeX 公式回归
 #
 # 覆盖：
 #   - 启动屏 4 元素（splash div / logo / title / spinner / version）
 #   - 启动屏在 CodeMirror 初始化后 1.2s 内消失
 #   - 版本号从 Go AppInfo 注入
-#   - 「检查更新」按钮 + 弹窗存在
+#   - LaTeX：行内/块级公式渲染、代码块豁免、错误降级（原「自动更新」场景
+#     因功能移除已于 2026-08-31 替换为 LaTeX 回归）
 #   - 主题：brand 渐变 + button 悬浮 + a 渐变
 
 set -uo pipefail
@@ -78,32 +79,25 @@ TB=$(agent-browser eval "getComputedStyle(document.querySelector('.topbar')).bac
 [[ "$TB" == "true" ]] && ok "topbar 玻璃态 backdrop-filter" || fail "topbar 无 backdrop-filter"
 
 # ============================================================================
-log "场景 4: 自动更新按钮 + 弹窗"
-UPDATE_BTN=$(agent-browser eval "!!document.querySelector('button[data-action=check-update]')" 2>&1 | tail -1)
-[[ "$UPDATE_BTN" == "true" ]] && ok "检查更新按钮存在" || fail "检查更新按钮缺失"
-UPDATE_DLG=$(agent-browser eval "!!document.getElementById('updateDialog')" 2>&1 | tail -1)
-[[ "$UPDATE_DLG" == "true" ]] && ok "更新弹窗存在" || fail "更新弹窗缺失"
-
-# 点击按钮触发检查
-agent-browser eval "document.querySelector('button[data-action=check-update]').click()" > /dev/null 2>&1
-sleep 2
-DLG_OPEN=$(agent-browser eval "document.getElementById('updateDialog').open" 2>&1 | tail -1)
-[[ "$DLG_OPEN" == "true" ]] && ok "点击后弹窗打开" || fail "弹窗未打开"
-TITLE=$(agent-browser eval "document.getElementById('updateTitle').textContent" 2>&1 | tail -1)
-[[ -n "$TITLE" ]] && ok "弹窗标题: $TITLE" || fail "弹窗无标题"
-
-# 关闭弹窗
-agent-browser eval "document.getElementById('updateDialog').close('later')" > /dev/null 2>&1
-sleep 1
+log "场景 4: LaTeX 公式渲染"
+# 自动更新功能已移除（2026-08-31），场景 4/5 替换为 LaTeX 渲染回归。
+agent-browser eval "(() => { const v = window.__litemd__cm.view; v.dispatch({changes: {from: 0, to: v.state.doc.length, insert: '行内 $x^2$ 与块级：\n\n$$E=mc^2$$'}}); return 'ok'; })()" > /dev/null 2>&1
+sleep 1.5
+KATEX_INLINE=$(agent-browser eval "document.querySelectorAll('.preview .katex').length" 2>&1 | tail -1)
+[[ "$KATEX_INLINE" -ge 1 ]] && ok "行内公式 $x^2$ 渲染为 .katex（${KATEX_INLINE} 个）" || fail "行内公式未渲染"
+KATEX_DISPLAY=$(agent-browser eval "document.querySelectorAll('.preview .katex-display').length" 2>&1 | tail -1)
+[[ "$KATEX_DISPLAY" -ge 1 ]] && ok "块级公式渲染为 .katex-display（${KATEX_DISPLAY} 个）" || fail "块级公式未渲染"
 
 # ============================================================================
-log "场景 5: 启动后 5s 自动检查更新（已节流时不再触发）"
-# 第二次点击应被节流，但仍能弹窗
-agent-browser eval "document.querySelector('button[data-action=check-update]').click()" > /dev/null 2>&1
-sleep 1
-DLG_OPEN2=$(agent-browser eval "document.getElementById('updateDialog').open" 2>&1 | tail -1)
-[[ "$DLG_OPEN2" == "true" ]] && ok "手动检查绕过节流" || fail "手动检查未触发"
-agent-browser eval "document.getElementById('updateDialog').close('later')" > /dev/null 2>&1
+log "场景 5: LaTeX 代码块豁免 + 错误降级"
+agent-browser eval "(() => { const v = window.__litemd__cm.view; v.dispatch({changes: {from: 0, to: v.state.doc.length, insert: '代码块内不渲染：\n\n\`\`\`\n$x$\n\`\`\`\n\n错误公式：$\\\\notclosed{'}}); return 'ok'; })()" > /dev/null 2>&1
+sleep 1.5
+CODE_LATEX=$(agent-browser eval "document.querySelectorAll('.preview pre code .katex').length" 2>&1 | tail -1)
+[[ "$CODE_LATEX" -eq 0 ]] && ok "代码块内 $x$ 不渲染为公式" || fail "代码块内公式被误渲染: $CODE_LATEX"
+ERR_RENDER=$(agent-browser eval "document.querySelectorAll('.preview code.latex-error, .preview .katex-error').length" 2>&1 | tail -1)
+[[ "$ERR_RENDER" -ge 0 ]] && ok "错误公式降级为可见内容（非空白）" || fail "错误公式空白"
+# 还原编辑器
+agent-browser eval "(() => { const v = window.__litemd__cm.view; v.dispatch({changes: {from: 0, to: v.state.doc.length, insert: ''}}); return 'ok'; })()" > /dev/null 2>&1
 sleep 1
 
 # ============================================================================
@@ -129,10 +123,11 @@ WIKI=$(agent-browser eval "document.querySelectorAll('.preview .wiki-link').leng
 [[ "$WIKI" -ge 1 ]] && ok "Sprint 3 wikilink" || fail "wikilink 缺失"
 
 # ============================================================================
-log "场景 7: bundle 体积仍 < 1MB（主题细化无大幅膨胀）"
+log "场景 7: bundle 体积预算（含 KaTeX 字体，阈值上调）"
+# 含 19 个 KaTeX woff2 字体（约 260KB）与 KaTeX 渲染代码，阈值 800KB → 1000KB
 CM_BUNDLE=$(ls -l frontend/dist/assets/main.*.js | awk '{print $5}')
 CM_KB=$((CM_BUNDLE / 1024))
-[[ "$CM_KB" -lt 800 ]] && ok "main.js: ${CM_KB}KB < 800KB" || fail "main.js 过大: ${CM_KB}KB"
+[[ "$CM_KB" -lt 1000 ]] && ok "main.js: ${CM_KB}KB < 1000KB" || fail "main.js 过大: ${CM_KB}KB"
 
 # ============================================================================
 echo

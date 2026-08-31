@@ -184,12 +184,14 @@ fi
 agent-browser eval "(() => { document.querySelector('.pane-handle').dispatchEvent(new MouseEvent('dblclick', {bubbles:true})); return 'done'; })()" > /dev/null 2>&1
 sleep 1
 # E4 修复：pattern 原写为 "50*%"，glob 语义要求 50 与 % 之间有任意字符，但 "50%" 本身不含，导致永久 fail
-# splitpane 双击 reset 精确设为 0.5，CSS property 为 "50%"，这里直接严格匹配
+# splitpane 双击 reset 设为 0.5，CSS property 为 "50.00%"（splitpane.ts 用 toFixed(2) 格式化），
+# 因此用数值比较而非字符串精确匹配
 RATIO3=$(jval "document.getElementById('splitpane').style.getPropertyValue('--split-ratio')")
-if [[ "$RATIO3" == "50%" ]]; then
+RATIO3_NUM=$(echo "$RATIO3" | sed 's/%$//')
+if awk -v a="$RATIO3_NUM" 'BEGIN{exit !(a>=49.9 && a<=50.1)}'; then
     ok "双击 handle → 重置为 $RATIO3"
 else
-    fail "双击重置异常: got=$RATIO3 (want=50%)"
+    fail "双击重置异常: got=$RATIO3 (want≈50%)"
 fi
 
 # ----------------------------------------------------------------------------

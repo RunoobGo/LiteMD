@@ -161,7 +161,9 @@ sleep 1
 agent-browser eval "(() => { document.querySelector('#unsavedDialog button[value=discard]').click(); return 'd'; })()" > /dev/null 2>&1
 sleep 1
 COUNT=$(jrun 'document.querySelectorAll("#tabbar .tab").length' | grep -oE '^[0-9]+$' | tail -1)
-assert_eq "放弃 → 标签数 = 0" "$COUNT" "0"
+# 放弃后自动新建空标签（refreshActiveEditor 在无活动标签时 queueMicrotask 新建 Untitled），
+# 因此期望 1 而不是 0 —— 语义是"内容已放弃"，而非"没有标签"
+assert_eq "放弃 → 自动新建空标签 = 1" "$COUNT" "1"
 
 # ============================================================================
 log "Phase 8: 关闭未保存 → 保存（有 path）"
