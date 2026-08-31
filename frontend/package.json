@@ -13,7 +13,7 @@
     "jsdom": "^29.1.1",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
-    "vite": "^3.0.7"
+    "vite": "^6.4.3"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -27,11 +27,12 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.7.2",
     "dompurify": "^3.4.13",
+    "katex": "^0.16.47",
     "marked": "^18.0.9"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "esbuild@0.15.18": true,
+    "esbuild@0.25.12": true,
     "fsevents@2.3.3": true
   }
 }

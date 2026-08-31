@@ -76,5 +76,20 @@ const xss5 = renderMarkdown('<a href="x" onclick="alert(1)">click</a>');
 assert(!/onclick\s*=/i.test(xss5), "xss5: onclick 属性被剥离");
 
 // ============================================================================
+console.log("\n样式回归（#1 修复守卫）：");
+// marked 输出裸 <h1> 标签（无 class），标题样式必须用标签选择器命中。
+// 旧版 .md-h1 class 选择器永不匹配 → 预览标题退化为浏览器默认样式。
+{
+    const { readFileSync } = require("node:fs");
+    const { resolve } = require("node:path");
+    // 测试约定从 frontend 目录启动（cd frontend && npx tsx src/preview.test-bootstrap.ts）
+    const css = readFileSync(resolve(process.cwd(), "src/style.css"), "utf-8");
+    for (const sel of [".preview h1", ".preview h2", ".preview h3"]) {
+        assert(css.includes(sel), `样式表包含标签选择器 ${sel}（marked 输出无 class 的裸标签）`);
+    }
+    assert(!/\.preview\s+\.md-h[123]\b/.test(css), "已移除永不命中的 .md-h1/2/3 class 选择器");
+}
+
+// ============================================================================
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);

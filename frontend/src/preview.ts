@@ -9,6 +9,7 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { preprocessAll } from "./obsidian";
+import { extractLatex, restoreLatex } from "./latex";
 
 export interface PreviewOptions {
     /** 预留：自定义 marked 配置钩子 */
@@ -17,34 +18,26 @@ export interface PreviewOptions {
 // 简化的 marked 配置：GFM 开启，breaks 关闭（保留段落换行语义）。
 marked.setOptions({ gfm: true, breaks: false });
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => {
-        switch (c) {
-            case "&": return "&amp;";
-            case "<": return "&lt;";
-            case ">": return "&gt;";
-            case "\"": return "&quot;";
-            case "'": return "&#39;";
-            default: return c;
-        }
-    });
-}
-
-function escapeAttr(s: string): string {
-    return escapeHtml(s);
-}
-
 /**
  * 把 Markdown 文本渲染成安全的 HTML。
- * 流程：obsidian 预处理 → marked → DOMPurify（严格模式）→ link DOM 加固
+ * 流程：公式提取 → obsidian 预处理 → marked → DOMPurify（严格模式）
+ *       → link DOM 加固 → 公式还原
+ *
+ * 公式的两步拆分是有意为之：
+ *   - 提取必须在 marked **之前**，否则 `a_i * b_j` 会被当成斜体语法破坏；
+ *   - 还原必须在 DOMPurify **之后**，否则 KaTeX 依赖的 style 属性与 MathML
+ *     标签会被清洗掉。KaTeX 以 trust:false 运行，输出无 XSS 面，
+ *     因此放在最后一步注入是安全的（详见 latex.ts 头注释）。
  *
  * 注意：renderMarkdown 返回字符串供测试；link 加固在返回前通过 DOMParser
  * 解析后遍历 <a> 节点强制加 rel/target，避免正则边界场景失败。
  */
 export function renderMarkdown(md: string): string {
     if (!md) return "";
+    // 公式先抽成占位符（同时豁免代码块/行内代码/转义的 \$）
+    const { text: afterLatex, ext, re } = extractLatex(md);
     // Sprint 3: Obsidian 语法预处理（双链 / Callout / 资产）
-    const preprocessed = preprocessAll(md);
+    const preprocessed = preprocessAll(afterLatex);
     // marked v18 同步 API：parse 返回 string（当 async: false）
     const rawHtml = marked.parse(preprocessed, { async: false }) as string;
 
@@ -65,7 +58,9 @@ export function renderMarkdown(md: string): string {
     });
 
     // 第二道：link 节点 DOM 加固（F10 修复：正则 → DOM 操作，覆盖单引号/跨行/属性含 > 边界）
-    return hardenLinks(clean);
+    const hardened = hardenLinks(clean);
+    // 第三道：还原公式（KaTeX 输出需在 DOMPurify 之后注入）与代码块原文
+    return restoreLatex(hardened, ext, re);
 }
 
 /**
@@ -139,6 +134,3 @@ export class Preview {
         });
     }
 }
-
-// 为方便测试暴露
-export const __preview_internals = { escapeHtml, escapeAttr };
