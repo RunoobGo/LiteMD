@@ -135,5 +135,30 @@ console.log("\n预览行号标注（data-line）：");
 }
 
 // ============================================================================
+console.log("\nGFM 任务列表复选框：");
+{
+    const tl = renderMarkdown("# t\n\n- [ ] 待办\n- [x] 已完成");
+    // checkbox 保留且带 disabled（无交互面）
+    assert(tl.includes('<input type="checkbox"'), "未完成任务渲染 checkbox");
+    assert(/<input type="checkbox" checked/.test(tl), "已完成任务 checkbox 带 checked");
+    assert(/disabled/.test(tl.split("<input")[1]?.slice(0, 80) || ""), "checkbox 带 disabled");
+    // li 文本不再残留 [ ]/[x] 标记（复选框消失 bug 的反向断言）
+    assert(!/\[ \]|\[x\]/.test(tl), "li 文本不残留 [ ]/[x] 标记");
+
+    // XSS 边界：用户裸 HTML 注入的非 checkbox input 应被剥除
+    const xssInput = renderMarkdown('text <input type="text" onfocus="alert(1)"> end');
+    assert(!xssInput.toLowerCase().includes("<input"), "裸 HTML 文本框 input 被剥除");
+    const xssRadio = renderMarkdown('<input type="radio" checked>');
+    assert(!xssRadio.toLowerCase().includes("<input"), "radio input 被剥除");
+
+    // checkbox 与行号标注共存：data-line 挂在顶层块（ul）上。
+    // 注意：相同标记的相邻任务列表会被 marked 合并为一个 loose list（单 ul），
+    // 用普通段落隔开才能得到两个独立列表。
+    const tlLn = renderMarkdown("- [ ] a\n\ntext\n\n- [x] b", { lineNumbers: true });
+    assert(/<ul[^>]*data-line="1"/.test(tlLn), "任务列表 ul 标注行号 1");
+    assert(/data-line="5"/.test(tlLn), "第二列表标注行号 5");
+}
+
+// ============================================================================
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);

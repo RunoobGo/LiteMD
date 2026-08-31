@@ -144,8 +144,13 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
         // marked v18 同步 API：parse 返回 string（当 async: false）
         rawHtml = marked.parse(preprocessed, { async: false }) as string;
     }
+    // 任务列表复选框先行占位（sanitize 前处理，见 taskCheckboxPlaceholder 注释）
+    rawHtml = taskCheckboxPlaceholder(rawHtml);
 
-    // 第一道：DOMPurify 严格清洗
+    // 第一道：DOMPurify 严格清洗。
+    // 注意：input 已在 sanitize 之前被 taskCheckboxPlaceholder 替换为 span 占位——
+    // DOMPurify 的 ALLOWED_URI_REGEXP 会把 jsdom 下 input[type] 误判为 URI 属性剥掉
+    //（浏览器与 jsdom 对 URI 属性的判定不一致），占位符方案对两套环境行为一致。
     const clean = DOMPurify.sanitize(rawHtml, {
         ALLOWED_TAGS: [
             "a", "p", "div", "span", "em", "strong", "b", "i", "u", "s", "code", "pre",
@@ -162,9 +167,46 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     });
 
     // 第二道：link 节点 DOM 加固（F10 修复：正则 → DOM 操作，覆盖单引号/跨行/属性含 > 边界）
-    const hardened = hardenLinks(clean);
+    let hardened = hardenLinks(clean);
+    // 第二道半：任务列表复选框占位符还原为安全的 disabled checkbox
+    hardened = restoreCheckboxes(hardened);
     // 第三道：还原公式（KaTeX 输出需在 DOMPurify 之后注入）与代码块原文
     return restoreLatex(hardened, ext, re);
+}
+
+/**
+ * GFM 任务列表复选框的两步处理：
+ *
+ * 1) sanitize 前（本函数）：把 marked 输出的 `<input type=checkbox checked disabled>`
+ *    替换为 `<span class="litemd-cb" data-checked="1"></span>` 占位。
+ *    - 绕开 DOMPurify 对 input 的属性歧义（jsdom 会把 input[type] 当 URI 属性校验并剥除）
+ *    - 任何用户裸 HTML 注入的 input（非 checkbox+disabled 形态）不匹配替换正则，
+ *      直接被 FORBID_TAGS 剥掉，天然免疫注入
+ * 2) sanitize 后（restoreCheckboxes）：占位 span 还原为
+ *    `<input type="checkbox" checked disabled>`——属性是程序白名单生成的，
+ *    无任何用户可控内容，disabled 保证无交互面。
+ */
+function taskCheckboxPlaceholder(html: string): string {
+    // 属性顺序无关：marked 实际输出为 <input disabled="" type="checkbox">
+    //（disabled 在 type 前），不能假设固定顺序
+    return html.replace(
+        /<input\b[^>]*>/g,
+        (tag: string) => {
+            const isCheckbox = /type="checkbox"/.test(tag);
+            const isDisabled = /\bdisabled/.test(tag);
+            if (!isCheckbox || !isDisabled) return tag; // 非法形态留给 FORBID_TAGS 剥除
+            const checked = /\bchecked/.test(tag) ? ' data-checked="1"' : "";
+            return `<span class="litemd-cb"${checked}></span>`;
+        },
+    );
+}
+
+/** 占位 span → disabled checkbox（sanitize 后调用，输入已无用户可控属性） */
+function restoreCheckboxes(html: string): string {
+    return html.replace(
+        /<span\s+class="litemd-cb"(?:\s+data-checked="1")?\s*\/?>(?:\s*<\/span>)?/g,
+        (m) => (m.includes("data-checked") ? '<input type="checkbox" checked disabled>' : '<input type="checkbox" disabled>'),
+    );
 }
 
 /**

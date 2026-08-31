@@ -84,19 +84,31 @@ const mockFs = new InMemoryMockFs();
                 return { path, content, modified: Math.floor(Date.now() / 1000) };
             },
             OpenDialog: async () => {
-                const ans = window.prompt("mock: 选择要打开的文件路径", "/mock/note.md");
-                return ans ?? "";
+                // prompt 在部分 E2E/无头环境抛异常（"prompt() is not supported"），
+                // 降级返回默认路径而非让错误冒泡成「打开失败」对话框
+                try {
+                    const ans = window.prompt("mock: 选择要打开的文件路径", "/mock/note.md");
+                    return ans ?? "";
+                } catch { return "/mock/note.md"; }
             },
             SaveDialog: async () => {
-                const ans = window.prompt("mock: 输入另存为路径", "/mock/untitled.md");
-                return ans ?? "";
+                try {
+                    const ans = window.prompt("mock: 输入另存为路径", "/mock/untitled.md");
+                    return ans ?? "";
+                } catch { return "/mock/untitled.md"; }
             },
             SaveFile: async (path: string, content: string) => {
                 mockFs.savedFiles.push({ path, content });
                 mockFs.files.set(path, content);
             },
             SaveFileAs: async (_suggested: string, _content: string) => {
-                const ans = window.prompt("mock: 输入新路径", "/mock/saved.md");
+                // 同上：prompt 不可用时降级默认路径，避免「另存为失败」误报
+                let ans: string | null;
+                try {
+                    ans = window.prompt("mock: 输入新路径", "/mock/saved.md");
+                } catch {
+                    ans = "/mock/saved.md";
+                }
                 if (!ans) return "";
                 mockFs.savedFiles.push({ path: ans, content: _content });
                 mockFs.files.set(ans, _content);

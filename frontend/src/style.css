@@ -704,6 +704,27 @@ html, body {
 .preview p { margin: 0.7em 0; line-height: 1.7; }
 .preview ul, .preview ol { padding-left: 1.5em; }
 .preview li { margin: 0.3em 0; }
+
+/* ===== GFM 任务列表 =====
+   marked 输出 <li><input type=checkbox checked disabled> 文本</li>。
+   li 含 checkbox 时隐藏圆点、对齐复选框；checkbox 本身 disabled 无交互。 */
+.preview li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: -1.3em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.45em;
+}
+.preview input[type="checkbox"] {
+    flex: none;
+    margin: 0;
+    width: 0.95em;
+    height: 0.95em;
+    accent-color: var(--accent);
+    vertical-align: baseline;
+    position: relative;
+    top: 0.15em;
+}
 .preview blockquote {
     margin: 0.8em 0;
     padding: 0.6em 1em;
