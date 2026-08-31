@@ -137,5 +137,44 @@ console.log("Test: parseFrontmatter（边界 + CRLF）");
            "value 内带冒号（URL 含端口）正确解析： got=" + (fmColon?.url ?? "undef"));
 }
 
+// ============================================================================
+console.log("Test: ReDoS 防护（WIKI_RE 不得退化回 O(n²)）");
+{
+    // 回归守卫：旧版 WIKI_RE 用惰性量词 `[^\]\n|]+?` 且不排除 `[`，
+    // 面对 `[[[[[[…` 这类输入时每个起始位置都要惰性扩展到行尾 → 整体 O(n²)。
+    // 实测 64000 个 `[` 旧版耗时 3058ms，新版 0.12ms。此测试锁定该行为。
+    const adversarial = "[".repeat(32000);
+    const t0 = Date.now();
+    const found = findWikiLinks(adversarial);
+    const elapsed = Date.now() - t0;
+    assert(elapsed < 200, `32000 个 "[" 扫描在 200ms 内完成（实测 ${elapsed}ms）`);
+    assert(found.length === 0, "纯 [ 洪流不产生任何 wiki 链接匹配");
+
+    const nested = "[[".repeat(16000);
+    const t1 = Date.now();
+    const foundNested = findWikiLinks(nested);
+    const elapsed2 = Date.now() - t1;
+    assert(elapsed2 < 200, `16000 个 "[[" 扫描在 200ms 内完成（实测 ${elapsed2}ms）`);
+    assert(foundNested.length === 0, "[[ 洪流不产生任何 wiki 链接匹配");
+
+    // 未闭合链接：真实场景（用户边打字边保存）
+    const unclosed = "[[未写完的链接名" + "a".repeat(20000);
+    const t2 = Date.now();
+    findWikiLinks(unclosed);
+    assert(Date.now() - t2 < 200, "20000 字符未闭合 [[ 扫描在 200ms 内完成");
+
+    // 语义收紧：链接目标/别名内不允许 `[`（与 Obsidian 行为一致）
+    assert(findWikiLinks("[[a[b]]").length === 0, "目标含 [ 的写法不匹配（语义收紧）");
+    const inner = findWikiLinks("[[外层[[内层]]");
+    assert(inner.length === 1 && inner[0].target === "内层",
+           "嵌套 [[ 取最内层链接（避免贪婪吞并）");
+
+    // 长度上限：超长目标不匹配，而非卡死
+    assert(findWikiLinks("[[" + "a".repeat(300) + "]]").length === 0,
+           "超过 256 字符的链接目标不匹配（有界量词生效）");
+    assert(findWikiLinks("[[" + "a".repeat(200) + "]]").length === 1,
+           "200 字符的链接目标正常匹配");
+}
+
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);

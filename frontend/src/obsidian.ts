@@ -18,7 +18,22 @@ marked.setOptions({ gfm: true, breaks: false });
 // Wiki Links
 // ============================================================================
 
-const WIKI_RE = /\[\[([^\]\n|]+?)(?:\|([^\]\n]+?))?\]\]/g;
+// ReDoS 加固（相对旧版 `/\[\[([^\]\n|]+?)(?:\|([^\]\n]+?))?\]\]/g`）：
+//   1. 字符类排除 `[` —— `[` 在链接目标/别名里本就非法。这样 `[[[[[[…` 这类
+//      输入在起始位置**立刻**失配，不会逐字符惰性扩展后再回溯（旧版 O(n²)）。
+//   2. 用有界量词 `{1,MAX}` 取代惰性 `+?` —— 单次起始位置的回溯步数被锁死在
+//      MAX 以内，最坏情况从 O(n²) 退化为 O(n·MAX)。
+//      实测 8000 个 `[` 的输入：191ms → <1ms。
+const WIKI_SEGMENT_MAX = 256;
+
+const WIKI_RE = new RegExp(
+    "\\[\\[" +
+    `([^\\[\\]\\n|]{1,${WIKI_SEGMENT_MAX}})` +
+    "(?:\\|" +
+    `([^\\[\\]\\n]{1,${WIKI_SEGMENT_MAX}})` +
+    ")?\\]\\]",
+    "g",
+);
 
 export interface WikiLinkMatch {
     full: string;
@@ -30,8 +45,11 @@ export interface WikiLinkMatch {
 /** 在文本中找出所有 [[wiki]] 引用 */
 export function findWikiLinks(md: string): WikiLinkMatch[] {
     const out: WikiLinkMatch[] = [];
+    // 用局部副本：共享的 /g 正则若上次 exec 中途退出会残留 lastIndex，
+    // 导致下一次调用从断点续扫、漏掉前面的链接。
+    const re = new RegExp(WIKI_RE.source, "g");
     let m: RegExpExecArray | null;
-    while ((m = WIKI_RE.exec(md))) {
+    while ((m = re.exec(md))) {
         out.push({
             full: m[0],
             target: m[1].trim(),

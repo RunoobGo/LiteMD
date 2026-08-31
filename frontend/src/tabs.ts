@@ -135,15 +135,20 @@ export class TabManager {
         if (t.dirty !== wasDirty) this.notify();
     }
 
-    /** 重置基线（保存成功后调用） */
+    /** 重置基线（保存成功后调用）。
+     *
+     * #2 修复：不再用保存快照回写 liveContent。保存是异步 IO，await
+     * 窗口期内用户继续输入已由 syncLiveContent 写入 liveContent；旧版
+     * 在此覆盖为旧快照，导致保存瞬间敲下的字符凭空消失。liveContent
+     * 以编辑器为唯一事实源，dirty 由 liveContent 与新 baseline 比较
+     * 自然得出：保存期间无新输入 → 相等 → 干净；有新输入 → 保持脏。 */
     updateContentBaseline(id: string, content: string, path: string, mtime?: number) {
         const t = this.tabs.get(id);
         if (!t) return;
         t.baseline = content;
-        t.liveContent = content;
+        t.dirty = t.liveContent !== t.baseline;
         t.path = path || t.path;
         t.diskMtime = mtime;
-        t.dirty = false;
         if (path) {
             t.title = path.split(/[\\/]/).pop() || path;
         }

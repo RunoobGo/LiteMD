@@ -50,15 +50,14 @@ const mockFs = new InMemoryMockFs();
                 version: "0.2.0-mock",
                 os: "browser-mock",
             }),
+            // 契约来源：internal/config/config.go 的 config.Config
+            // （theme/fontFamily/fontSize/recentFiles 四字段）。
+            // 修改 Go 侧 Config 后必须同步此处，字段漂移会在 E2E 中产生误导。
             GetConfig: async () => ({
                 theme: "dark",
                 fontFamily: "system-ui",
                 fontSize: 14,
                 recentFiles: [],
-                windowWidth: 1024,
-                windowHeight: 768,
-                keyMap: "default",
-                customCssPath: "",
             }),
             SetConfig: async () => {},
             // 文件关联场景的 mock:模拟"命令行带参启动"。
@@ -108,10 +107,6 @@ const mockFs = new InMemoryMockFs();
                 fontFamily: "system-ui",
                 fontSize: 14,
                 recentFiles: [path],
-                windowWidth: 1024,
-                windowHeight: 768,
-                keyMap: "default",
-                customCssPath: "",
             }),
             CopyImageAsset: async (targetPath: string, base64Data: string) => {
                 // mock：把 data uri 写入 mock FS，并把 base64 写到 targetPath
