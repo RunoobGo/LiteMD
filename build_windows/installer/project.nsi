@@ -48,6 +48,11 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 !include "MUI.nsh"
 !include "LogicLib.nsh"
 
+# ---- 体积优化：LZMA 固实压缩 + 大字典（exe 内含 704KB 前端资源，收益明显）----
+SetCompressor /SOLID lzma
+SetCompressorDictSize 32
+SetDatablockOptimize on
+
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
 # !define MUI_WELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp" #Include this to add a bitmap on the left side of the Welcome Page. Must be a size of 164x314
@@ -67,6 +72,40 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 ## 以下两个信息用于签名安装器和卸载器。二进制路径由 %1 提供
 #!uninstfinalize 'signtool --file "%1"'
 #!finalize 'signtool --file "%1"'
+
+# =============================================================================
+# WebView2 检测宏（替代 wails.webview2runtime）
+#
+# 背景:本构建使用 `-webview2 browser` 策略 —— 应用直接调用系统已安装的
+# WebView2 Runtime,不下载、不内嵌引导器。而 wails 自带的 wails.webview2runtime
+# 宏会无条件把 1.79MB 的 MicrosoftEdgeWebview2Setup.exe 打进安装包,
+# 在 browser 策略下是纯粹的死重(运行时根本不会用到)。
+#
+# 因此这里只做「检测 + 缺失提示」:
+#   - Windows 11 全版本内置 WebView2 Evergreen Runtime,正常机器直接命中;
+#   - 极端情况(精简版系统/组件被卸载)未命中时弹窗告知下载地址,
+#     且应用侧 browser 策略本身也会引导用户下载,双重兜底,不会白屏。
+# =============================================================================
+!macro LITEMD_CHECK_WEBVIEW2
+    SetRegView 64
+    # 1) 机器级安装(最常见)
+    ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+    ${If} $0 != ""
+        Goto wv2_detected
+    ${EndIf}
+    ReadRegStr $0 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+    ${If} $0 != ""
+        Goto wv2_detected
+    ${EndIf}
+    # 2) 用户级安装(无管理员权限场景)
+    ReadRegStr $0 HKCU "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+    ${If} $0 != ""
+        Goto wv2_detected
+    ${EndIf}
+    # 3) 未检测到:提示但不阻断安装(安装后仍可补装运行时)
+    MessageBox MB_OK|MB_ICONINFORMATION "未检测到 Microsoft Edge WebView2 运行时。$\r$\n$\r$\nWindows 11 通常已内置此组件。若启动 LiteMD 时提示缺少运行时,请到以下地址下载安装:$\r$\n$\r$\nhttps://developer.microsoft.com/microsoft-edge/webview2/"
+    wv2_detected:
+!macroend
 
 # =============================================================================
 # 文件关联宏:.md 系扩展 → LiteMD.Document ProgId
@@ -109,7 +148,7 @@ FunctionEnd
 Section
     !insertmacro wails.setShellContext
 
-    !insertmacro wails.webview2runtime
+    !insertmacro LITEMD_CHECK_WEBVIEW2
 
     SetOutPath $INSTDIR
     
