@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -116,3 +118,53 @@ func TestLoadCorruptJSONFallsBackToDefault(t *testing.T) {
 	}
 }
 
+// TestStoreMutate_Concurrent 是 #5 修复的回归守卫：Mutate 在锁内完成
+// 读-改-写全序列，并发推入不丢更新。旧版（Load/Save 分离）在相同负载下
+// 最终列表会少于推送的不重复路径数（后写者覆盖前写者）。
+func TestStoreMutate_Concurrent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := NewStore()
+
+	const workers, each = 8, 12 // 96 个不重复路径，上限设 200 避免截断干扰断言
+	seen := make(map[string]bool, workers*each)
+	for w := 0; w < workers; w++ {
+		for i := 0; i < each; i++ {
+			seen[pathFor(w, i)] = true
+		}
+	}
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < each; i++ {
+				if _, err := s.Mutate(func(c Config) Config {
+					return PushRecent(c, pathFor(w, i), workers*each+10)
+				}); err != nil {
+					t.Errorf("mutate %s: %v", pathFor(w, i), err)
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	got, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentFiles) != len(seen) {
+		t.Fatalf("丢失更新: got %d 条, want %d 条（Mutate 未保证读改写原子）\n%+v",
+			len(got.RecentFiles), len(seen), got.RecentFiles)
+	}
+	for _, p := range got.RecentFiles {
+		if !seen[p] {
+			t.Fatalf("出现未知路径 %q", p)
+		}
+	}
+}
+
+func pathFor(w, i int) string {
+	return "/notes/w" + strconv.Itoa(w) + "-f" + strconv.Itoa(i) + ".md"
+}

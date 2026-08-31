@@ -5,12 +5,6 @@ export namespace config {
 	    fontFamily: string;
 	    fontSize: number;
 	    recentFiles: string[];
-	    windowWidth: number;
-	    windowHeight: number;
-	    keyMap: string;
-	    customCssPath: string;
-	    // Go type: time
-	    lastUpdateCheck: any;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -22,30 +16,7 @@ export namespace config {
 	        this.fontFamily = source["fontFamily"];
 	        this.fontSize = source["fontSize"];
 	        this.recentFiles = source["recentFiles"];
-	        this.windowWidth = source["windowWidth"];
-	        this.windowHeight = source["windowHeight"];
-	        this.keyMap = source["keyMap"];
-	        this.customCssPath = source["customCssPath"];
-	        this.lastUpdateCheck = this.convertValues(source["lastUpdateCheck"], null);
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 
 }

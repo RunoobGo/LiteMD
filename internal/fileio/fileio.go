@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,15 +27,12 @@ var ErrIsBinary = errors.New("file contains invalid UTF-8 (binary?)")
 // ErrTooLarge 当文件超过 MaxReadSize 时返回。防止超大文件导致 OOM。
 var ErrTooLarge = errors.New("file too large to read")
 
+// ErrNotRegular 当目标是 FIFO / 设备 / socket / /proc 等非普通文件时返回。
+// 读取伪文件（/dev/zero、FIFO 等）会永久挂起或无限增长，必须在 Stat 阶段拒绝。
+var ErrNotRegular = errors.New("not a regular file")
+
 // MaxReadSize 是 ReadText 允许读取的最大文件大小（50MB）。
 const MaxReadSize = 50 << 20
-
-// FileMeta 描述一个 Markdown 文件的元信息。
-type FileMeta struct {
-	Path  string `json:"path"`
-	Size  int64  `json:"size"`
-	IsNew bool   `json:"isNew"`
-}
 
 // ReadText 读取整个文件为 UTF-8 文本。
 //
@@ -42,19 +40,38 @@ type FileMeta struct {
 //   - 文件不存在 → 返回 ErrNotFound
 //   - 文件超过 MaxReadSize（50MB）→ 返回 ErrTooLarge
 //   - 文件包含 NUL 字节或无效 UTF-8 → 返回 ErrIsBinary
+//   - 目标是 FIFO / 设备 / socket / /proc 等非普通文件 → 返回 ErrNotRegular
+//     （保护：避免打开对话框选 All Files 时选中伪文件导致永久挂起或 OOM）
 //   - 自动剥除 UTF-8 BOM（\xEF\xBB\xBF）
 //   - 其他错误原样返回（权限、IO 等）
 func ReadText(path string) (string, error) {
-	// 预检文件大小，避免读取超大文件导致 OOM
-	if st, err := os.Stat(path); err == nil && st.Size() > MaxReadSize {
-		return "", fmt.Errorf("%w: %s (%d bytes)", ErrTooLarge, path, st.Size())
-	}
-	data, err := os.ReadFile(path)
+	st, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", fmt.Errorf("%w: %s", ErrNotFound, path)
 		}
 		return "", err
+	}
+	// 拒绝非普通文件（FIFO / 设备 / socket / /proc）。这些文件的 Size() 通常为 0，
+	// 能绕过预检；读取会无限增长（/dev/zero）或永久阻塞（FIFO）。
+	if !st.Mode().IsRegular() {
+		return "", fmt.Errorf("%w: %s", ErrNotRegular, path)
+	}
+	if st.Size() > MaxReadSize {
+		return "", fmt.Errorf("%w: %s (%d bytes)", ErrTooLarge, path, st.Size())
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	// LimitReader 兜底：即便 Stat 之后文件被换/增长，也保证读到的字节数有界。
+	data, err := io.ReadAll(io.LimitReader(f, MaxReadSize+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > MaxReadSize {
+		return "", fmt.Errorf("%w: %s", ErrTooLarge, path)
 	}
 	// 剥除 UTF-8 BOM
 	data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
@@ -66,10 +83,13 @@ func ReadText(path string) (string, error) {
 
 // WriteText 将文本写入 path。存在则覆盖。
 //
-// 实现：写入同目录下的临时文件，再原子 rename，避免半写状态。
+// 实现：写入同目录下的临时文件 → 强制刷盘（Sync）→ 原子 rename。
+// Sync 是关键：缺少时掉电/内核 panic 可能让 rename 之后的元数据先于
+// 数据落盘，导致目标文件长度正确但内容为空或半截（违背本函数
+// 「防止崩溃导致原文件损坏」的设计目标）。
 func WriteText(path, content string) error {
-	if strings.TrimSpace(path) == "" {
-		return errors.New("empty path")
+	if _, err := safeWritePath(path); err != nil {
+		return err
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -89,6 +109,11 @@ func WriteText(path, content string) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write: %w", err)
 	}
+	// 数据先落盘：仅 Close + Rename 不够，rename 的元数据可能先于数据持久化。
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close: %w", err)
 	}
@@ -98,29 +123,13 @@ func WriteText(path, content string) error {
 	return nil
 }
 
-// FileExists 简单判断文件是否存在。
-func FileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-// IsMarkdown 简单判断扩展名是否属于 Markdown 家族。
-func IsMarkdown(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".md", ".markdown", ".mdown", ".mkd", ".mkdn":
-		return true
-	}
-	return false
-}
-
 // WriteBase64File 解码 base64 数据并写入文件（用于图片资产复制）。
 //
 // 使用场景：用户在 LiteMD 中拖入图片 → 前端把图片转为 Base64 → 调用此方法。
 // 失败会返回原始错误（包含 decode/io 失败的具体上下文）。
 func WriteBase64File(path, base64Data string) error {
-	if strings.TrimSpace(path) == "" {
-		return errors.New("empty path")
+	if _, err := safeWritePath(path); err != nil {
+		return err
 	}
 	if strings.TrimSpace(base64Data) == "" {
 		return errors.New("empty base64 data")
@@ -149,6 +158,11 @@ func WriteBase64File(path, base64Data string) error {
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write: %w", err)
+	}
+	// 数据先落盘：避免断电后 rename 的元数据先于数据持久化
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close: %w", err)

@@ -10,34 +10,27 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 // Config 描述 LiteMD 的用户配置。
 //
 // 设计：保持字段最小集。增量字段在迁移时通过 JSON 缺失值兼容（零值默认）。
+// 注：窗口尺寸 / KeyMap / CustomCSSPath 曾作为预留字段存在，均无消费方，
+// 已移除（2026-08-31）。如需窗口尺寸记忆，应连同前端一起接入。
 type Config struct {
-	Theme           string    `json:"theme"`           // "auto" | "light" | "dark"
-	FontFamily      string    `json:"fontFamily"`      // 编辑器字体
-	FontSize        int       `json:"fontSize"`        // 编辑器字号（pt）
-	RecentFiles     []string  `json:"recentFiles"`     // 最近文件路径，最多 10 条
-	WindowWidth     int       `json:"windowWidth"`     // 上次窗口宽度
-	WindowHeight    int       `json:"windowHeight"`    // 上次窗口高度
-	KeyMap          string    `json:"keyMap"`          // "default" | "vim" | "emacs"
-	CustomCSSPath   string    `json:"customCssPath"`   // 自定义样式路径（可选）
-	LastUpdateCheck time.Time `json:"lastUpdateCheck"` // 上次更新检查时间（用于 24h 节流）
+	Theme       string   `json:"theme"`       // "auto" | "light" | "dark"
+	FontFamily  string   `json:"fontFamily"`  // 编辑器字体
+	FontSize    int      `json:"fontSize"`    // 编辑器字号（pt）
+	RecentFiles []string `json:"recentFiles"` // 最近文件路径，最多 10 条
 }
 
 // Default 返回一份默认配置。首次启动时使用。
 func Default() Config {
 	return Config{
-		Theme:        "auto",
-		FontFamily:   "system-ui",
-		FontSize:     14,
-		RecentFiles:  []string{},
-		WindowWidth:  1024,
-		WindowHeight: 768,
-		KeyMap:       "default",
+		Theme:       "auto",
+		FontFamily:  "system-ui",
+		FontSize:    14,
+		RecentFiles: []string{},
 	}
 }
 
@@ -68,6 +61,11 @@ func (s *Store) Path() (string, error) {
 func (s *Store) Load() (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.loadLocked()
+}
+
+// loadLocked 是 Load 的已持锁实现（调用方必须已持有 s.mu）。
+func (s *Store) loadLocked() (Config, error) {
 	p, err := s.Path()
 	if err != nil {
 		return Default(), err
@@ -91,6 +89,11 @@ func (s *Store) Load() (Config, error) {
 func (s *Store) Save(cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.saveLocked(cfg)
+}
+
+// saveLocked 是 Save 的已持锁实现（调用方必须已持有 s.mu）。
+func (s *Store) saveLocked(cfg Config) error {
 	p, err := s.Path()
 	if err != nil {
 		return err
@@ -110,6 +113,11 @@ func (s *Store) Save(cfg Config) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write: %w", err)
 	}
+	// 数据先落盘：避免断电后 rename 的元数据先于数据持久化（与 fileio.WriteText 同源）
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close: %w", err)
 	}
@@ -117,6 +125,26 @@ func (s *Store) Save(cfg Config) error {
 		return fmt.Errorf("rename: %w", err)
 	}
 	return nil
+}
+
+// Mutate 在同一把锁内完成「读-改-写」全序列并持久化（#5 修复）。
+//
+// 旧版调用方需自行 Load → 修改 → Save 三步，锁在每步之间释放，
+// 并发场景（多标签快速连续保存触发的 PushRecent）存在丢更新窗口：
+// 两个 goroutine 同时 Load 到同一份旧配置，后写者覆盖前写者的结果。
+// Mutate 保证读到的配置在写回前不会被其他调用方插入修改。
+func (s *Store) Mutate(fn func(Config) Config) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.loadLocked()
+	if err != nil {
+		return cfg, err
+	}
+	out := fn(cfg)
+	if err := s.saveLocked(out); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 // PushRecent 将一个文件路径推入 RecentFiles，去重并保留最多 10 条。

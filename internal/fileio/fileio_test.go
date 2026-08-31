@@ -131,31 +131,3 @@ func TestWriteBase64File_BadPayload(t *testing.T) {
 		t.Fatal("expected decode error")
 	}
 }
-
-func TestIsMarkdown(t *testing.T) {
-	cases := map[string]bool{
-		"a.md":       true,
-		"a.MARKDOWN": true,
-		"a.txt":      false,
-		"a":          false,
-	}
-	for in, want := range cases {
-		if got := IsMarkdown(in); got != want {
-			t.Fatalf("IsMarkdown(%q)=%v want %v", in, got, want)
-		}
-	}
-}
-
-func TestFileExists(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "x.md")
-	if FileExists(p) {
-		t.Fatal("want false before write")
-	}
-	if err := WriteText(p, "y"); err != nil {
-		t.Fatal(err)
-	}
-	if !FileExists(p) {
-		t.Fatal("want true after write")
-	}
-}

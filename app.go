@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -177,7 +176,12 @@ func (a *App) SaveFileAs(suggestedName, content string) (string, error) {
 	if err := fileio.WriteText(target, content); err != nil {
 		return "", err
 	}
-	abs, _ := filepath.Abs(target)
+	// #11 修复：Abs 失败不再静默吞错。文件已成功落盘，此时返回错误会让
+	// 前端误以为保存失败；回退到写入路径保证用户拿到可用的路径。
+	abs, absErr := filepath.Abs(target)
+	if absErr != nil {
+		return target, nil
+	}
 	return abs, nil
 }
 
@@ -246,14 +250,16 @@ func (a *App) SetConfig(cfg config.Config) error {
 }
 
 // PushRecent 推入最近文件并持久化。
+//
+// #5 修复：经 store.Mutate 在锁内完成读-改-写全序列，消除旧版
+// Load/Save 分离时的并发丢更新窗口（快速连续保存多个文件时，
+// 两个 PushRecent 可能基于同一份旧配置互相覆盖）。
 func (a *App) PushRecent(path string) (config.Config, error) {
-	cfg, err := a.store.Load()
+	cfg, err := a.store.Mutate(func(c config.Config) config.Config {
+		return config.PushRecent(c, path, 10)
+	})
 	if err != nil {
 		return config.Default(), err
-	}
-	cfg = config.PushRecent(cfg, path, 10)
-	if err := a.store.Save(cfg); err != nil {
-		return cfg, fmt.Errorf("save after push: %w", err)
 	}
 	return cfg, nil
 }
