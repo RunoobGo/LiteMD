@@ -174,6 +174,39 @@ export function preprocessCallouts(md: string): string {
     });
 }
 
+/**
+ * Callout 变换记录（供 preview.ts 的行号映射用）。
+ *
+ * preprocessCallouts 会把 `> [!type]` 块替换为 HTML，替换串与源块的
+ * 行数可能不同——行号映射需要知道每个块的源行号、源行数与替换串，
+ * 才能把预处理后文本的行号换算回原始 markdown 的行号。
+ */
+export interface CalloutTransform {
+    /** 源块在输入文本中的起始行（1-based） */
+    startLine: number;
+    /** 源块占用的行数 */
+    rawLines: number;
+    /** 替换串（与 preprocessAll 输出中的对应片段逐字节一致） */
+    replacement: string;
+}
+
+/** 找出所有 callout 块的变换记录（与 preprocessCallouts 使用同一正则，顺序一致） */
+export function findCalloutTransforms(md: string): CalloutTransform[] {
+    const re = new RegExp(CALLOUT_RE.source, "g");
+    const out: CalloutTransform[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(md))) {
+        // m.index 指向前缀 \n（属于上一行的行尾），块内容真正起始在 m[1] 之后，
+        // 行号需按内容起点算（否则相对真实行号偏 1）
+        let line = 1;
+        const contentOffset = m.index + m[1].length;
+        for (let i = 0; i < contentOffset; i++) if (md.charCodeAt(i) === 10) line++;
+        const rawLines = m[0].split("\n").length;
+        out.push({ startLine: line, rawLines, replacement: preprocessCallouts(m[0]) });
+    }
+    return out;
+}
+
 // ============================================================================
 // Frontmatter
 // ============================================================================

@@ -91,5 +91,49 @@ console.log("\n样式回归（#1 修复守卫）：");
 }
 
 // ============================================================================
+console.log("\n预览行号标注（data-line）：");
+{
+    const ln = (md: string) => renderMarkdown(md, { lineNumbers: true });
+
+    // 默认关闭：不注入 data-line（兼容既有调用方/测试）
+    assert(!renderMarkdown("# Hi").includes("data-line"), "默认输出不含 data-line");
+
+    // 基本标注：块起始行号，跳过块间空行
+    const basic = ln("# Title\n\npara1\n\npara2");
+    assert(basic.includes('<h1 data-line="1"'), "h1 标注源行 1");
+    assert(basic.includes('<p data-line="3"'), "para1 标注源行 3");
+    assert(/<p data-line="5">para2/.test(basic), "para2 标注源行 5");
+
+    // frontmatter 偏移：剥掉的行数要加回
+    const fm = ln("---\ntitle: T\n---\n\n# H");
+    assert(fm.includes('<h1 data-line="5"'), "frontmatter 后 h1 = 行 5（含 4 行头部）");
+
+    // callout：块标注其源起始行；其后块行号不因替换串行数变化而漂移
+    const co = ln("# H\n\n> [!note] n\n> body\n\ntail");
+    assert(/data-line="3"/.test(co), "callout 标注源行 3（> [!note] 所在行）");
+    assert(/<p data-line="6">tail/.test(co), "callout 后段落行号无漂移（= 行 6）");
+
+    // wiki-link 行内替换不影响行号
+    const wl = ln("see [[A]] and\n\nnext");
+    assert(/<p data-line="1">/.test(wl), "wiki-link 段落行号 = 1");
+    assert(/<p data-line="3">next/.test(wl), "后续段落 = 3");
+
+    // 代码块整体一个锚点（起始行）
+    const cb = ln("a\n\n```\nx\ny\n```\n\nz");
+    assert(/<p data-line="1">a/.test(cb), "首段 = 行 1");
+    assert(/<pre[^>]*data-line="3"/.test(cb), "代码块标注起始行 3");
+    assert(/<p data-line="8">z/.test(cb), "代码块后段落 = 行 8");
+
+    // LaTeX 占位替换不影响行号
+    const lx = ln("$x^2$\n\nafter");
+    assert(/<p data-line="1">/.test(lx), "公式行 = 1");
+    assert(/<p data-line="3">after/.test(lx), "公式后段落 = 3");
+
+    // XSS：data-line 值是程序生成的整数，不受用户内容注入影响
+    const xssLn = ln('<img src=x onerror=alert(1) data-line="99">');
+    assert(!/data-line="99"/.test(xssLn), "用户构造的 data-line 被清洗流程规范化");
+}
+
+// ============================================================================
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);

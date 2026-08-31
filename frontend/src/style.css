@@ -652,11 +652,41 @@ html, body {
 
 .preview {
     flex: 1;
-    padding: 16px 24px;
+    /* 左侧留出与编辑器行号槽对齐的行号区：32px 槽 + 24px 内容边距 */
+    padding: 16px 24px 16px 56px;
     overflow: auto;
     color: var(--fg-1);
     line-height: 1.7;
     font-size: 14px;
+}
+
+/* ===== 预览行号（与编辑器行号对齐） =====
+   preview.ts 为每个顶层块注入 data-line（源 markdown 行号）。
+   行号浮在左侧槽位，颜色复用编辑器 gutter 变量，亮/暗主题自适应；
+   数字右对齐、等宽字体，与 CodeMirror gutter 视觉一致。 */
+.preview > [data-line] {
+    position: relative;
+}
+.preview > [data-line]::before {
+    content: attr(data-line);
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 0;
+    min-width: 32px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: inherit;
+    color: var(--md-gutter-fg);
+    opacity: 0.75;
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+}
+/* hover 该行时行号微亮，便于对照源行 */
+.preview > [data-line]:hover::before {
+    color: var(--accent);
+    opacity: 1;
 }
 
 /* 标题选择器用标签形式：marked 输出的是裸 <h1>~<h6> 标签（无 class），

@@ -8,15 +8,97 @@
 
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { preprocessAll } from "./obsidian";
+import { preprocessAll, parseFrontmatter, findCalloutTransforms } from "./obsidian";
 import { extractLatex, restoreLatex } from "./latex";
 
 export interface PreviewOptions {
     /** 预留：自定义 marked 配置钩子 */
 }
 
+export interface RenderOptions {
+    /**
+     * 为每个顶层块注入 data-line 属性（块对应的源 markdown 行号，1-based，
+     * 含 frontmatter）。编辑器侧行号与预览行号因此对齐；同步滚动也以该
+     * 属性为锚点。默认关闭以保持纯渲染输出（兼容既有测试/调用方）。
+     */
+    lineNumbers?: boolean;
+}
+
 // 简化的 marked 配置：GFM 开启，breaks 关闭（保留段落换行语义）。
 marked.setOptions({ gfm: true, breaks: false });
+
+/** 统计换行符个数（CRLF 计 1 行界） */
+function countNewlines(s: string): number {
+    let n = 0;
+    for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++;
+    return n;
+}
+
+/** offset（0-based）所在行号（1-based） */
+function lineAtOffset(s: string, offset: number): number {
+    let line = 1;
+    const end = Math.min(offset, s.length);
+    for (let i = 0; i < end; i++) if (s.charCodeAt(i) === 10) line++;
+    return line;
+}
+
+/**
+ * 预处理文本行号 → 原文行号 的映射表。
+ *
+ * preprocessAll 对文本做了两类会改变行号的变换：
+ *   1. frontmatter 剥离（行号整体前移 fmOffset）；
+ *   2. callout 块替换为 HTML（替换串行数与源块不同，影响其后块的行号）。
+ * wiki-link / LaTeX 占位均为行内替换，不改行结构。
+ *
+ * 本映射逐 callout 累积行数差，把预处理文本中的行号精确换算回原文行号。
+ */
+class LineMap {
+    private fmOffset = 0;
+    private spans: Array<{ prepStart: number; prepLines: number; origStart: number; delta: number }> = [];
+
+    constructor(md: string, preprocessed: string) {
+        const { frontmatter, body } = parseFrontmatter(md);
+        if (frontmatter) {
+            this.fmOffset = countNewlines(md.slice(0, md.length - body.length));
+        }
+        let prepCursor = 0;
+        for (const t of findCalloutTransforms(body)) {
+            const pIdx = preprocessed.indexOf(t.replacement, prepCursor);
+            if (pIdx < 0) continue; // 理论不可达：替换串必在预处理输出中
+            const prepStart = lineAtOffset(preprocessed, pIdx);
+            const prepLines = countNewlines(t.replacement) + 1;
+            this.spans.push({
+                prepStart,
+                prepLines,
+                origStart: t.startLine + this.fmOffset,
+                delta: t.rawLines - prepLines,
+            });
+            prepCursor = pIdx + t.replacement.length;
+        }
+    }
+
+    /** 预处理文本行号（1-based）→ 原文行号（1-based，含 frontmatter） */
+    toOriginal(prepLine: number): number {
+        let shift = 0;
+        for (const s of this.spans) {
+            if (prepLine < s.prepStart) return prepLine + shift + this.fmOffset;
+            if (prepLine < s.prepStart + s.prepLines) return s.origStart; // callout 块内 → 源块起始行
+            shift += s.delta;
+        }
+        return prepLine + shift + this.fmOffset;
+    }
+}
+
+/** 在 HTML 片段的首个开标签上注入 data-line 属性 */
+function annotateLine(html: string, line: number): string {
+    if (!line) return html;
+    return html.replace(/<([a-zA-Z][a-zA-Z0-9]*)(?=[\s>])/, `<$1 data-line="${line}"`);
+}
+
+/** 剥离用户内容自带的 data-line 属性（锚点行号只信程序计算值，防注入污染同步滚动） */
+function stripDataLine(html: string): string {
+    return html.replace(/\sdata-line\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g, "");
+}
 
 /**
  * 把 Markdown 文本渲染成安全的 HTML。
@@ -31,15 +113,37 @@ marked.setOptions({ gfm: true, breaks: false });
  *
  * 注意：renderMarkdown 返回字符串供测试；link 加固在返回前通过 DOMParser
  * 解析后遍历 <a> 节点强制加 rel/target，避免正则边界场景失败。
+ *
+ * opts.lineNumbers 开启时改为逐顶层 token 渲染：marked.lexer 保证顶层 token
+ * 的 raw 串拼接等于输入文本，用累积 offset 即可得到每个块的起始行；块间
+ * 空行（space token）不产出 HTML、自动跳过。再经 LineMap 换算回原文行号。
  */
-export function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     if (!md) return "";
     // 公式先抽成占位符（同时豁免代码块/行内代码/转义的 \$）
     const { text: afterLatex, ext, re } = extractLatex(md);
     // Sprint 3: Obsidian 语法预处理（双链 / Callout / 资产）
     const preprocessed = preprocessAll(afterLatex);
-    // marked v18 同步 API：parse 返回 string（当 async: false）
-    const rawHtml = marked.parse(preprocessed, { async: false }) as string;
+
+    let rawHtml: string;
+    if (opts.lineNumbers) {
+        const map = new LineMap(afterLatex, preprocessed);
+        const tokens = marked.lexer(preprocessed);
+        let offset = 0; // 已消费的字符数（token.raw 拼接 = preprocessed）
+        let out = "";
+        for (const tk of tokens) {
+            const raw = tk.raw ?? "";
+            const line = raw.trim() ? map.toOriginal(lineAtOffset(preprocessed, offset)) : 0;
+            offset += raw.length;
+            if (!raw.trim()) continue; // 块间空行不产 HTML
+            const piece = stripDataLine(marked.parser([tk]) as string);
+            out += annotateLine(piece, line);
+        }
+        rawHtml = out;
+    } else {
+        // marked v18 同步 API：parse 返回 string（当 async: false）
+        rawHtml = marked.parse(preprocessed, { async: false }) as string;
+    }
 
     // 第一道：DOMPurify 严格清洗
     const clean = DOMPurify.sanitize(rawHtml, {
@@ -51,7 +155,7 @@ export function renderMarkdown(md: string): string {
             "img", "table", "thead", "tbody", "tr", "th", "td",
             "kbd", "del", "ins", "sup", "sub",
         ],
-        ALLOWED_ATTR: ["href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink"],
+        ALLOWED_ATTR: ["href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink", "data-line"],
         FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script"],
         FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "style", "srcdoc"],
         ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|\/|#)/i,
@@ -108,7 +212,8 @@ export class Preview {
     }
 
     render(md: string) {
-        const html = renderMarkdown(md);
+        // lineNumbers: 预览面板始终启用行号标注（与编辑器行号对齐 + 同步滚动锚点）
+        const html = renderMarkdown(md, { lineNumbers: true });
         this.host.innerHTML = html;
         // 兜底：再一次剥离去除残留事件属性
         this.scrub(this.host);

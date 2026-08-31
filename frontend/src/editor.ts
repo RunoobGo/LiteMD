@@ -185,6 +185,25 @@ export class MarkdownEditor {
         this.view.focus();
     }
 
+    /** 编辑器滚动容器（同步滚动监听用） */
+    getScrollDOM(): HTMLElement {
+        return this.view.scrollDOM;
+    }
+
+    /** 视口顶部当前对应的文档行号（1-based，同步滚动用） */
+    getTopLine(): number {
+        const block = this.view.lineBlockAtHeight(this.view.scrollDOM.scrollTop);
+        return this.view.state.doc.lineAt(block.from).number;
+    }
+
+    /** 滚动到指定行（该行顶部对齐视口顶，1-based，同步滚动用） */
+    scrollToLine(line: number) {
+        const lines = this.view.state.doc.lines;
+        const n = Math.min(Math.max(1, line), lines);
+        const block = this.view.lineBlockAt(this.view.state.doc.line(n).from);
+        this.view.scrollDOM.scrollTop = block.top;
+    }
+
     private buildBaseTheme(base: "light" | "dark") {
         // backgroundColor/color 引用 CSS 变量并置于主题扩展之后，
         // 覆盖 oneDark 的硬编码底色，使编辑器跟随全局暗/亮主题切换

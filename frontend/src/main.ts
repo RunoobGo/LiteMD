@@ -12,6 +12,7 @@ import { TabManager } from "./tabs";
 import { MarkdownEditor } from "./editor";
 import { Preview } from "./preview";
 import { SplitPane, type SplitMode } from "./splitpane";
+import { SyncScroll } from "./sync-scroll";
 import { askUnsaved, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
 import {
     openFile,
@@ -116,7 +117,37 @@ const tm = new TabManager(() => {
 let editor: MarkdownEditor | null = null;
 let preview: Preview | null = null;
 let split: SplitPane | null = null;
+let syncScroll: SyncScroll | null = null;
 let lastRenderedActiveId: string | null = null;
+
+// =============================================================================
+// 同步滚动（默认开启，偏好持久化）
+// =============================================================================
+
+const SYNC_SCROLL_KEY = "litemd:sync-scroll";
+
+function loadSyncScrollPref(): boolean {
+    try { return localStorage.getItem(SYNC_SCROLL_KEY) !== "0"; } catch { return true; }
+}
+
+function updateSyncScrollButton() {
+    const btn = document.querySelector<HTMLButtonElement>(".actions button[data-action='sync-scroll']");
+    if (!btn || !syncScroll) return;
+    const on = syncScroll.isEnabled();
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
+    const label = on ? "同步滚动：开" : "同步滚动：关";
+    btn.dataset.tip = label;
+    const tip = btn.querySelector(".tip");
+    if (tip) tip.textContent = label;
+}
+
+function toggleSyncScroll() {
+    if (!syncScroll) return;
+    syncScroll.setEnabled(!syncScroll.isEnabled());
+    try { localStorage.setItem(SYNC_SCROLL_KEY, syncScroll.isEnabled() ? "1" : "0"); } catch { /* 忽略 */ }
+    updateSyncScrollButton();
+}
 
 // Preview 渲染 debounce（16ms ~= 一帧；用户连打字时不会每次都全量重新解析）
 let previewDebounce: number | null = null;
@@ -223,6 +254,13 @@ function initEditorAndPreview() {
 
     split = new SplitPane(splitRoot, { initialRatio: 0.5 });
     setMode(split.getMode()); // 同步顶栏视图模式按钮的初始 active 状态
+
+    // 同步滚动：默认开启（偏好持久化）；仅分屏（both）模式激活
+    syncScroll = new SyncScroll(editor, $("preview"));
+    syncScroll.setEnabled(loadSyncScrollPref());
+    syncScroll.setActive(split.getMode() === "both");
+    updateSyncScrollButton();
+
     lastRenderedActiveId = tm.activeId;
     renderFrontmatterPanel();
     updateMeta();
@@ -338,6 +376,8 @@ function escapeHtml(s: string): string {
 function setMode(mode: SplitMode) {
     if (!split) return;
     split.setMode(mode);
+    // 同步滚动仅在分屏模式有意义（单栏时挂起，避免无效计算）
+    syncScroll?.setActive(mode === "both");
     // 同步顶栏视图模式按钮的 .active 高亮，使当前模式一目了然
     document.querySelectorAll<HTMLButtonElement>(".actions button[data-action^='mode-']").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.action === `mode-${mode}`);
@@ -412,6 +452,7 @@ document.querySelectorAll<HTMLButtonElement>(".actions button").forEach((btn) =>
             case "mode-both": setMode("both"); break;
             case "mode-left": setMode("left"); break;
             case "mode-right": setMode("right"); break;
+            case "sync-scroll": toggleSyncScroll(); break;
             case "toggle-theme": toggleTheme(); break;
         }
     });
@@ -637,6 +678,7 @@ declare global {
         __litemd__cm?: MarkdownEditor;
         __litemd__tm?: TabManager;
         __litemd__preview?: Preview;
+        __litemd__sync?: SyncScroll;
         __getEditorContent?: () => string;
     }
 }
@@ -644,4 +686,5 @@ window.__litemd__split = split!;
 window.__litemd__cm = editor!;
 window.__litemd__tm = tm;
 window.__litemd__preview = preview!;
+window.__litemd__sync = syncScroll!;
 window.__getEditorContent = () => editor!.getContent();
