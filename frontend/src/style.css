@@ -707,13 +707,20 @@ html, body {
 
 /* ===== GFM 任务列表 =====
    marked 输出 <li><input type=checkbox checked disabled> 文本</li>。
-   li 含 checkbox 时隐藏圆点、对齐复选框；checkbox 本身 disabled 无交互。 */
-.preview li:has(> input[type="checkbox"]) {
+   li 含 checkbox 时隐藏圆点、对齐复选框；checkbox 本身 disabled 无交互。
+   注意不能用 > 直接子代选择器：loose list（项间有空行）时 marked 会把
+   内容包进 <p>，结构变为 li > p > input，:has(> input) 失配导致圆点复现。 */
+.preview li:has(input[type="checkbox"]) {
     list-style: none;
     margin-left: -1.3em;
     display: flex;
     align-items: baseline;
     gap: 0.45em;
+}
+/* loose list 的 <p> 包裹层不参与 flex 布局，摊平为行内流 */
+.preview li:has(input[type="checkbox"]) > p {
+    margin: 0;
+    flex: 1;
 }
 .preview input[type="checkbox"] {
     flex: none;
