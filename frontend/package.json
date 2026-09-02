@@ -28,7 +28,8 @@
     "@lezer/markdown": "^1.7.2",
     "dompurify": "^3.4.13",
     "katex": "^0.16.47",
-    "marked": "^18.0.9"
+    "marked": "^18.0.9",
+    "mermaid": "^11.17.2"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
