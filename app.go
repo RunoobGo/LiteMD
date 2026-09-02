@@ -19,7 +19,7 @@ import (
 // AppVersion 是 LiteMD 当前版本号,作为全项目唯一版本事实源。
 // 发版时需同步更新:wails.json 的 info.productVersion(NSIS 安装包名/版本
 // 信息由此生成)。注释中的"编译时注入"曾与硬编码实现不符,已修正。
-const AppVersion = "0.2.0"
+const AppVersion = "0.2.8"
 
 // App 是 Wails 应用主体，前端可通过自动生成的 wailsjs/go 绑定访问其方法。
 //
