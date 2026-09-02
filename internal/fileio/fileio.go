@@ -32,6 +32,11 @@ var ErrTooLarge = errors.New("file too large to read")
 // 读取伪文件（/dev/zero、FIFO 等）会永久挂起或无限增长，必须在 Stat 阶段拒绝。
 var ErrNotRegular = errors.New("not a regular file")
 
+// ErrExternalModified 当磁盘文件的 mtime 与调用方预期不符时返回。
+// 语义：文件在「打开/上次保存」之后被其他程序改过，直接写入会静默覆盖
+// 外部修改（P0-5）。前端应弹冲突确认，用户坚持时以 expectMtime=0 强制写。
+var ErrExternalModified = errors.New("file modified by another program")
+
 // MaxReadSize 是 ReadText 允许读取的最大文件大小（50MB）。
 const MaxReadSize = 50 << 20
 

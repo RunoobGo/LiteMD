@@ -66,12 +66,11 @@ console.log("mermaid.render — 基础渲染与缓存：");
     const fake = makeFakeMod();
     setMermaidLoader(async () => fake as unknown as { initialize(c:any):void; render(id:string,code:string,container?:HTMLElement):Promise<{svg:string}> });
     const r = await renderMermaid("graph TD; A-->B", "dark");
-    assert(r.ok && r.svg.includes("<svg") && r.svg.includes("data-fake-id="), "首次渲染返回 svg 字符串");
-    assert(fake.__renderCalls.length === 1, "首次渲染触发一次 render 调用");
+    assert(r.ok && r.svg.includes("<svg") && r.svg.includes("data-fake-id="), "首次渲染返回 svg 字符串");    assert(fake.__renderCalls.length === 1, "首次渲染触发一次 render 调用");
     assert(mermaidCacheSize() === 1, "缓存条目数 = 1");
 
     const r2 = await renderMermaid("graph TD; A-->B", "dark");
-    assert(r2.ok && r2.svg === r.svg, "二次同 code+theme 命中缓存返回同一字符串");
+    assert(r.ok && r2.ok && r2.svg === r.svg, "二次同 code+theme 命中缓存返回同一字符串");
     assert(fake.__renderCalls.length === 1, "命中缓存不再调用 render");
 }
 
@@ -167,7 +166,7 @@ console.log("mermaid.render — 串行队列（P1-6）：");
     setMermaidLoader(async () => fake as unknown as { initialize(c:any):void; render(id:string,code:string,container?:HTMLElement):Promise<{svg:string}> });
     let inFlight = 0; let maxInFlight = 0;
     const origRender = fake.render.bind(fake);
-    fake.render = async (id, code, container) => {
+    fake.render = async (id, _code, container) => {
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
         try {

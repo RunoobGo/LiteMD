@@ -10,8 +10,8 @@ export function ConsumeStartupFile() {
   return window['go']['main']['App']['ConsumeStartupFile']();
 }
 
-export function CopyImageAsset(arg1, arg2) {
-  return window['go']['main']['App']['CopyImageAsset'](arg1, arg2);
+export function CopyImageAsset(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CopyImageAsset'](arg1, arg2, arg3);
 }
 
 export function GetConfig() {
@@ -50,8 +50,8 @@ export function SaveDialog(arg1) {
   return window['go']['main']['App']['SaveDialog'](arg1);
 }
 
-export function SaveFile(arg1, arg2) {
-  return window['go']['main']['App']['SaveFile'](arg1, arg2);
+export function SaveFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveFile'](arg1, arg2, arg3);
 }
 
 export function SaveFileAs(arg1, arg2) {

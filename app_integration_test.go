@@ -68,8 +68,12 @@ func TestIntegrationFileIO(t *testing.T) {
 	t.Run("SaveFile_then_OpenFile_roundtrip", func(t *testing.T) {
 		out := filepath.Join(dir, "saved-by-backend.md")
 		content := "# 保存验证\n\n由后端 SaveFile 写入。\n时间: " + time.Now().Format(time.RFC3339) + "\n"
-		if err := app.SaveFile(out, content); err != nil {
+		mtime, err := app.SaveFile(out, content, 0)
+		if err != nil {
 			t.Fatalf("SaveFile err: %v", err)
+		}
+		if mtime <= 0 {
+			t.Fatalf("SaveFile 返回的 mtime 异常: %d", mtime)
 		}
 		// OS 层确认文件确实落盘
 		data, err := os.ReadFile(out)

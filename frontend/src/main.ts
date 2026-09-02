@@ -8,17 +8,17 @@
 import "katex/dist/katex.min.css";
 import "./style.css";
 
-import { TabManager } from "./tabs";
+import { TabManager, type Tab } from "./tabs";
 import { MarkdownEditor } from "./editor";
 import { Preview } from "./preview";
 import { SplitPane, type SplitMode } from "./splitpane";
 import { SyncScroll } from "./sync-scroll";
-import { askUnsaved, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
+import { askUnsaved, confirmOverwrite, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
 import {
     openFile,
     pickOpenPath,
+    pickSavePath,
     saveFile,
-    saveFileAs,
     pushRecent,
     copyImageAsset,
     resolveLocalPath,
@@ -287,6 +287,10 @@ function initEditorAndPreview() {
     editor.onImageDrop(async (file) => {
         try {
             const a = tm.active;
+            // P1-10 generation 守卫：await 期间用户可能切到别的标签。
+            // 记下目标 tab，IO 完成后插回原 tab（必要时重新激活），
+            // 旧版直接 insertAtCursor 会把 markdown 插进切过去的那个文档。
+            const targetTabId = a?.id ?? null;
             // 审查 🟡-1：桌面端未保存文档没有可落盘的资产目录——旧版硬编码
             // "/mock/assets/" 是 mock 专用路径，Windows 上非绝对路径会被 Go 侧
             // safeWritePath 拒绝，插入必然失败。桌面端引导先保存；
@@ -306,15 +310,23 @@ function initEditorAndPreview() {
             const b64 = dataUrl.includes(",") ? dataUrl.slice(dataUrl.indexOf(",") + 1) : dataUrl;
             const ts = Date.now().toString(36);
             const safe = file.name.replace(/[^\w.\-]/g, "_");
-            // F3 修复：用 lastIndexOf 安全提取目录
-            let assetDir = "/mock/assets/";
-            if (a?.path) {
-                const lastSlash = Math.max(a.path.lastIndexOf("/"), a.path.lastIndexOf("\\"));
-                assetDir = lastSlash >= 0 ? a.path.slice(0, lastSlash + 1) + "assets/" : "assets/";
+            // P0-2 新契约：只传「文档路径 + 纯文件名」，assets 目录与路径合法性
+            // 由 Go 侧推导校验（旧版前端拼完整 targetPath 是任意写入原语）。
+            // mock 环境（无 window.runtime）由 mocks.ts 落到 /mock/assets/。
+            const assetName = `${ts}_${safe}`;
+            const written = await copyImageAsset(a?.path ?? "", assetName, b64);
+            // P1-10：目标 tab 在 IO 期间被关闭 → 图片已落盘但无处插入，明确提示
+            const target = targetTabId ? tm.get(targetTabId) : null;
+            if (!target) {
+                showError("图片未插入", "原文档标签已关闭，图片文件已写入 assets/ 但未插入文档。");
+                return;
+            }
+            if (tm.activeId !== targetTabId) {
+                // 切回原 tab 再插入（activate 会把编辑器内容换回该 tab）
+                tm.activate(targetTabId!);
             }
             // #9 修复：路径归一为正斜杠（Windows 反斜杠在 Markdown URL 中是转义前缀）
-            const assetPath = normalizeImagePath(`${assetDir}${ts}_${safe}`);
-            await copyImageAsset(assetPath, b64);
+            const assetPath = normalizeImagePath(written);
             // #9 修复：alt 与 URL 分别转义/编码，文件名含 ]、目录含空格括号不再破坏语法
             // 审查 🟡-2：在光标处插入（旧版拼到文档末尾且光标重置到文档首）
             const md = `\n${buildImageMarkdown(file.name, assetPath)}\n`;
@@ -349,7 +361,7 @@ function initEditorAndPreview() {
                 const tryPath = `/mock/${target.replace(/\s+/g, "_")}.md`;
                 if (fs.files.has(tryPath)) {
                     const payload = await openFile(tryPath);
-                    tm.openTab(payload.path, payload.content);
+                    tm.openTab(payload.path, payload.content, payload.modified);
                     return;
                 }
             }
@@ -501,7 +513,7 @@ async function openLocalLink(link: ParsedLink): Promise<void> {
     if (t.kind === "markdown" || t.kind === "text") {
         try {
             // openInCurrentIfEmpty 内含 tab 去重（已打开则激活）与最近文件推送
-            openInCurrentIfEmpty(await openFile(t.path));
+            openInCurrentIfEmpty(await openFile(t.path)); // payload.modified 由 openInCurrentIfEmpty 传递
         } catch (e) {
             showError("打开失败", `${t.path}\n\n${errMsg(e)}`);
         }
@@ -840,7 +852,7 @@ async function handleOpen() {
  * 这与显式 `Ctrl+N` 新建（`handleNew`）不同 —— 后者总应产生新标签。
  * 注意：若当前活动标签是已关联磁盘路径或存在未保存修改，绝不覆盖，避免数据丢失。
  */
-function openInCurrentIfEmpty(payload: { path: string; content: string }): void {
+function openInCurrentIfEmpty(payload: { path: string; content: string; modified?: number }): void {
     const a = tm.active;
     const isEmptyUntitled = !!a && !a.path && !a.dirty && a.liveContent === "";
     if (isEmptyUntitled) {
@@ -857,7 +869,7 @@ function openInCurrentIfEmpty(payload: { path: string; content: string }): void 
         refreshToc();
         updateMeta();
     } else {
-        tm.openTab(payload.path, payload.content);
+        tm.openTab(payload.path, payload.content, payload.modified);
     }
     pushRecent(payload.path).catch(console.warn);
 }
@@ -881,16 +893,57 @@ async function consumeStartupFile(): Promise<boolean> {
     }
 }
 
+// ============================================================================
+// 保存（P0-5：per-tab 串行锁 + 外部修改冲突检测）
+// ============================================================================
+
+/** per-tab 保存锁：同一标签的保存请求串成一条链，Ctrl+S 连按/关签触发
+ * 的保存不会与用户编辑交错出「旧内容覆盖新内容」的竞态。 */
+const saveLocks = new Map<string, Promise<boolean>>();
+function enqueueSave(id: string, fn: () => Promise<boolean>): Promise<boolean> {
+    const prev = saveLocks.get(id) ?? Promise.resolve(true);
+    const next = prev.catch(() => false).then(fn);
+    saveLocks.set(id, next.catch(() => false));
+    return next;
+}
+
+/** 读取指定 tab 的当前有效内容：tab 处于激活态取编辑器实时内容，否则取记忆 */
+function effectiveContent(a: Tab): string {
+    return editor && tm.activeId === a.id ? editor.getContent() : a.liveContent;
+}
+
 async function handleSave(): Promise<boolean> {
     const a = tm.active;
     if (!a) return false;
+    return enqueueSave(a.id, () => saveTabNow(a));
+}
+
+/**
+ * 实际保存（调用方保证同 tab 串行）。
+ * 内容在执行时才读取——排队等待期间用户可能继续输入，过期快照会把
+ * 新输入覆盖掉。保存成功后以 Go 返回的真实 mtime 记账。
+ */
+async function saveTabNow(a: Tab): Promise<boolean> {
     try {
         if (!a.path) {
             return await handleSaveAs();
         }
-        const content = editor ? editor.getContent() : a.liveContent;
-        await saveFile(a.path, content);
-        tm.updateContentBaseline(a.id, content, a.path, Date.now() / 1000);
+        const content = effectiveContent(a);
+        const expectMtime = a.diskMtime ?? 0;
+        let mtime: number;
+        try {
+            mtime = await saveFile(a.path, content, expectMtime);
+        } catch (e) {
+            // P0-5：文件被外部程序改过——旧版直接静默覆盖。弹冲突确认，
+            // 用户坚持才以 expectMtime=0 强制写。
+            if (!(e instanceof Error) || !e.message.includes("modified by another program")) {
+                throw e;
+            }
+            const overwrite = await confirmOverwrite(a.title || a.path);
+            if (!overwrite) return false;
+            mtime = await saveFile(a.path, content, 0);
+        }
+        tm.updateContentBaseline(a.id, content, a.path, mtime);
         renderFrontmatterPanel();
         return true;
     } catch (e) {
@@ -903,10 +956,14 @@ async function handleSaveAs(): Promise<boolean> {
     const a = tm.active;
     if (!a) return false;
     try {
-        const content = editor ? editor.getContent() : a.liveContent;
-        const newPath = await saveFileAs(a.title || "Untitled.md", content);
+        // 先弹对话框再取内容：对话框阻塞期间用户可能继续输入，
+        // 旧版先取内容后弹框，等待期的新输入不会被保存（静默丢失）
+        const newPath = await pickSavePath(a.title || "Untitled.md");
         if (!newPath) return false;
-        tm.updateContentBaseline(a.id, content, newPath, Date.now() / 1000);
+        const content = effectiveContent(a);
+        // 首次写入新路径无冲突基线，expectMtime=0；同样取真实 mtime 记账
+        const mtime = await saveFile(newPath, content, 0);
+        tm.updateContentBaseline(a.id, content, newPath, mtime);
         pushRecent(newPath).catch(console.warn);
         renderFrontmatterPanel();
         return true;

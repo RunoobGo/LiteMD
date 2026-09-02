@@ -52,8 +52,8 @@ export class TabManager {
         return tab;
     }
 
-    /** 从文件路径打开一个新标签 */
-    openTab(path: string, content: string): Tab {
+    /** 从文件路径打开一个新标签；mtime 为磁盘真实 mtime（P0-5 外部修改检测记账） */
+    openTab(path: string, content: string, mtime?: number): Tab {
         // 路径去重：已经打开则激活它
         for (const t of this.tabs.values()) {
             if (t.path === path) {
@@ -70,6 +70,7 @@ export class TabManager {
             baseline: content,
             liveContent: content,
             dirty: false,
+            diskMtime: mtime,
             frontmatter: null,
         };
         this.tabs.set(id, tab);
@@ -83,7 +84,7 @@ export class TabManager {
      * 用于"在空新建页上打开文件"——避免出现"新 tab + 旧空 tab"两个标签。
      * 调用方需自行保证该标签是"未保存且为空"的安全覆盖目标。
      */
-    replaceTabContent(id: string, payload: { path: string; content: string }): Tab | null {
+    replaceTabContent(id: string, payload: { path: string; content: string; modified?: number }): Tab | null {
         const t = this.tabs.get(id);
         if (!t) return null;
         t.path = payload.path;
@@ -91,7 +92,8 @@ export class TabManager {
         t.baseline = payload.content;
         t.liveContent = payload.content;
         t.dirty = false;
-        t.diskMtime = Date.now() / 1000;
+        // P0-5：记账磁盘真实 mtime（旧版用 Date.now() 伪造，检测必然失真）
+        t.diskMtime = payload.modified;
         t.frontmatter = null;
         // 内容整体被替换：旧的光标/滚动记忆失效，清空避免恢复到错误位置
         t.cursor = undefined;

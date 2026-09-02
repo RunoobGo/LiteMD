@@ -53,7 +53,7 @@ func TestAppOpenFile_HappyPath(t *testing.T) {
 func TestAppSaveFile_HappyPath(t *testing.T) {
 	a := NewApp()
 	p := filepath.Join(t.TempDir(), "save.md")
-	if err := a.SaveFile(p, "abc"); err != nil {
+	if _, err := a.SaveFile(p, "abc", 0); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(p)
@@ -64,7 +64,7 @@ func TestAppSaveFile_HappyPath(t *testing.T) {
 
 func TestAppSaveFile_EmptyPath(t *testing.T) {
 	a := NewApp()
-	if err := a.SaveFile("", "x"); err == nil {
+	if _, err := a.SaveFile("", "x", 0); err == nil {
 		t.Fatal("want error")
 	}
 }

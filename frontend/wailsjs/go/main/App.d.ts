@@ -7,7 +7,7 @@ export function AppInfo():Promise<main.AppInfo>;
 
 export function ConsumeStartupFile():Promise<main.FilePayload>;
 
-export function CopyImageAsset(arg1:string,arg2:string):Promise<string>;
+export function CopyImageAsset(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetConfig():Promise<config.Config>;
 
@@ -27,7 +27,7 @@ export function ResolveLocalPath(arg1:string,arg2:string):Promise<main.LinkTarge
 
 export function SaveDialog(arg1:string):Promise<string>;
 
-export function SaveFile(arg1:string,arg2:string):Promise<void>;
+export function SaveFile(arg1:string,arg2:string,arg3:number):Promise<number>;
 
 export function SaveFileAs(arg1:string,arg2:string):Promise<string>;
 

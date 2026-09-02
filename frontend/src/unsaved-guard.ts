@@ -67,6 +67,29 @@ export function quitDecision(hasDirty: boolean, choice: QuitChoice | null): bool
 }
 
 /**
+ * 外部修改冲突确认（P0-5）：磁盘文件的 mtime 与记账不符时弹出。
+ * 返回 true 表示用户选择「覆盖外部修改」；false / ESC / 关闭 = 取消。
+ */
+export async function confirmOverwrite(fileName: string): Promise<boolean> {
+    const dlg = document.getElementById("overwriteDialog") as HTMLDialogElement | null;
+    // 对话框缺失（模板被改坏）时拒绝覆盖，宁可不保存也不能静默覆盖外部修改
+    if (!dlg) return false;
+    const hint = document.getElementById("overwriteHint");
+    if (hint) hint.textContent = `${fileName} 在打开后被其他程序修改过。继续保存将覆盖磁盘上的内容，是否覆盖？`;
+    // 与 askUnsaved 同源：ESC 残留 returnValue 会导致复用上次选择
+    dlg.returnValue = "";
+    if (!dlg.open) dlg.showModal();
+    return new Promise<boolean>((resolve) => {
+        const handler = () => {
+            const v = dlg.returnValue || "cancel";
+            dlg.removeEventListener("close", handler);
+            resolve(v === "overwrite");
+        };
+        dlg.addEventListener("close", handler, { once: true });
+    });
+}
+
+/**
  * 退出前协商：无脏直接放行；有脏弹 quitDialog 确认。
  * 返回 true 表示可以调用 Quit()。
  */

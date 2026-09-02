@@ -222,6 +222,17 @@
         </form>
     </dialog>
 
+    <dialog id="overwriteDialog" class="litemd-dialog">
+        <form method="dialog">
+            <h3>文件已被外部程序修改</h3>
+            <p id="overwriteHint" class="muted"></p>
+            <menu>
+                <button value="cancel" autofocus>取消</button>
+                <button value="overwrite" class="danger">覆盖外部修改</button>
+            </menu>
+        </form>
+    </dialog>
+
     <script src="./src/dev-bootstrap.ts" type="module"></script>
 </body>
 </html>

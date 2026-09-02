@@ -33,6 +33,8 @@ function loadPersistedFiles(): Map<string, string> {
 class InMemoryMockFs implements MockFs {
     files = loadPersistedFiles();
     savedFiles: Array<{ path: string; content: string }> = [];
+    /** 路径 → 上次 SaveFile 记账的 mtime（对齐 Go 侧冲突检测） */
+    mtimes = new Map<string, number>();
     dirMarkers = new Set<string>();
     externalOpens: string[] = [];
     systemOpens: string[] = [];
@@ -106,9 +108,20 @@ const mockFs = new InMemoryMockFs();
                     return ans ?? "";
                 } catch { return "/mock/untitled.md"; }
             },
-            SaveFile: async (path: string, content: string) => {
+            SaveFile: async (path: string, content: string, expectMtime?: number) => {
+                // 对齐 Go 侧 P0-5 契约：expectMtime>0 时校验记账 mtime，
+                // 不符抛"modified by another program"（前端弹覆盖确认）
+                if (expectMtime && expectMtime > 0) {
+                    const prev = mockFs.mtimes.get(path);
+                    if (prev !== undefined && prev !== expectMtime) {
+                        throw new Error(`mock: file modified by another program: ${path}`);
+                    }
+                }
                 mockFs.savedFiles.push({ path, content });
                 mockFs.files.set(path, content);
+                const mt = Math.floor(Date.now() / 1000);
+                mockFs.mtimes.set(path, mt);
+                return mt;
             },
             SaveFileAs: async (_suggested: string, _content: string) => {
                 // 同上：prompt 不可用时降级默认路径，避免「另存为失败」误报
@@ -200,13 +213,20 @@ const mockFs = new InMemoryMockFs();
                 // mock 图片固定返回 1x1 PNG，便于断言 data URL 回填
                 return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
             },
-            CopyImageAsset: async (targetPath: string, base64Data: string) => {
-                // 对齐 Go 侧 safeWritePath 契约（审查 🟡-1）：非绝对路径必须拒绝。
-                // 旧版 mock 来者不拒，E2E 全绿但 Windows 真机上同样的相对路径
-                // 会被 ErrUnsafePath 打回——mock 与真实 binding 行为漂移会掩盖缺陷。
-                if (!/^([A-Za-z]:)?[\\/]/.test(targetPath)) {
-                    throw new Error(`mock: unsafe path: not absolute: ${targetPath}`);
+            CopyImageAsset: async (baseFile: string, assetName: string, base64Data: string) => {
+                // 对齐 Go 侧新契约（P0-2）：baseFile 必须绝对路径（未保存文档
+                // 前端已拦截，mock 专用 baseFile 传空串时落到 /mock/assets/）。
+                // 旧版 mock 接受完整 targetPath，与真实 binding 行为漂移会掩盖缺陷。
+                if (baseFile && !/^([A-Za-z]:)?[\\/]/.test(baseFile)) {
+                    throw new Error(`mock: unsafe base file: not absolute: ${baseFile}`);
                 }
+                if (!assetName || /[\\/]/.test(assetName)) {
+                    throw new Error(`mock: invalid asset name: ${assetName}`);
+                }
+                const dir = baseFile
+                    ? baseFile.slice(0, Math.max(baseFile.lastIndexOf("/"), baseFile.lastIndexOf("\\")) + 1) + "assets/"
+                    : "/mock/assets/";
+                const targetPath = `${dir}${assetName}`;
                 // mock：把 data uri 写入 mock FS，并把 base64 写到 targetPath
                 const stripped = base64Data.startsWith("data:") ? base64Data.split(",")[1] ?? "" : base64Data;
                 mockFs.files.set(targetPath, `<base64:${stripped.length}chars>`);

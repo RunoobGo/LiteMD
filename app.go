@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -150,14 +151,35 @@ func (a *App) SaveDialog(suggestedName string) (string, error) {
 	})
 }
 
-// SaveFile 保存文本到指定路径。
+// SaveFile 保存文本到指定路径，返回保存后磁盘文件的真实 mtime（Unix 秒）。
+//
+// P0-5 外部修改冲突检测：expectMtime > 0 时先 stat 目标文件，mtime 与预期
+// 不符（文件被其他程序改过）返回包一层 fileio.ErrExternalModified 的错误，
+// 不写入——旧版会静默覆盖外部修改，且前端从不消费 FilePayload.Modified，
+// diskMtime 只写不读。expectMtime 传 0（首次保存/用户确认覆盖）跳过检测。
+//
+// 返回 mtime 而非让前端用本地时钟伪造（旧版 Date.now()/1000 与磁盘真实
+// mtime 存在时钟偏差，会把「外部改过」误判为「没改过」）。
 //
 // 注意：调用方应先通过 SaveDialog 让用户确认目标路径（如果不希望弹窗，可由前端直接调）。
-func (a *App) SaveFile(path, content string) error {
+func (a *App) SaveFile(path, content string, expectMtime int64) (int64, error) {
 	if path == "" {
-		return errors.New("path is empty")
+		return 0, errors.New("path is empty")
 	}
-	return fileio.WriteText(path, content)
+	if expectMtime > 0 {
+		if st, err := os.Stat(path); err == nil && st.ModTime().Unix() != expectMtime {
+			return 0, fmt.Errorf("%w: %s (disk %d, expected %d)",
+				fileio.ErrExternalModified, path, st.ModTime().Unix(), expectMtime)
+		}
+	}
+	if err := fileio.WriteText(path, content); err != nil {
+		return 0, err
+	}
+	// 保存后取真实 mtime 回传；stat 失败退回当前时间（保底可用）
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime().Unix(), nil
+	}
+	return time.Now().Unix(), nil
 }
 
 // SaveFileAs 弹出对话框让用户选择保存位置，然后写入。

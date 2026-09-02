@@ -28,12 +28,24 @@ export async function pickOpenPath(): Promise<string> {
     return await bind("OpenDialog")();
 }
 
-export async function saveFile(path: string, content: string): Promise<void> {
-    await bind("SaveFile")(path, content);
+/**
+ * 保存文件，返回保存后磁盘文件的真实 mtime（Unix 秒），供 Tab.diskMtime
+ * 记账（P0-5：旧版前端用 Date.now() 伪造，与磁盘真实 mtime 有时钟偏差）。
+ *
+ * expectMtime > 0 时 Go 侧检测外部修改：文件被其他程序改过则抛
+ * ErrExternalModified 错误，调用方应弹冲突确认后以 0 强制覆盖。
+ */
+export async function saveFile(path: string, content: string, expectMtime = 0): Promise<number> {
+    return await bind("SaveFile")(path, content, expectMtime);
 }
 
 export async function saveFileAs(suggested: string, content: string): Promise<string> {
     return await bind("SaveFileAs")(suggested, content);
+}
+
+/** 弹出另存为对话框，仅取路径（写入由 saveFile 完成，统一走 mtime 冲突检测） */
+export async function pickSavePath(suggested: string): Promise<string> {
+    return await bind("SaveDialog")(suggested);
 }
 
 export async function getConfig(): Promise<ConfigT.Config> {
@@ -44,8 +56,15 @@ export async function pushRecent(path: string): Promise<ConfigT.Config> {
     return await bind("PushRecent")(path);
 }
 
-export async function copyImageAsset(targetPath: string, base64Data: string): Promise<string> {
-    return await bind("CopyImageAsset")(targetPath, base64Data);
+/**
+ * 把图片资产写入当前文档所在目录的 assets/ 下（P0-2 新契约）。
+ *
+ * 旧签名让前端传完整 targetPath，等价于任意文件写入原语；现在只传
+ * 「文档绝对路径 + 纯文件名」，写入位置由 Go 侧从文档目录推导并校验
+ * 扩展名白名单 / 大小上限。返回后端落盘的绝对路径。
+ */
+export async function copyImageAsset(baseFile: string, assetName: string, base64Data: string): Promise<string> {
+    return await bind("CopyImageAsset")(baseFile, assetName, base64Data);
 }
 
 // ============================================================================
