@@ -3,7 +3,8 @@
 // 这是一个用 node + jsdom 跑的简单断言程序，不依赖 vitest。
 // T4 修复：所有断言改为严格条件（去除 || 永真陷阱）。
 
-import { renderMarkdown } from "./preview";
+import { renderMarkdown, Preview } from "./preview";
+import { setMermaidLoader, clearMermaidCache } from "./mermaid";
 
 let pass = 0; let fail = 0;
 function assert(cond: boolean, msg: string) {
@@ -160,5 +161,132 @@ console.log("\nGFM 任务列表复选框：");
 }
 
 // ============================================================================
+console.log("\n内嵌 HTML 渲染（v0.2.7 白名单扩充）：");
+{
+    const html1 = renderMarkdown('<div class="box">容器内容</div>');
+    assert(html1.includes("<div") && html1.includes('class="box"'), "div + class 保留");
+    const html2 = renderMarkdown('<figure><img src="a.png" alt="x"><figcaption>图注</figcaption></figure>');
+    assert(html2.includes("<figure") && html2.includes("<figcaption>"), "figure/figcaption 保留");
+    const html3 = renderMarkdown("<details><summary>展开</summary>正文</details>");
+    assert(html3.includes("<details") && html3.includes("<summary>"), "details/summary 保留");
+    const html4 = renderMarkdown("<dl><dt>术语</dt><dd>定义</dd></dl>");
+    assert(html4.includes("<dl>") && html4.includes("<dt>") && html4.includes("<dd>"), "dl/dt/dd 保留");
+    const html5 = renderMarkdown('<table><tr><td colspan="2" rowspan="3">跨</td></tr></table>');
+    assert(html5.includes('colspan="2"') && html5.includes('rowspan="3"'), "colspan/rowspan 保留");
+    const html6 = renderMarkdown('<video src="v.mp4" controls loop muted poster="p.jpg"></video>');
+    assert(html6.includes("<video") && html6.includes("controls") && html6.includes("loop"), "video/controls/loop 保留");
+    assert(html6.includes('poster="p.jpg"'), "poster 属性保留");
+    const html7 = renderMarkdown('<time datetime="2026-09-01">今天</time>');
+    assert(html7.includes('datetime="2026-09-01"'), "time/datetime 保留");
+    const html8 = renderMarkdown("<p>上标 <var>x</var> 与 <abbr title=\"缩写\">AB</abbr></p>");
+    assert(html8.includes("<var>") && html8.includes("<abbr"), "var/abbr 保留");
+    // 非白名单交互元素仍被剥除
+    const html9 = renderMarkdown('<button onclick="alert(1)">点</button><form action="x"></form>');
+    assert(!html9.includes("<button") && !html9.includes("<form"), "button/form 仍被剥除");
+    const html10 = renderMarkdown('<iframe src="https://evil.example"></iframe><object data="x"></object>');
+    assert(!html10.toLowerCase().includes("<iframe") && !html10.toLowerCase().includes("<object"), "iframe/object 仍被剥除");
+}
+
+console.log("\nstyle 属性过滤（v0.2.7）：");
+{
+    const s1 = renderMarkdown('<span style="color: red; font-weight: bold">红字</span>');
+    assert(s1.includes("color: red"), "安全 style 声明保留");
+    const s2 = renderMarkdown('<div style="position: fixed; inset: 0; z-index: 9999">盖 UI</div>');
+    assert(!/position\s*:\s*fixed/i.test(s2) && !/z-index/.test(s2), "position:fixed/z-index 被过滤");
+    const s3 = renderMarkdown('<div style="background-image: url(https://evil.example/t.png)">跟踪</div>');
+    assert(!/evil\.example/.test(s3), "外发 url() 被过滤");
+    const s4 = renderMarkdown('<div style="width: expression(alert(1))">IE</div>');
+    assert(!/expression/i.test(s4), "expression() 被过滤");
+    const s5 = renderMarkdown('<div style="position: relative; top: 4px">相对</div>');
+    assert(/position\s*:\s*relative/i.test(s5) && !/\btop\s*:/.test(s5), "position:relative 保留但 top 丢弃");
+}
+
+console.log("\n<style> 块作用域化（v0.2.7）：");
+{
+    const css1 = renderMarkdown("text\n\n<style>\np { color: red }\n</style>");
+    assert(/<style data-user-css="1">/.test(css1), "<style> 块产出 data-user-css 标签");
+    assert(css1.includes(".preview-content p") && css1.includes("color: red"), "选择器被前缀化到预览区作用域");
+    const css2 = renderMarkdown("<style>body { margin: 0 }</style>");
+    assert(!/\bbody\s*\{/.test(css2) && css2.includes(".preview-content {"), "body 选择器映射为前缀本体");
+    const css3 = renderMarkdown("<style>@import url('https://evil.example/x.css');</style>");
+    assert(!/@import/i.test(css3), "@import 远程样式被丢弃");
+    const css4 = renderMarkdown("<style>.t { background: url('https://evil.example/a.png') }</style>");
+    assert(!/evil\.example/.test(css4), "style 块内外发 url 丢弃");
+    const css5 = renderMarkdown("<style>@keyframes spin { from { transform: none } to { transform: rotate(1turn) } }</style>");
+    assert(css5.includes("@keyframes spin") && css5.includes("from") && !css5.includes(".preview-content from"), "@keyframes 内部不前缀");
+    const css6 = renderMarkdown('<style>a[href="</style><img src=x onerror=alert(1)>"] { color: red }</style>');
+    // 浏览器原生解析：CSS 字符串里的 </style> 会提前终止 style 块（与
+    // extractStyleBlocks 的非贪婪截取一致），逃逸出的 HTML 落回 DOMPurify
+    // 管线被清洗——onerror 必须消失，残余 <img> 无事件属性即安全
+    assert(!/onerror/i.test(css6), "style 块逃逸出的 HTML 仍经 DOMPurify 清洗（无 onerror）");
+}
+
+console.log("\ndata URI 图片（v0.2.7）：");
+{
+    const d1 = renderMarkdown('<img src="data:image/png;base64,iVBORw0KGgo=" alt="b64">');
+    assert(/src="data:image\/png;base64,iVBORw0KGgo="/.test(d1), "data:image base64 保留");
+    const d2 = renderMarkdown('<img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">');
+    assert(!/data:image\/svg\+xml/.test(d2), "data:image/svg+xml（可携带脚本）拒绝");
+    const d3 = renderMarkdown('<img src="data:text/html;base64,PHNjcmlwdD4=">');
+    assert(!/data:text\/html/.test(d3), "data:text/html 拒绝");
+}
+
+// ============================================================================
+(async () => {
+console.log("\nmermaid 块替换与降级（v0.2.8，Preview 实例化集成）：");
+{
+    // 让 mermaid 渲染走 fake loader：成功路径与失败路径分别断言
+    let fakeCalls = 0;
+    setMermaidLoader(async () => ({
+        initialize: () => {},
+        async render(_id: string, _code: string, container: HTMLElement) {
+            fakeCalls++;
+            // fake 失败模式：throw → 触发 is-error 降级
+            if (_code.includes("syntax-broken")) throw new Error("fake fail");
+            container.innerHTML = "<svg data-fake><text>OK</text></svg>";
+            return { svg: container.innerHTML };
+        },
+    }));
+    clearMermaidCache();
+
+    const host = document.createElement("div");
+    host.id = "preview";
+    document.body.appendChild(host);
+    const prev = new Preview(host);
+
+    // 成功路径：flowchart 应渲染出 svg
+    prev.render("```mermaid\nflowchart TD\n  A --> B\n```");
+    await new Promise<void>((r) => setTimeout(r, 30));
+    const okHolder = host.querySelector(".mermaid-block[data-state]");
+    assert(okHolder !== null, "mermaid 代码块替换为 .mermaid-block 容器");
+    assert(okHolder?.getAttribute("data-state") === "ok", "合法图渲染成功 → data-state=ok");
+    assert(okHolder?.querySelector("svg") !== null, "成功路径注入 <svg>");
+    // 不应再是 code-block 装饰
+    assert(host.querySelectorAll(".code-block .mermaid-block").length === 0, "mermaid 块不进入 .code-block 装饰（无复制按钮）");
+    assert(host.querySelector("pre > code.language-mermaid") === null, "原 <pre><code.language-mermaid> 被替换");
+
+    // 失败路径：语法错误降级为 is-error
+    prev.render("```mermaid\nsyntax-broken diagram\n```");
+    await new Promise<void>((r) => setTimeout(r, 30));
+    const errHolder = host.querySelector(".mermaid-block[data-state='error']");
+    assert(errHolder !== null, "语法错误 → data-state=error 容器存在");
+    assert(errHolder?.textContent?.includes("语法错误") ?? false, "错误占位文案包含「语法错误」");
+    assert(errHolder?.textContent?.includes("syntax-broken") ?? false, "错误占位保留原码便于校对");
+
+    // 竞态：旧 renderGen 的延迟回调不应覆盖新结果
+    fakeCalls = 0;
+    prev.render("```mermaid\ng1\n```");
+    prev.render("```mermaid\ng2\n```");
+    await new Promise<void>((r) => setTimeout(r, 30));
+    const all = Array.from(host.querySelectorAll<HTMLElement>(".mermaid-block"));
+    assert(all.length === 1 && all[0].dataset.code === "g2", "快速切换仅保留最新文档的 mermaid 块");
+
+    prev.clear();
+    document.body.removeChild(host);
+    setMermaidLoader(null);
+    clearMermaidCache();
+}
+
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);
+})();

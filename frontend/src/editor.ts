@@ -169,6 +169,55 @@ export class MarkdownEditor {
         return { line: lineObj.number, col: head - lineObj.from + 1 };
     }
 
+    /**
+     * 跳转并聚焦到指定行：滚动到视口顶部 + 光标落到行首 + 抢焦点。
+     *
+     * 与 scrollToLine 的分工：后者只滚容器、不动选区、不抢焦点
+     * （同步滚动链路用，抢焦点会打断用户正在另一侧的输入）。
+     */
+    revealLine(line: number) {
+        const lines = this.view.state.doc.lines;
+        const n = Math.min(Math.max(1, line), lines);
+        const lineObj = this.view.state.doc.line(n);
+        this.view.dispatch({
+            selection: { anchor: lineObj.from },
+            effects: EditorView.scrollIntoView(lineObj.from, { y: "start" }),
+        });
+        this.view.focus();
+    }
+
+    /**
+     * 在光标处插入文本（图片拖入/粘贴用），光标移到插入内容之后并滚入视野。
+     * 旧版用 setContent 拼接文档末尾：内容跑到尾部、光标重置到文档首（审查 🟡-2）。
+     */
+    insertAtCursor(text: string): void {
+        const head = this.view.state.selection.main.head;
+        this.view.dispatch({
+            changes: { from: head, insert: text },
+            selection: { anchor: head + text.length },
+            scrollIntoView: true,
+        });
+        this.view.focus();
+    }
+
+    /** 光标定位到指定行列（1-based），供恢复 tab 记忆的光标位置 */
+    setCursorPos(line: number, col: number): void {
+        const lines = this.view.state.doc.lines;
+        const n = Math.min(Math.max(1, line), lines);
+        const lineObj = this.view.state.doc.line(n);
+        const anchor = Math.min(lineObj.from + Math.max(0, col - 1), lineObj.to);
+        this.view.dispatch({ selection: { anchor } });
+    }
+
+    /** 编辑器滚动位置（tab 切换记忆用） */
+    getScrollTop(): number {
+        return this.view.scrollDOM.scrollTop;
+    }
+
+    setScrollTop(top: number): void {
+        this.view.scrollDOM.scrollTop = top;
+    }
+
     /** 切主题 */
     setTheme(theme: LiteMDTheme) {
         this.view.dispatch({

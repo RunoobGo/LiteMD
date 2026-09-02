@@ -21,12 +21,21 @@ import {
     saveFileAs,
     pushRecent,
     copyImageAsset,
+    resolveLocalPath,
+    openExternal,
+    openPath,
+    readLocalAsset,
+    type LinkTargetInfo,
 } from "./file-ops";
 import { parseFrontmatter } from "./obsidian";
 import { buildImageMarkdown, normalizeImagePath } from "./md-escape";
+import { escapeHtml } from "./html";
+import type { ParsedLink } from "./link-handler";
 import { ConsumeStartupFile } from "../wailsjs/go/main/App";
 import { EventsOn, WindowIsMaximised, WindowMinimise, WindowToggleMaximise, Quit } from "../wailsjs/runtime/runtime";
 import { initTitlebar } from "./titlebar";
+import { Sidebar } from "./sidebar";
+import { TocPanel } from "./toc";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
@@ -55,7 +64,21 @@ const statusPath = $<HTMLSpanElement>("statusPath");
 const statusPos = $<HTMLSpanElement>("statusPos");
 const meta = $<HTMLDivElement>("meta");
 const splitRoot = $<HTMLDivElement>("splitpane");
-const fmPanel = $<HTMLDetailsElement>("frontmatterPanel") as unknown as HTMLDetailsElement;
+const fmPanel = $<HTMLDetailsElement>("frontmatterPanel");
+
+// 状态栏路径点击复制（审查 🟢-10）：无独立「复制路径」入口时，
+// 点击路径是最自然的发现路径。
+statusPath.title = "点击复制路径";
+statusPath.addEventListener("click", () => {
+    const p = statusPath.textContent || "";
+    if (!p || p === "未打开文件") return;
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(p).then(() => {
+        const old = statusPath.textContent ?? "";
+        statusPath.textContent = "已复制路径";
+        setTimeout(() => { statusPath.textContent = old; }, 1200);
+    }).catch(() => { /* 剪贴板拒绝时静默 */ });
+});
 
 // =============================================================================
 // 主题（暗/亮切换）。index.html 头部内联脚本已在解析阶段读取 localStorage
@@ -95,6 +118,8 @@ function applyTheme(base: ThemeBase, persist = true, animate = true): void {
         btn.setAttribute("aria-label", label);
         btn.setAttribute("aria-pressed", String(base === "light"));
     }
+    // v0.2.8 mermaid：主题切换后已渲染图表按新主题重新水合（缓存按 theme 隔离）
+    preview?.onThemeChange(base);
     if (persist) {
         try { localStorage.setItem(THEME_KEY, base); } catch { /* 隐私模式等场景下忽略 */ }
     }
@@ -119,6 +144,73 @@ let preview: Preview | null = null;
 let split: SplitPane | null = null;
 let syncScroll: SyncScroll | null = null;
 let lastRenderedActiveId: string | null = null;
+
+// =============================================================================
+// 左侧边栏 + 文档大纲
+// =============================================================================
+
+const appRoot = $<HTMLElement>("app");
+const tocPanel = new TocPanel($<HTMLElement>("tocPanel"), {
+    // 跳转目标取决于当前视图模式：
+    //   - 仅预览：编辑器 pane 是 display:none，对它 dispatch 滚动或 focus() 都是
+    //     空操作，用户看不到任何反应 —— 必须改为滚动预览区（此时用户只看到预览）。
+    //   - 分屏 / 仅编辑：跳编辑器；分屏下同步滚动会把预览一并带过去。
+    onSelect: (line) => {
+        if (split?.getMode() === "right") {
+            preview?.scrollToLine(line);
+            // 预览模式没有光标事件，跳转后手动同步高亮，否则点了没反馈
+            tocPanel.setActiveLine(line);
+        } else {
+            editor?.revealLine(line);
+        }
+    },
+});
+
+// 仅预览模式下编辑器不可见，大纲高亮改由预览区滚动位置驱动。
+// 少了这段，手动滚动预览时高亮会一直停在原地，看起来像坏了。
+let previewScrollRaf: number | null = null;
+function syncTocFromPreview(): void {
+    if (previewScrollRaf !== null) return;
+    previewScrollRaf = requestAnimationFrame(() => {
+        previewScrollRaf = null;
+        const line = preview?.activeHeadingLine() ?? 0;
+        if (line > 0) tocPanel.setActiveLine(line);
+    });
+}
+$("preview").addEventListener("scroll", () => {
+    // 分屏模式由同步滚动 + 编辑器光标驱动高亮，这里只接管仅预览模式
+    if (split?.getMode() !== "right") return;
+    syncTocFromPreview();
+}, { passive: true });
+const sidebar = new Sidebar(appRoot, $<HTMLElement>("sidebar"), {
+    onChange: (visible) => updateSidebarButton(visible),
+});
+
+/** 刷新大纲（内容或标签变化时调用）。TocPanel 内部有签名短路，正文打字不重建 DOM。 */
+function refreshToc(): void {
+    const a = tm.active;
+    tocPanel.update(a ? a.liveContent : null);
+    // 重新渲染后需按当前光标位置恢复"所在章节"高亮
+    if (editor) tocPanel.setActiveLine(editor.getCursorPos().line);
+}
+
+/** 同步顶栏侧边栏按钮状态（面板内的收起箭头不参与 active 高亮） */
+function updateSidebarButton(visible: boolean): void {
+    document.querySelectorAll<HTMLButtonElement>("button[data-action='toggle-sidebar']").forEach((btn) => {
+        if (btn.classList.contains("sidebar-collapse")) return;
+        btn.classList.toggle("active", visible);
+        btn.setAttribute("aria-pressed", String(visible));
+        const label = visible ? "隐藏大纲 (Ctrl+B)" : "显示大纲 (Ctrl+B)";
+        btn.dataset.tip = label;
+        const tip = btn.querySelector(".tip");
+        if (tip) tip.textContent = label;
+    });
+}
+
+// 顶栏按钮 + 面板内收起箭头共用同一 action，统一在此绑定
+document.querySelectorAll<HTMLButtonElement>("button[data-action='toggle-sidebar']").forEach((btn) => {
+    btn.addEventListener("click", () => sidebar.toggle());
+});
 
 // =============================================================================
 // 同步滚动（默认开启，偏好持久化）
@@ -177,11 +269,15 @@ function initEditorAndPreview() {
                 tm.syncLiveContent(a.id, content);
                 schedulePreview(content);
                 renderFrontmatterPanel();
+                refreshToc();
                 updateMeta();
             }
         },
         { base: currentThemeBase() },
-        (line, col) => updateStatusPos(line, col)
+        (line, col) => {
+            updateStatusPos(line, col);
+            tocPanel.setActiveLine(line);
+        }
     );
     // 初始化状态栏光标位置显示
     const pos0 = editor.getCursorPos();
@@ -190,6 +286,15 @@ function initEditorAndPreview() {
     // 图片拖入 / 粘贴：复制到资产目录并插入 markdown
     editor.onImageDrop(async (file) => {
         try {
+            const a = tm.active;
+            // 审查 🟡-1：桌面端未保存文档没有可落盘的资产目录——旧版硬编码
+            // "/mock/assets/" 是 mock 专用路径，Windows 上非绝对路径会被 Go 侧
+            // safeWritePath 拒绝，插入必然失败。桌面端引导先保存；
+            // 浏览器 mock/E2E 环境（无 window.runtime）保留原行为。
+            if (!a?.path && (window as any).runtime) {
+                showError("请先保存文档", "图片会保存到文档所在目录的 assets/ 下。\n请先保存文档（Ctrl+S）后再插入图片。");
+                return;
+            }
             // F2 修复：改用 FileReader.readAsDataURL 替代 String.fromCharCode.apply，避免大图栈溢出
             const dataUrl = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
@@ -201,7 +306,6 @@ function initEditorAndPreview() {
             const b64 = dataUrl.includes(",") ? dataUrl.slice(dataUrl.indexOf(",") + 1) : dataUrl;
             const ts = Date.now().toString(36);
             const safe = file.name.replace(/[^\w.\-]/g, "_");
-            const a = tm.active;
             // F3 修复：用 lastIndexOf 安全提取目录
             let assetDir = "/mock/assets/";
             if (a?.path) {
@@ -212,8 +316,9 @@ function initEditorAndPreview() {
             const assetPath = normalizeImagePath(`${assetDir}${ts}_${safe}`);
             await copyImageAsset(assetPath, b64);
             // #9 修复：alt 与 URL 分别转义/编码，文件名含 ]、目录含空格括号不再破坏语法
+            // 审查 🟡-2：在光标处插入（旧版拼到文档末尾且光标重置到文档首）
             const md = `\n${buildImageMarkdown(file.name, assetPath)}\n`;
-            if (editor) editor.setContent(editor.getContent() + md);
+            if (editor) editor.insertAtCursor(md);
         } catch (e) {
             console.warn("image drop failed", e);
             showError("图片插入失败", (e as Error).message ?? String(e));
@@ -252,6 +357,10 @@ function initEditorAndPreview() {
         showError("Wiki Link 未找到", `目标：${target}\n\n创建文件 "${target}.md" 后可点击跳转`);
     });
 
+    // 普通链接点击：Preview 已阻止默认导航（否则会跳到 http://wails.localhost/…
+    // 触发 404 白屏），这里按类型决定动作
+    preview.onLinkClick((link) => { void handlePreviewLink(link); });
+
     split = new SplitPane(splitRoot, { initialRatio: 0.5 });
     setMode(split.getMode()); // 同步顶栏视图模式按钮的初始 active 状态
 
@@ -263,6 +372,7 @@ function initEditorAndPreview() {
 
     lastRenderedActiveId = tm.activeId;
     renderFrontmatterPanel();
+    refreshToc();
     updateMeta();
 }
 
@@ -276,6 +386,7 @@ function refreshActiveEditor() {
         }
         if (preview) renderPreviewNow("");
         renderFrontmatterPanel();
+        refreshToc();
         updateMeta();
         // 异步新建标签，避免在 onChange 通知链路中修改 TabManager 状态
         queueMicrotask(() => {
@@ -286,12 +397,25 @@ function refreshActiveEditor() {
         });
         return;
     }
+    // 切走前保存旧标签的光标/滚动（审查 🟡-2：切换标签后光标丢失）
+    if (editor && lastRenderedActiveId && lastRenderedActiveId !== a.id) {
+        const prev = tm.get(lastRenderedActiveId);
+        if (prev) {
+            const pos = editor.getCursorPos();
+            prev.cursor = { line: pos.line, col: pos.col };
+            prev.scrollTop = editor.getScrollTop();
+        }
+    }
     if (editor && lastRenderedActiveId !== a.id) {
         editor.setContent(a.liveContent);
+        // 恢复该标签记忆的光标与滚动位置（首次打开无记忆则停在文档首）
+        if (a.cursor) editor.setCursorPos(a.cursor.line, a.cursor.col);
+        if (a.scrollTop) editor.setScrollTop(a.scrollTop);
         lastRenderedActiveId = a.id;
     }
     if (preview) renderPreviewNow(a.liveContent);
     renderFrontmatterPanel();
+    refreshToc();
     updateMeta();
 }
 
@@ -300,8 +424,179 @@ function renderPreview(content: string) {
     if (!content.trim()) {
         preview.clear();
     } else {
-        preview.render(content);
+        // basePath 让预览能把相对链接/相对图片换算到磁盘；
+        // 未保存文档为空串，此时相对链接会提示"请先保存"
+        preview.render(content, {
+            basePath: tm.active?.path ?? "",
+            resolveAsset: resolveAssetSrc,
+        });
     }
+}
+
+/**
+ * 相对路径图片 → data URL。
+ *
+ * 预览跑在 wails.localhost 源下，`![](../../img.png)` 会被浏览器解析成
+ * http://wails.localhost/img.png 而必然 404 破图，这里改从磁盘读取。
+ */
+async function resolveAssetSrc(src: string): Promise<string | null> {
+    try {
+        const t = await resolveLocalPath(tm.active?.path ?? "", src);
+        if (!t.exists) return null;
+        return await readLocalAsset(t.path);
+    } catch {
+        return null; // 解析失败保持原样（破图），不打断渲染
+    }
+}
+
+// =============================================================================
+// 预览链接点击分流
+//
+// Preview 已对所有 <a> 调用 preventDefault —— 放任默认行为会让 WebView 导航到
+// http://wails.localhost/… 触发 404 白屏（整个前端被卸载、未保存内容丢失）。
+// 这里只决定"点了之后该干什么"，任何分支都不会发生页面导航。
+// =============================================================================
+
+/** 按链接类型分流处理预览区的一次点击 */
+async function handlePreviewLink(link: ParsedLink): Promise<void> {
+    switch (link.kind) {
+        case "unsafe":
+            return; // javascript:/data: 等 —— 渲染层已剥 href，静默忽略
+        case "external":
+        case "mail":
+            try {
+                await openExternal(link.href);
+            } catch (e) {
+                showError("无法打开链接", `${link.href}\n\n${errMsg(e)}`);
+            }
+            return;
+        case "anchor":
+            if (preview?.scrollToAnchor(link.anchor)) return;
+            showError("锚点不存在", `未找到标题锚点：#${safeDecodeURI(link.anchor)}`);
+            return;
+        case "local":
+            await openLocalLink(link);
+            return;
+    }
+}
+
+/** 本地链接：解析成磁盘路径后按类型打开，或给出明确提示 */
+async function openLocalLink(link: ParsedLink): Promise<void> {
+    let t: LinkTargetInfo;
+    try {
+        t = await resolveLocalPath(tm.active?.path ?? "", link.href);
+    } catch (e) {
+        const msg = errMsg(e);
+        if (msg.includes("base file path is empty")) {
+            showError("请先保存文档", "相对链接以文档所在目录为基准解析。\n请先保存文档（Ctrl+S）后再点击。");
+        } else if (msg.includes("not a local path")) {
+            // 分类层已排除，理论不可达；兜底交系统浏览器而不是静默失败
+            await openExternal(link.href).catch(() => showError("无法打开链接", link.href));
+        } else {
+            showError("无法解析链接", `${link.href}\n\n${msg}`);
+        }
+        return;
+    }
+
+    if (t.kind === "markdown" || t.kind === "text") {
+        try {
+            // openInCurrentIfEmpty 内含 tab 去重（已打开则激活）与最近文件推送
+            openInCurrentIfEmpty(await openFile(t.path));
+        } catch (e) {
+            showError("打开失败", `${t.path}\n\n${errMsg(e)}`);
+        }
+        return;
+    }
+    if (t.kind === "dir") {
+        showError("无法打开", `这是一个目录，LiteMD 只能打开文档：\n${t.path}`);
+        return;
+    }
+    if (!t.exists) {
+        showError("文件不存在", `${t.path}\n\n链接目标可能已被移动或重命名。`);
+        return;
+    }
+    // 非文档类型：二次确认后才交系统默认程序（用户选择见 AskUserQuestion 决策）
+    if (await confirmOpenWithSystem(t.path)) {
+        try {
+            await openPath(t.path);
+        } catch (e) {
+            showError("无法打开", `${t.path}\n\n${errMsg(e)}`);
+        }
+    }
+}
+
+/** 用系统默认程序打开的二次确认；用户确认返回 true */
+function confirmOpenWithSystem(path: string): Promise<boolean> {
+    const dlg = $("linkConfirmDialog") as HTMLDialogElement | null;
+    const body = $("linkConfirmBody");
+    // dialog 缺失（模板异常）时拒绝而非静默拉起外部程序
+    if (!dlg || !body) return Promise.resolve(false);
+    body.textContent = path;
+    // 与 askUnsaved 同源：ESC 关闭不修改 returnValue，残留上次的 "open"
+    // 会让下一次确认被默认同意。每次 showModal 前必须清零。
+    dlg.returnValue = "";
+    if (!dlg.open) dlg.showModal();
+    return new Promise<boolean>((resolve) => {
+        const h = () => {
+            dlg.removeEventListener("close", h);
+            resolve(dlg.returnValue === "open");
+        };
+        dlg.addEventListener("close", h, { once: true });
+    });
+}
+
+function errMsg(e: unknown): string {
+    return (e as Error)?.message ?? String(e);
+}
+
+function safeDecodeURI(s: string): string {
+    try {
+        return decodeURIComponent(s);
+    } catch {
+        return s;
+    }
+}
+
+// =============================================================================
+// 兜底提示：assetserver 的 navGuard 会把未命中的导航重定向回 /?nav=<路径>
+// =============================================================================
+
+/**
+ * 显示可关闭的浮层提示（默认 4 秒自动消失）。
+ * 用 fixed 定位的独立层，不插入 #app 的 grid 布局，避免破坏既定行高。
+ */
+function showToast(msg: string, ms = 4000): void {
+    let layer = document.getElementById("toastLayer");
+    if (!layer) {
+        layer = document.createElement("div");
+        layer.id = "toastLayer";
+        layer.className = "toast-layer";
+        document.body.appendChild(layer);
+    }
+    const el = document.createElement("div");
+    el.className = "toast";
+    el.setAttribute("role", "status");
+    const text = document.createElement("span");
+    text.textContent = msg; // 路径来自 URL 参数，不可信，必须 textContent
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.setAttribute("aria-label", "关闭提示");
+    close.textContent = "×";
+    const remove = () => el.remove();
+    close.addEventListener("click", remove);
+    el.appendChild(text);
+    el.appendChild(close);
+    layer.appendChild(el);
+    setTimeout(remove, ms);
+}
+
+/** 读取并清除 ?nav= 参数，告知用户该链接无法在应用内打开 */
+function consumeNavFallbackNotice(): void {
+    const raw = new URLSearchParams(location.search).get("nav");
+    if (!raw) return;
+    history.replaceState(null, "", location.pathname);
+    showToast(`链接无法在应用内打开：${safeDecodeURI(raw)}`, 6000);
 }
 
 // 立即渲染预览（用于切 tab、初始化等）
@@ -367,20 +662,19 @@ function renderFrontmatterPanel() {
     `;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
-    }[c]!));
-}
-
 function setMode(mode: SplitMode) {
     if (!split) return;
     split.setMode(mode);
     // 同步滚动仅在分屏模式有意义（单栏时挂起，避免无效计算）
     syncScroll?.setActive(mode === "both");
-    // 同步顶栏视图模式按钮的 .active 高亮，使当前模式一目了然
+    // 切到仅预览：高亮来源从编辑器光标切换到预览滚动位置，立即同步一次
+    if (mode === "right") syncTocFromPreview();
+    // 同步顶栏视图模式按钮的 .active 高亮，使当前模式一目了然；
+    // aria-pressed 与 theme/sidebar/sync-scroll 按钮保持一致（审查 🟡-14）
     document.querySelectorAll<HTMLButtonElement>(".actions button[data-action^='mode-']").forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.action === `mode-${mode}`);
+        const on = btn.dataset.action === `mode-${mode}`;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", String(on));
     });
     requestAnimationFrame(() => editor?.focus());
 }
@@ -397,6 +691,11 @@ function renderTabs() {
         const el = document.createElement("div");
         el.className = "tab" + (id === tm.activeId ? " active" : "");
         el.setAttribute("role", "tab");
+        // 键盘可达性（审查 🔴-3）：roving tabindex——tablist 中只有活动标签
+        // 参与 Tab 序，方向键在标签间移动焦点；关闭按钮退出 Tab 序（由
+        // 标签级 Delete 键或鼠标触达），避免打断单站点的键盘漫游。
+        el.tabIndex = id === tm.activeId ? 0 : -1;
+        el.setAttribute("aria-selected", String(id === tm.activeId));
         el.dataset.id = id;
 
         const title = document.createElement("span");
@@ -416,6 +715,8 @@ function renderTabs() {
         close.className = "close";
         close.textContent = "×";
         close.title = "关闭标签";
+        close.tabIndex = -1;
+        close.setAttribute("aria-label", `关闭 ${t.title}`);
         close.dataset.action = "close-tab";
         close.dataset.id = id;
         el.appendChild(close);
@@ -436,6 +737,64 @@ function renderTabs() {
         tabbar.appendChild(el);
     }
 }
+
+// =============================================================================
+// 标签栏键盘导航（审查 🔴-3）：方向键切换激活、Home/End 跳首尾、
+// Enter/Space 激活聚焦标签、Delete/Backspace 关闭聚焦标签。
+// 绑在 tabbar 容器上做事件委托，DOM 重建无需重新绑定。
+// =============================================================================
+
+/** 激活并把键盘焦点移到指定标签（rAF 等 renderTabs 重建 DOM 后再取节点） */
+function focusTab(id: string): void {
+    requestAnimationFrame(() => {
+        const el = tabbar.querySelector<HTMLElement>(`.tab[data-id="${CSS.escape(id)}"]`);
+        el?.focus();
+    });
+}
+
+tabbar.addEventListener("keydown", (e) => {
+    const tabEl = (e.target as HTMLElement).closest<HTMLElement>(".tab");
+    if (!tabEl) return;
+    const id = tabEl.dataset.id;
+    if (!id) return;
+    const idx = tm.order.indexOf(id);
+    if (idx < 0) return;
+    const activateAndFocus = (targetId: string) => {
+        if (tm.activeId !== targetId) tm.activate(targetId);
+        focusTab(targetId);
+    };
+    switch (e.key) {
+        case "ArrowRight":
+        case "ArrowDown":
+            e.preventDefault();
+            if (idx < tm.order.length - 1) activateAndFocus(tm.order[idx + 1]);
+            break;
+        case "ArrowLeft":
+        case "ArrowUp":
+            e.preventDefault();
+            if (idx > 0) activateAndFocus(tm.order[idx - 1]);
+            break;
+        case "Home":
+            e.preventDefault();
+            activateAndFocus(tm.order[0]);
+            break;
+        case "End":
+            e.preventDefault();
+            activateAndFocus(tm.order[tm.order.length - 1]);
+            break;
+        case "Enter":
+        case " ":
+            e.preventDefault();
+            activateAndFocus(id);
+            break;
+        case "Delete":
+        case "Backspace":
+            // 焦点在标签上（而非编辑器内）才关闭，Backspace 不会误伤正文
+            e.preventDefault();
+            handleCloseTab(id);
+            break;
+    }
+});
 
 // =============================================================================
 // 按钮
@@ -495,6 +854,7 @@ function openInCurrentIfEmpty(payload: { path: string; content: string }): void 
         }
         if (preview) renderPreviewNow(payload.content);
         renderFrontmatterPanel();
+        refreshToc();
         updateMeta();
     } else {
         tm.openTab(payload.path, payload.content);
@@ -602,6 +962,10 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         setMode(split?.getMode() === "right" ? "both" : "right");
     }
+    else if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        sidebar.toggle();
+    }
 });
 
 installBeforeUnloadGuard(tm);
@@ -632,6 +996,8 @@ const bootTabId = tm.newTab().id;
 initEditorAndPreview();
 applyTheme(currentThemeBase(), false, false); // 启动同步按钮提示/图标，不持久化、不播动画
 editor!.focus();
+// navGuard 兜底重定向（/?nav=…）带来的提示：界面已完好，只是告知链接打不开
+consumeNavFallbackNotice();
 
 (async () => {
     let openedAny = false;
@@ -679,6 +1045,8 @@ declare global {
         __litemd__tm?: TabManager;
         __litemd__preview?: Preview;
         __litemd__sync?: SyncScroll;
+        __litemd__toc?: TocPanel;
+        __litemd__sidebar?: Sidebar;
         __getEditorContent?: () => string;
     }
 }
@@ -687,4 +1055,6 @@ window.__litemd__cm = editor!;
 window.__litemd__tm = tm;
 window.__litemd__preview = preview!;
 window.__litemd__sync = syncScroll!;
+window.__litemd__toc = tocPanel;
+window.__litemd__sidebar = sidebar;
 window.__getEditorContent = () => editor!.getContent();

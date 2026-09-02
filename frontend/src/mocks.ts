@@ -9,6 +9,12 @@
 export interface MockFs {
     files: Map<string, string>;
     savedFiles: Array<{ path: string; content: string }>;
+    /** 标记为目录的路径（用于验证 kind==="dir" 分支） */
+    dirMarkers: Set<string>;
+    /** OpenExternal 调用记录：E2E 据此断言外链没有触发页面导航 */
+    externalOpens: string[];
+    /** OpenPath 调用记录：E2E 据此断言"二次确认后才交系统程序" */
+    systemOpens: string[];
     setFile(path: string, content: string): void;
     popLastSave(): { path: string; content: string } | undefined;
 }
@@ -27,6 +33,9 @@ function loadPersistedFiles(): Map<string, string> {
 class InMemoryMockFs implements MockFs {
     files = loadPersistedFiles();
     savedFiles: Array<{ path: string; content: string }> = [];
+    dirMarkers = new Set<string>();
+    externalOpens: string[] = [];
+    systemOpens: string[] = [];
 
     setFile(path: string, content: string) {
         this.files.set(path, content);
@@ -47,7 +56,7 @@ const mockFs = new InMemoryMockFs();
         App: {
             AppInfo: async () => ({
                 name: "LiteMD",
-                version: "0.2.0-mock",
+                version: "0.2.8-mock",
                 os: "browser-mock",
             }),
             // 契约来源：internal/config/config.go 的 config.Config
@@ -120,7 +129,84 @@ const mockFs = new InMemoryMockFs();
                 fontSize: 14,
                 recentFiles: [path],
             }),
+            // ---- v0.2.6：链接解析 / 外部打开 / 本地资源 ----
+            // 契约来源：internal/links/links.go + app.go 的 ResolveLocalPath。
+            // mock 用类 Unix 的纯字符串路径运算复刻 Go 侧行为（含 .. 折叠与
+            // file:// 剥离），E2E 才能验证"点了相对链接会打开正确的文件"。
+            ResolveLocalPath: async (baseFile: string, href: string) => {
+                const raw = (href ?? "").trim();
+                if (!raw) throw new Error("link target is empty");
+                // 先切 #锚点，再切 ?查询（与 Go 侧 splitAnchor 一致）
+                let s = raw;
+                let anchor = "";
+                const hash = s.indexOf("#");
+                if (hash >= 0) { anchor = s.slice(hash + 1); s = s.slice(0, hash); }
+                const q = s.indexOf("?");
+                if (q >= 0) s = s.slice(0, q);
+                // 外部协议不走本地解析
+                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s) && !/^[a-zA-Z]:[\\/]/.test(s)) {
+                    throw new Error(`link target is not a local path: ${s}`);
+                }
+                if (s.toLowerCase().startsWith("file://")) {
+                    const rest = s.slice(7);
+                    s = rest.startsWith("/") ? rest.slice(1) : "//" + rest;
+                }
+                s = s.replace(/\\/g, "/");
+                if (/^[a-zA-Z]:\//.test(s)) {
+                    s = s.replace(/\/\.\.\//g, "/../"); // 盘符路径交给下面的 clean
+                } else if (!s.startsWith("/")) {
+                    if (!baseFile) throw new Error("base file path is empty");
+                    const dir = baseFile.slice(0, Math.max(baseFile.lastIndexOf("/"), 0)) || "/";
+                    s = dir + "/" + s;
+                }
+                // 路径 Clean：折叠 "." 与 ".."；每段先做百分号解码
+                // （对齐 Go 侧 url.PathUnescape：marked 输出的中文 href 是编码形态）
+                const out: string[] = [];
+                for (const part of s.split("/")) {
+                    if (part === "" || part === ".") continue;
+                    if (part === "..") { out.pop(); continue; }
+                    let seg = part;
+                    try { seg = decodeURIComponent(part); } catch { /* 非法编码保留原样 */ }
+                    out.push(seg);
+                }
+                const abs = (s.startsWith("/") ? "/" : "") + out.join("/");
+                const content = mockFs.files.get(abs);
+                const isDir = content === undefined && mockFs.dirMarkers.has(abs);
+                // 扩展名必须落在最后一段文件名里取（无点时 lastIndexOf 为 -1，
+                // 直接 slice 会取到末字符——这是初版 mock 的判定 bug）
+                const lastSlash = Math.max(abs.lastIndexOf("/"), 0);
+                const dot = abs.lastIndexOf(".");
+                const ext = dot > lastSlash ? abs.slice(dot).toLowerCase() : "";
+                const md = [".md", ".markdown", ".mdown", ".mkd", ".mkdn"].includes(ext);
+                const txt = [".txt", ".text", ".log", ".csv", ".json", ".yaml", ".yml"].includes(ext);
+                // 无扩展名：mock 内容均为文本，对齐 Go 侧 looksLikeText → markdown
+                const kind = isDir
+                    ? "dir"
+                    : content === undefined
+                        ? "missing"
+                        : md || ext === ""
+                            ? "markdown"
+                            : txt ? "text" : "other";
+                return { path: abs, exists: content !== undefined || isDir, kind, anchor };
+            },
+            // 记录调用，E2E 据此处断言"外链没有触发页面导航而是走了外部打开"
+            OpenExternal: async (url: string) => {
+                mockFs.externalOpens.push(url);
+            },
+            OpenPath: async (path: string) => {
+                mockFs.systemOpens.push(path);
+            },
+            ReadLocalAsset: async (_targetPath: string) => {
+                // mock 图片固定返回 1x1 PNG，便于断言 data URL 回填
+                return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+            },
             CopyImageAsset: async (targetPath: string, base64Data: string) => {
+                // 对齐 Go 侧 safeWritePath 契约（审查 🟡-1）：非绝对路径必须拒绝。
+                // 旧版 mock 来者不拒，E2E 全绿但 Windows 真机上同样的相对路径
+                // 会被 ErrUnsafePath 打回——mock 与真实 binding 行为漂移会掩盖缺陷。
+                if (!/^([A-Za-z]:)?[\\/]/.test(targetPath)) {
+                    throw new Error(`mock: unsafe path: not absolute: ${targetPath}`);
+                }
                 // mock：把 data uri 写入 mock FS，并把 base64 写到 targetPath
                 const stripped = base64Data.startsWith("data:") ? base64Data.split(",")[1] ?? "" : base64Data;
                 mockFs.files.set(targetPath, `<base64:${stripped.length}chars>`);

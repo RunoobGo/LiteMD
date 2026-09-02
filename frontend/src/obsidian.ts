@@ -8,11 +8,9 @@
 
 import { marked } from "marked";
 
-// 与 preview.ts 保持一致的 marked 配置。
-// callout 正文需在此处预渲染为 HTML：外层 renderMarkdown 会把整块 <blockquote>
-// 当裸 HTML 原样保留，不会二次解析其内部 markdown，故 body 内的 **加粗** /
-// `代码` / 列表 必须在预处理阶段先渲染（Obsidian 兼容保真，修复 N1）。
-marked.setOptions({ gfm: true, breaks: false });
+// 注（审查 🟢-9）：全局 marked 配置收敛到 preview.ts 一处（gfm:true /
+// breaks:false）。marked v18 默认即此配置，故本模块独立单测时行为不变；
+// callout body 的 marked.parse 依赖同一默认，无需在此重复 setOptions。
 
 // ============================================================================
 // Wiki Links
@@ -157,8 +155,12 @@ export function preprocessCallouts(md: string): string {
             if (!CALLOUT_TYPES.has(type)) continue;
             const title = fm[2].trim();
             const bodyLines = seg.slice(1).map((l) => l.replace(/^>\s?/, ""));
+            // 审查 🟢-5：title 走 marked.parseInline 渲染行内 Markdown
+            // （**加粗**/`代码` 等），与 body 语义一致；旧版直接拼原始文本，
+            // 行内标记会显示为字面星号。输出与其他内容一起经 DOMPurify
+            // 清洗，安全闭环不变。
             const titleHtml = title
-                ? `<div class="callout-title"><span class="callout-icon"></span><span>${title}</span></div>`
+                ? `<div class="callout-title"><span class="callout-icon"></span><span>${marked.parseInline(title, { async: false }) as string}</span></div>`
                 : "";
             // N1 修复：callout 正文需渲染 Markdown（Obsidian 兼容保真）。
             // 外层 renderMarkdown 会把整块 <blockquote> 当裸 HTML 原样保留，

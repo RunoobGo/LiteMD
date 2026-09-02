@@ -16,6 +16,10 @@ export interface Tab {
     dirty: boolean;      // liveContent !== baseline
     diskMtime?: number;  // 已保存时的磁盘 mtime
     frontmatter: Record<string, string> | null; // 解析自 YAML；非 null 即存在
+    /** 切走时记忆的光标位置（审查 🟡-2：切回时恢复） */
+    cursor?: { line: number; col: number };
+    /** 切走时记忆的编辑器滚动位置 */
+    scrollTop?: number;
 }
 
 let _nextId = 1;
@@ -89,6 +93,9 @@ export class TabManager {
         t.dirty = false;
         t.diskMtime = Date.now() / 1000;
         t.frontmatter = null;
+        // 内容整体被替换：旧的光标/滚动记忆失效，清空避免恢复到错误位置
+        t.cursor = undefined;
+        t.scrollTop = undefined;
         this.activeId = id;
         this.notify();
         return t;

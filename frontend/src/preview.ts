@@ -2,6 +2,9 @@
 //
 // 安全策略：
 //   - DOMPurify 默认禁用危险标签：<script>, <iframe>, <object>, <embed>, on* 事件
+//   - v0.2.7 内嵌 HTML/CSS：语义标签白名单扩充；style 属性经声明级过滤
+//     hook 放行；<style> 块由 user-css.ts 作用域化到 .preview-content 后
+//     重新注入（防 UI 欺骗 / 外发跟踪 / HTML 逃逸，详见 user-css.ts 头注释）
 //   - 链接强制走 https 转换 + rel="noopener noreferrer"
 //   - 强制 external 链接 target="_blank"
 //   - 内部 [[Wiki Link]] 单独处理（这里只接渲染，将来 Sprint 3 加）
@@ -10,10 +13,16 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { preprocessAll, parseFrontmatter, findCalloutTransforms } from "./obsidian";
 import { extractLatex, restoreLatex } from "./latex";
+import { classifyHref, assignHeadingIds, type ParsedLink } from "./link-handler";
+import { filterInlineStyle, extractStyleBlocks, buildUserStyleTag } from "./user-css";
+import { renderMermaid, type MermaidTheme } from "./mermaid";
 
 export interface PreviewOptions {
     /** 预留：自定义 marked 配置钩子 */
 }
+
+/** 滚动到目标块时，其顶部与容器顶部的留白（px），避免标题紧贴容器上沿 */
+const PREVIEW_TOP_PADDING = 8;
 
 export interface RenderOptions {
     /**
@@ -120,6 +129,28 @@ function stripDataLine(html: string): string {
  */
 export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     if (!md) return "";
+    // 整文渲染 LRU（审查 🟡-7）：切 tab 往返 / 内容未变时直接复用上次结果，
+    // 跳过 marked + DOMPurify + KaTeX 全管线。上限 8 条防无界增长。
+    const key = `${opts.lineNumbers ? "L" : "P"}\u0000${md}`;
+    const hit = renderCache.get(key);
+    if (hit !== undefined) {
+        renderCache.delete(key); // LRU touch
+        renderCache.set(key, hit);
+        return hit;
+    }
+    const out = renderMarkdownUncached(md, opts);
+    if (renderCache.size >= RENDER_CACHE_MAX) {
+        const oldest = renderCache.keys().next().value;
+        if (oldest !== undefined) renderCache.delete(oldest);
+    }
+    renderCache.set(key, out);
+    return out;
+}
+
+const RENDER_CACHE_MAX = 8;
+const renderCache = new Map<string, string>();
+
+function renderMarkdownUncached(md: string, opts: RenderOptions): string {
     // 公式先抽成占位符（同时豁免代码块/行内代码/转义的 \$）
     const { text: afterLatex, ext, re } = extractLatex(md);
     // Sprint 3: Obsidian 语法预处理（双链 / Callout / 资产）
@@ -147,11 +178,24 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     // 任务列表复选框先行占位（sanitize 前处理，见 taskCheckboxPlaceholder 注释）
     rawHtml = taskCheckboxPlaceholder(rawHtml);
 
+    // v0.2.7 内嵌 CSS：<style> 块在 DOMPurify 之前摘除（否则被 FORBID_TAGS 整块
+    // 剥掉），经 scopeUserCss 重写为 .preview-content 作用域 CSS 后由渲染管线
+    // 以 <style data-user-css> 拼回输出末尾。重写器输出不含原始用户 HTML，
+    // 且对 </style> 逃逸做了转义（见 user-css.ts 头注释的威胁模型）。
+    const { html: htmlNoStyle, css: userCss } = extractStyleBlocks(rawHtml);
+
     // 第一道：DOMPurify 严格清洗。
     // 注意：input 已在 sanitize 之前被 taskCheckboxPlaceholder 替换为 span 占位——
     // DOMPurify 的 ALLOWED_URI_REGEXP 会把 jsdom 下 input[type] 误判为 URI 属性剥掉
     //（浏览器与 jsdom 对 URI 属性的判定不一致），占位符方案对两套环境行为一致。
-    const clean = DOMPurify.sanitize(rawHtml, {
+    //
+    // v0.2.7 白名单扩充（内嵌 HTML 渲染）：
+    //   - 语义/排版标签：figure figcaption details summary mark abbr q cite
+//     small dl dt dd caption col colgroup address time var samp bdi bdo wbr
+    //   - 媒体标签：video audio source track picture（autoplay 不放行，防骚扰）
+    //   - style 属性放行但经 DOMPurify hook 声明级过滤（filterInlineStyle）
+    //   - data:image base64 放行（明确排除 svg+xml —— SVG 可携带脚本向量）
+    const clean = DOMPurify.sanitize(htmlNoStyle, {
         ALLOWED_TAGS: [
             "a", "p", "div", "span", "em", "strong", "b", "i", "u", "s", "code", "pre",
             "h1", "h2", "h3", "h4", "h5", "h6",
@@ -159,11 +203,24 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
             "blockquote", "hr", "br",
             "img", "table", "thead", "tbody", "tr", "th", "td",
             "kbd", "del", "ins", "sup", "sub",
+            // v0.2.7 内嵌 HTML 扩充
+            "figure", "figcaption", "details", "summary", "mark", "abbr",
+            "q", "cite", "small", "dl", "dt", "dd", "caption", "col", "colgroup",
+            "address", "time", "var", "samp", "bdi", "bdo", "wbr",
+            "video", "audio", "source", "track", "picture",
         ],
-        ALLOWED_ATTR: ["href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink", "data-line"],
-        FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script"],
-        FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "style", "srcdoc"],
-        ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|\/|#)/i,
+        ALLOWED_ATTR: [
+            "href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink", "data-line",
+            // v0.2.7 内嵌 HTML/CSS 扩充
+            "style",
+            "controls", "loop", "muted", "preload", "poster", "type",
+            "width", "height", "colspan", "rowspan", "span", "scope",
+            "datetime", "start", "reversed", "open", "dir",
+            "kind", "srclang", "label",
+        ],
+        FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script", "meta", "base"],
+        FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "srcdoc"],
+        ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,|\/|#|\.{0,2}\/|[a-zA-Z0-9._-][^:]*$)/i,
     });
 
     // 第二道：link 节点 DOM 加固（F10 修复：正则 → DOM 操作，覆盖单引号/跨行/属性含 > 边界）
@@ -171,8 +228,28 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     // 第二道半：任务列表复选框占位符还原为安全的 disabled checkbox
     hardened = restoreCheckboxes(hardened);
     // 第三道：还原公式（KaTeX 输出需在 DOMPurify 之后注入）与代码块原文
-    return restoreLatex(hardened, ext, re);
+    // 末尾拼接作用域化的用户 <style> 块（无有效规则时为空串）
+    return restoreLatex(hardened, ext, re) + buildUserStyleTag(userCss);
 }
+
+// v0.2.7：style 属性过滤 hook（模块级注册一次，全项目唯一的 DOMPurify 实例
+// 就在本文件，不影响其他调用方）。属性值经声明级黑名单过滤：
+// position:fixed / z-index / 外发 url() 等攻击面见 user-css.ts 头注释。
+DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
+    const name = (data.attrName || "").toLowerCase();
+    if (name === "style") {
+        data.attrValue = filterInlineStyle(data.attrValue || "");
+        return;
+    }
+    // data: URI 收窄：DOMPurify 内置兜底对 img/video/audio 等媒体标签放行
+    // 全部 data:/blob: URI，这里收紧为图片 base64 白名单 MIME（明确排除
+    // 可携带脚本向量的 svg+xml 与 text/html）
+    if (name === "src" && /^data:/i.test(data.attrValue || "")) {
+        if (!/^data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,/i.test(data.attrValue)) {
+            data.keepAttr = false;
+        }
+    }
+});
 
 /**
  * GFM 任务列表复选框的两步处理：
@@ -232,10 +309,38 @@ function hardenLinks(html: string): string {
  * 应用到 DOM 节点上：先清空，再写入 sanitize 后的 HTML。
  * 这是预览面板的入口。
  */
+/** 渲染选项：相对资源解析所需的上文 */
+export interface PreviewRenderOptions {
+    /**
+     * 当前文档的绝对路径。相对链接与相对图片都以它所在目录为基准解析；
+     * 未保存的新文档传空串（此时相对链接无法解析，前端会引导先保存）。
+     */
+    basePath?: string;
+    /**
+     * 把本地相对图片解析成 data URL（由主应用组合 Go 的
+     * ResolveLocalPath + ReadLocalAsset 实现）。返回 null 表示解析失败。
+     */
+    resolveAsset?: (src: string) => Promise<string | null>;
+}
+
 export class Preview {
     private clickHandler: ((target: string, ev: MouseEvent) => void) | null = null;
+    private linkHandler: ((link: ParsedLink, ev: MouseEvent) => void) | null = null;
+    /** 渲染代号：异步资源回填时用于丢弃过期结果（切 tab / 快速输入） */
+    private renderGen = 0;
+    /**
+     * 渲染内容包裹层（v0.2.7）：host(.preview) > wrap(.preview-content)。
+     * 用户内嵌 CSS 的选择器被 scopeUserCss 前缀化为 .preview-content ——
+     * 包裹层保证用户 CSS 最远只能影响预览区内部，无法命中 .preview 之外
+     * 的应用 UI（编辑器 / 侧栏 / 标题栏）。滚动容器仍是 host，滚动 API
+     * 不受影响。
+     */
+    private wrap: HTMLElement;
 
     constructor(private host: HTMLElement) {
+        this.wrap = document.createElement("div");
+        this.wrap.className = "preview-content";
+        this.host.appendChild(this.wrap);
         // 事件委托：捕获点击，识别 .wiki-link
         this.host.addEventListener("click", (ev) => {
             const target = ev.target as HTMLElement;
@@ -246,6 +351,48 @@ export class Preview {
             const w = link.dataset.wikilink || "";
             if (this.clickHandler) this.clickHandler(w, ev);
         });
+        // 事件委托：拦截**所有**链接的默认导航行为。
+        //
+        // 这是 v0.2.6 的核心修复：此前只有 .wiki-link 被拦截，普通的
+        // [文本](../a.md) 会让 WebView2 就地导航到 http://wails.localhost/a.md
+        // → assetserver 404 → 前端 SPA 被卸载（界面消失、未保存内容丢失）。
+        //
+        // 注册顺序在 wiki-link 监听**之后**：wiki-link 已 preventDefault 时
+        // defaultPrevented 为真，这里直接放行，原双链行为完全不变。
+        // auxclick 覆盖中键点击，click 覆盖左键 / Ctrl+点击 / Shift+点击。
+        const swallowNavigation = (ev: MouseEvent) => {
+            if (ev.defaultPrevented) return;
+            const a = (ev.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+            if (!a || !this.host.contains(a)) return;
+            // 一律阻止默认导航：后续动作由主应用决定（应用内打开 / 系统程序 / 提示）
+            ev.preventDefault();
+            const parsed = classifyHref(a.getAttribute("href") || "");
+            if (this.linkHandler) this.linkHandler(parsed, ev);
+        };
+        this.host.addEventListener("click", swallowNavigation);
+        this.host.addEventListener("auxclick", swallowNavigation);
+
+        // 事件委托：代码块复制按钮。
+        // 必须绑在 constructor（host 从不被 innerHTML 清空，一次绑定终身有效）——
+        // 旧版绑在 render() 内，每次渲染都追加一个监听器只增不减，长编辑会话
+        // 点击一次复制会执行成百上千次 clipboard 写入（R1 修复）。
+        this.host.addEventListener("click", (ev) => {
+            const btn = (ev.target as HTMLElement)?.closest<HTMLButtonElement>(".code-block-copy");
+            if (!btn) return;
+            const code = btn.closest(".code-block")?.querySelector("pre code");
+            if (!code) return;
+            const text = code.textContent || "";
+            // clipboard 在非安全上下文可能为 undefined：可选链会静默吞掉这次点击，
+            // 显式降级提示而非无反馈（审查 🟢-4）
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    () => flashCopyState(btn, "已复制"),
+                    () => flashCopyState(btn, "复制失败"),
+                );
+            } else {
+                flashCopyState(btn, "剪贴板不可用");
+            }
+        });
     }
 
     /** 注册 wiki-link 点击回调（主应用实现：切换到对应 tab，或打开） */
@@ -253,16 +400,160 @@ export class Preview {
         this.clickHandler = handler;
     }
 
-    render(md: string) {
+    /** 注册普通链接点击回调（主应用实现：应用内打开 / 系统程序 / 提示 / 锚点滚动） */
+    onLinkClick(handler: (link: ParsedLink, ev: MouseEvent) => void) {
+        this.linkHandler = handler;
+    }
+
+    render(md: string, opts: PreviewRenderOptions = {}) {
         // lineNumbers: 预览面板始终启用行号标注（与编辑器行号对齐 + 同步滚动锚点）
         const html = renderMarkdown(md, { lineNumbers: true });
-        this.host.innerHTML = html;
+        const gen = ++this.renderGen;
+        // 写入包裹层而非 host：用户 CSS 作用域被限制在 .preview-content 内
+        this.wrap.innerHTML = html;
         // 兜底：再一次剥离去除残留事件属性
-        this.scrub(this.host);
+        this.scrub(this.wrap);
+        // v0.2.8 mermaid 代码块：在 decorate 之前替换为 .mermaid-block 容器，
+        // 让 decorate 的「pre > code[class*='language-']」选择器不再命中（mermaid
+        // 图表不是代码，不出现复制按钮），原码存到 dataset.code 用于异步水合
+        this.replaceMermaidBlocks();
+        // 代码块装饰：注入语言标签 + 复制按钮（Obsidian 风）
+        this.decorateCodeBlocks(this.wrap);
+        // 标题锚点：marked v5+ 不再生成 id，不补 id 则 [x](#标题) 点了不会滚动
+        this.annotateHeadingIds();
+        // 图片懒加载（审查 🟢-10）：marked 不输出 loading 属性，DOM 阶段
+        // 统一补上，长文档含多图时显著减少首屏网络/解码开销
+        this.wrap.querySelectorAll("img").forEach((img) => {
+            if (!img.hasAttribute("loading")) img.setAttribute("loading", "lazy");
+        });
+        // 相对路径图片：请求 wails.localhost 下不存在的 HTTP 路径必然破图，
+        // 交由主应用解析为磁盘文件（data URL）后回填
+        if (opts.resolveAsset) void this.resolveLocalImages(opts.resolveAsset, gen);
+        // mermaid：动态 import + 图级缓存 + 异步水合（启动≈0，hit 0ms）
+        void this.hydrateMermaidBlocks(this.wrap.querySelectorAll<HTMLElement>(".mermaid-block"), gen);
+    }
+
+    /**
+     * 为所有标题补 id（GitHub 风格 slug，重复时自动加序号后缀）。
+     *
+     * 只设置缺失的 id：marked 未来若恢复 headerIds，不覆盖其既有结果。
+     */
+    private annotateHeadingIds(): void {
+        const headings = Array.from(this.wrap.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"));
+        if (!headings.length) return;
+        const ids = assignHeadingIds(headings.map((h) => h.textContent || ""));
+        headings.forEach((h, i) => {
+            if (!h.id) h.id = ids[i];
+        });
+    }
+
+    /**
+     * 把相对路径图片替换成本地文件的 data URL。
+     *
+     * 竞态处理：解析是异步的，期间用户可能切 tab 或继续输入——用 renderGen
+     * 判断结果是否仍然对应当前渲染，过期结果直接丢弃（否则会把上一份文档的
+     * 图片贴到新内容上）。
+     */
+    private async resolveLocalImages(
+        resolve: (src: string) => Promise<string | null>,
+        gen: number,
+    ): Promise<void> {
+        const imgs = Array.from(this.wrap.querySelectorAll<HTMLImageElement>("img[src]"));
+        const pending = imgs.filter((img) => {
+            const src = img.getAttribute("src") || "";
+            // 外链 / data URL / 空 src 不需要本地解析
+            return src !== "" && !/^(?:https?:|data:|blob:)/i.test(src);
+        });
+        if (!pending.length) return;
+        pending.forEach((img) => { img.dataset.assetPending = "1"; });
+
+        await Promise.all(pending.map(async (img) => {
+            const src = img.getAttribute("src") || "";
+            const dataUrl = await resolve(src).catch(() => null);
+            delete img.dataset.assetPending;
+            // 过期结果或元素已被新一次渲染替换：丢弃
+            if (gen !== this.renderGen || !img.isConnected) return;
+            if (dataUrl) {
+                img.src = dataUrl;
+            } else {
+                img.dataset.assetBroken = "1";
+                img.title = `本地图片未找到：${src}`;
+            }
+        }));
+    }
+
+    /**
+     * 滚动预览区到指定锚点（标题 id）。找到并滚动返回 true，否则 false。
+     *
+     * 锚点链接是 hash，本身不会卸载页面，但不处理就是"点了没反应"。
+     */
+    scrollToAnchor(anchor: string): boolean {
+        if (!anchor) return false;
+        const decoded = safeDecode(anchor);
+        const el =
+            this.wrap.querySelector<HTMLElement>(`#${cssEscape(decoded)}`) ??
+            this.wrap.querySelector<HTMLElement>(`#${cssEscape(anchor)}`);
+        if (!el) return false;
+        const hostTop = this.host.getBoundingClientRect().top;
+        const elTop = el.getBoundingClientRect().top;
+        this.host.scrollTop += elTop - hostTop - PREVIEW_TOP_PADDING;
+        return true;
     }
 
     clear() {
-        this.host.innerHTML = "";
+        this.wrap.innerHTML = "";
+    }
+
+    /**
+     * 滚动预览区，让指定源码行对应的内容块对齐容器顶部。
+     *
+     * 复用 render() 注入的 data-line 属性（见 renderMarkdown 的 lineNumbers 分支），
+     * 因此预览侧不需要再单独维护一套标题索引 —— 两套索引最容易失步。
+     *
+     * 找不到精确等于 line 的块时，退到"最后一个 line 之前的块"：标题若被包在
+     * 列表/callout 等容器里，其块行号会等于容器起始行而非标题本身所在行。
+     */
+    scrollToLine(line: number): void {
+        const blocks = this.blocksWithLine();
+        if (!blocks.length) return;
+        let target = blocks[0];
+        for (const b of blocks) {
+            if (b.line <= line) target = b;
+            else break;
+        }
+        const hostTop = this.host.getBoundingClientRect().top;
+        const elTop = target.el.getBoundingClientRect().top;
+        this.host.scrollTop += elTop - hostTop - PREVIEW_TOP_PADDING;
+    }
+
+    /**
+     * 视口顶部当前所处的标题行号；位于首個标题之前时返回 0。
+     * 供"仅预览"模式下驱动大纲高亮（该模式下编辑器不可见，无光标可用）。
+     */
+    activeHeadingLine(): number {
+        const hostTop = this.host.getBoundingClientRect().top;
+        let line = 0;
+        for (const h of this.headings()) {
+            // 容差取 24px：预览有 16px 上内边距，滚到最顶时首个标题仍应算"已到达"
+            if (h.el.getBoundingClientRect().top - hostTop <= 24) line = h.line;
+            else break;
+        }
+        return line;
+    }
+
+    /** 带原文行号的顶层块（文档顺序） */
+    private blocksWithLine(): Array<{ el: HTMLElement; line: number }> {
+        const out: Array<{ el: HTMLElement; line: number }> = [];
+        this.wrap.querySelectorAll<HTMLElement>("[data-line]").forEach((el) => {
+            const line = Number(el.dataset.line);
+            if (Number.isFinite(line) && line > 0) out.push({ el, line });
+        });
+        return out;
+    }
+
+    /** 其中的标题块（h1–h6） */
+    private headings(): Array<{ el: HTMLElement; line: number }> {
+        return this.blocksWithLine().filter((b) => /^H[1-6]$/.test(b.el.tagName));
     }
 
     /**
@@ -280,4 +571,155 @@ export class Preview {
             });
         });
     }
+
+    /**
+     * 为每个带语言的代码块包一层 .code-block 容器，并在顶部插入
+     * 「语言标签 + 复制按钮」头部（Obsidian 风）。
+     *
+     * 不动 <pre> 上的 data-line 等已有属性，所以同步滚动、目录跳转
+     * 全部继续工作（blocksWithLine 用 querySelectorAll 仍能找到嵌套的 pre）。
+     */
+    private decorateCodeBlocks(root: HTMLElement) {
+        root.querySelectorAll<HTMLPreElement>("pre > code[class*='language-']").forEach((code) => {
+            const pre = code.parentElement as HTMLPreElement | null;
+            if (!pre || pre.dataset.decorated === "1") return;
+            pre.dataset.decorated = "1";
+
+            const m = (code.className.match(/language-([\w+-]+)/) || [, ""])[1];
+            const lang = m || "text";
+
+            const wrap = document.createElement("div");
+            wrap.className = "code-block";
+
+            const header = document.createElement("div");
+            header.className = "code-block-header";
+            const langEl = document.createElement("span");
+            langEl.className = "code-block-lang";
+            langEl.textContent = lang;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "code-block-copy";
+            btn.setAttribute("aria-label", "复制代码");
+            btn.title = "复制代码";
+            btn.innerHTML = COPY_ICON;
+            header.appendChild(langEl);
+            header.appendChild(btn);
+
+            // 在 pre 前插入 header，pre 移到 wrap 内
+            pre.parentElement?.insertBefore(wrap, pre);
+            wrap.appendChild(header);
+            wrap.appendChild(pre);
+        });
+    }
+
+    // ============================================================================
+    // v0.2.8 mermaid：把 ```mermaid 代码块替换为图表占位容器，异步水合 SVG
+    // ============================================================================
+
+    /**
+     * 把标记为 mermaid 的代码块替换为 div.mermaid-block 容器。
+     * 原码保留到 dataset.code（加载中显示）+ dataset.state="loading"。
+     * 必须在 decorateCodeBlocks 之前调用，否则会先被包进 .code-block 装饰。
+     */
+    private replaceMermaidBlocks(): void {
+        const codes = this.wrap.querySelectorAll<HTMLElement>("pre > code.language-mermaid");
+        codes.forEach((code) => {
+            const pre = code.parentElement;
+            if (!pre) return;
+            const raw = (code.textContent || "").replace(/\n$/, "");
+            const holder = document.createElement("div");
+            holder.className = "mermaid-block";
+            holder.dataset.code = raw;
+            holder.dataset.state = "loading";
+            holder.textContent = raw; // 加载中保留原文等宽显示，便于校对
+            pre.replaceWith(holder);
+        });
+    }
+
+    /**
+     * 异步把一批 .mermaid-block 容器水合成 SVG 或错误占位。
+     * 遍历传入的 holder 列表（render 与 onThemeChange 共用），按指定主题调
+     * renderMermaid；过期结果由 gen + isConnected 守卫丢弃。
+     */
+    private async hydrateMermaidBlocks(
+        holders: ArrayLike<HTMLElement>,
+        gen: number,
+        theme: MermaidTheme = currentMermaidTheme(),
+    ): Promise<void> {
+        const list = Array.from(holders).filter((h) => h.dataset.state === "loading");
+        if (!list.length) return;
+        await Promise.all(list.map(async (holder) => {
+            const code = holder.dataset.code || "";
+            const svg = await renderMermaid(code, theme);
+            // 过期结果 / 元素被新一次渲染替换：丢弃
+            if (gen !== this.renderGen || !holder.isConnected) return;
+            applyMermaidResult(holder, svg);
+        }));
+    }
+
+    /**
+     * 主题切换回调：仅重新渲染已 ok 状态的 mermaid 块，不重 render 整文档。
+     * 缓存按 theme 隔离，切换瞬间会有一次重渲染（图级缓存随即建立）。
+     * renderGen++ 让在途请求自然过期。调用方传入新主题，避免
+     * 「documentElement.dataset.theme 已变但 hydrate 时再读一次」的竞态。
+     */
+    onThemeChange(newTheme: MermaidTheme): void {
+        const holders = Array.from(this.wrap.querySelectorAll<HTMLElement>(".mermaid-block"))
+            .filter((h) => h.dataset.state === "ok" || h.dataset.state === "loading");
+        if (!holders.length) return;
+        const gen = ++this.renderGen;
+        // 重置为 loading 态，便于水合过程观察到过渡
+        holders.forEach((h) => {
+            h.dataset.state = "loading";
+            h.textContent = h.dataset.code || "";
+        });
+        void this.hydrateMermaidBlocks(holders, gen, newTheme);
+    }
 }
+
+/** 当前应用主题 → mermaid 主题（与 main.ts applyTheme 同源） */
+function currentMermaidTheme(): MermaidTheme {
+    return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+/** 把 renderMermaid 结果应用到占位容器（SVG 注入或错误降级） */
+function applyMermaidResult(holder: HTMLElement, svg: string | null): void {
+    if (svg) {
+        holder.innerHTML = svg; // mermaid 11 securityLevel:strict 输出已净化
+        holder.dataset.state = "ok";
+    } else {
+        holder.textContent = `Mermaid 语法错误，已按原码展示：\n\n${holder.dataset.code || ""}`;
+        holder.dataset.state = "error";
+    }
+}
+
+/** decodeURIComponent 的安全包装：非法编码串（裸 %）不会抛异常 */
+function safeDecode(s: string): string {
+    try {
+        return decodeURIComponent(s);
+    } catch {
+        return s;
+    }
+}
+
+/** CSS.escape 的安全包装：jsdom 等环境缺失时退化为最小转义 */
+function cssEscape(s: string): string {
+    const esc = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS?.escape;
+    return esc ? esc(s) : s.replace(/["\\]/g, "\\$&");
+}
+
+/** 复制成功 / 失败时按钮文案短暂切换 */
+function flashCopyState(btn: HTMLButtonElement, msg: string) {
+    // 原始文案固定存 dataset：旧版捕获“当前”title——1.2s 内连点两次时，
+    // 第二次捕获到的是上一次的“已复制”，闪完 title 永久停留在错误文案上（审查 🟢-3）。
+    if (!btn.dataset.origTitle) btn.dataset.origTitle = btn.title;
+    btn.title = msg;
+    btn.classList.add("is-flashed");
+    setTimeout(() => {
+        btn.classList.remove("is-flashed");
+        btn.title = btn.dataset.origTitle || msg;
+    }, 1200);
+}
+
+/** 剪贴板图标（inline SVG，无外部依赖，#7d8590 跟主题次级文字一致） */
+const COPY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;

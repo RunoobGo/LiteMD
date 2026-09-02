@@ -11,6 +11,8 @@ const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>");
 Object.defineProperty((globalThis as any).window.navigator, "userAgent", { value: "node" });
 // F10 修复后 preview.ts 使用 DOMParser 加固 link，需暴露到 globalThis
 (globalThis as any).DOMParser = dom.window.DOMParser;
+// v0.2.8 mermaid.ts ensureInitialized 调用 getComputedStyle（不挂会 TypeError）
+(globalThis as any).getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
 // titlebar.test.ts 派发 dblclick / resize 需要
 (globalThis as any).MouseEvent = dom.window.MouseEvent;
 (globalThis as any).Event = dom.window.Event;
@@ -23,6 +25,10 @@ const suites: Record<string, string> = {
     titlebar: "./titlebar.test",
     tabs: "./tabs.test",
     "md-escape": "./md-escape.test",
+    toc: "./toc.test",
+    "link-handler": "./link-handler.test",
+    "user-css": "./user-css.test",
+    "mermaid": "./mermaid.test",
 };
 
 // 选择要跑哪套测试；all = 全量（含 titlebar / tabs，与 README/TECHNICAL 承诺一致）

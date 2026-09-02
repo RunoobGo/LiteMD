@@ -188,18 +188,170 @@ html, body {
 
 #app {
     display: grid;
-    grid-template-rows: 44px 36px auto 1fr 24px;
+    grid-template-columns: var(--sidebar-w, 240px) 1fr;
+    /* 行高：标题栏 40px（适度增高，突出应用身份与窗口拖动区）+
+       标签栏 30px（紧凑化，把空间让给正文） */
+    grid-template-rows: 40px 30px auto 1fr 24px;
     height: 100vh;
 }
 
 /* 显式指定各区域所在行：frontmatter-panel 隐藏时 display:none 不占用网格单元，
    若依赖自动放置会导致后续元素上移错位——splitpane 落到 auto 行（高度随内容变化）、
-   statusbar 落到 1fr 行（占据所有剩余空间）。显式 grid-row 锁定位置，杜绝错位。 */
-#app > .topbar { grid-row: 1; }
-#app > .tabbar { grid-row: 2; }
-#app > .frontmatter-panel { grid-row: 3; }
-#app > .splitpane { grid-row: 4; }
-#app > .statusbar { grid-row: 5; }
+   statusbar 落到 1fr 行（占据所有剩余空间）。显式 grid-row 锁定位置，杜绝错位。
+   侧边栏跨 tabbar→splitpane 三行，只占第 1 列（顶栏与状态栏横跨整宽）。 */
+#app > .topbar { grid-row: 1; grid-column: 1 / -1; }
+#app > .sidebar { grid-row: 2 / 5; grid-column: 1; }
+#app > .tabbar { grid-row: 2; grid-column: 2; }
+#app > .frontmatter-panel { grid-row: 3; grid-column: 2; }
+#app > .splitpane { grid-row: 4; grid-column: 2; }
+#app > .statusbar { grid-row: 5; grid-column: 1 / -1; }
+
+/* 收起侧边栏：列宽归零 + 容器移出渲染树。
+   只置 0 宽度不够——display:none 才能一并摘掉内部可聚焦元素，
+   否则 Tab 键会跳进一个看不见的面板（键盘可达性 bug）。 */
+#app[data-sidebar="off"] { --sidebar-w: 0px; }
+#app[data-sidebar="off"] > .sidebar { display: none; }
+
+/* ===== 左侧边栏（大纲 / 文件树容器） ===== */
+.sidebar {
+    position: relative; /* 供 .sidebar-resizer 绝对定位 */
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--bg-1);
+    border-right: 1px solid var(--border);
+}
+
+/* 拖动调宽时禁用全局文本选中，否则会一路刷蓝编辑区文字 */
+#app.sidebar-dragging { user-select: none; cursor: col-resize; }
+
+.sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    height: 28px;
+    padding: 0 6px 0 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.sidebar-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+}
+
+.sidebar-collapse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+}
+.sidebar-collapse:hover {
+    background: var(--bg-2);
+    color: var(--fg-1);
+}
+.sidebar-collapse:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.sidebar-body {
+    flex: 1 1 auto;
+    min-height: 0;      /* 关键：flex 子项默认 min-height:auto，不置 0 无法内部滚动 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 4px 12px;
+}
+
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: -2px;        /* 压在边框上，命中区域外扩 2px */
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 2;
+}
+.sidebar-resizer:hover { background: var(--accent-soft); }
+
+/* ===== 大纲树 ===== */
+.toc-list,
+.toc-list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.toc-list ul { display: block; }
+.toc-list ul[hidden] { display: none; }
+
+.toc-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    /* 层级缩进由 JS 写入的 --toc-level（0 起）驱动 */
+    padding-left: calc(4px + var(--toc-level, 0) * 12px);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--fg-2);
+    line-height: 1.9;
+    user-select: none;
+}
+.toc-row:hover {
+    background: var(--bg-2);
+    color: var(--fg-1);
+}
+/* 当前光标所在章节 */
+.toc-row.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+}
+.toc-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.toc-twisty {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-2);
+    font-size: 9px;
+    line-height: 14px;
+    cursor: pointer;
+}
+.toc-twisty:hover { background: var(--bg-3); color: var(--fg-1); }
+/* 叶子节点保留箭头占位，保证同级标题文字左对齐 */
+.toc-twisty.leaf { visibility: hidden; cursor: default; }
+
+.toc-text {
+    flex: 1 1 auto;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.toc-empty {
+    margin: 8px 8px 0;
+    color: var(--fg-2);
+    font-size: 12px;
+}
 
 /* ===== Markdown 配色（供 CM 主题用 CSS variables） ===== */
 :root {
@@ -248,13 +400,20 @@ html, body {
     display: flex;
     align-items: center;
     gap: 16px;
-    min-height: 40px;   /* 兼任标题栏，保证足够的抓取/双击面积 */
+    min-height: 40px;   /* 标题栏增高至 40px（Win11 常规标题栏高度）：
+                            可拖动区更充裕，品牌与应用身份更突出；
+                            与标签栏 30px 形成清晰的层次对比 */
     padding: 0 0 0 16px; /* 右侧由 .window-controls 贴边（Win11 规范） */
     background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--border);
     user-select: none;
+    /* 提为顶层 stacking context：tooltip 默认 z-index:100 只在 topbar 内部有效，
+       若 topbar 自己不设 z-index，会被后续兄弟（.sidebar/.tabbar 等）按 DOM 顺序
+       盖住，悬停浮出的提示词被目录栏标题区挡住看不见。 */
+    position: relative;
+    z-index: 10;
 }
 
 .brand {
@@ -388,6 +547,19 @@ html, body {
     transition-delay: 0.6s;
 }
 
+/* 键盘聚焦同样显示 tooltip（审查 🟡-10）：键盘用户看不到 hover 提示，
+   :focus-visible 时以更短延迟显出（聚焦意图比悬停明确） */
+.actions button:focus-visible .tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    transition-delay: 0.15s;
+}
+
+.actions button:last-child:focus-visible .tip {
+    transform: translateY(0);
+}
+
 /* 最右侧按钮（主题切换）的 tooltip 改为右对齐，
    防止居中定位导致气泡溢出视口右缘被裁剪 */
 .actions button:last-child .tip {
@@ -512,6 +684,12 @@ html, body {
     border-bottom: 2px solid var(--accent);
 }
 
+/* 键盘漫游到标签时的焦点指示（审查 🔴-3） */
+.tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 .tab:hover:not(.active) {
     background: var(--bg-2);
 }
@@ -536,7 +714,9 @@ html, body {
     border-radius: 4px;
     border: none;
     background: transparent;
-    color: var(--fg-2);
+    /* 审查 🟡-11：--fg-2（#8B949E）在暗色 tab 底上对比度不足，
+       提到 --fg-1（#C9D1D9）保证可辨识 */
+    color: var(--fg-1);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -658,16 +838,22 @@ html, body {
     color: var(--fg-1);
     line-height: 1.7;
     font-size: 14px;
+    /* 审查 🟡-12：长单词/长 URL 无换行保护会撑破布局（表格内尤甚），
+       超出容器时在单词内断行而非溢出 */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 /* ===== 预览行号（与编辑器行号对齐） =====
    preview.ts 为每个顶层块注入 data-line（源 markdown 行号）。
    行号浮在左侧槽位，颜色复用编辑器 gutter 变量，亮/暗主题自适应；
-   数字右对齐、等宽字体，与 CodeMirror gutter 视觉一致。 */
-.preview > [data-line] {
+   数字右对齐、等宽字体，与 CodeMirror gutter 视觉一致。
+   v0.2.7：内容外新增 .preview-content 包裹层（用户 CSS 作用域边界），
+   直接子元素选择器改为后代形式（data-line 只由程序注入，无误伤面）。 */
+.preview [data-line] {
     position: relative;
 }
-.preview > [data-line]::before {
+.preview [data-line]::before {
     content: attr(data-line);
     position: absolute;
     right: calc(100% + 8px);
@@ -684,9 +870,17 @@ html, body {
     white-space: nowrap;
 }
 /* hover 该行时行号微亮，便于对照源行 */
-.preview > [data-line]:hover::before {
+.preview [data-line]:hover::before {
     color: var(--accent);
     opacity: 1;
+}
+
+/* ===== 用户内嵌 CSS 作用域包裹层（v0.2.7） =====
+   渲染内容全部落在 .preview-content 内；用户 <style> 块经 user-css.ts
+   重写后选择器一律以 .preview-content 开头，最远只能影响预览区内部。
+   flow-root 建立 BFC：用户 CSS 的 float 不会溢出包裹层边界。 */
+.preview-content {
+    display: flow-root;
 }
 
 /* 标题选择器用标签形式：marked 输出的是裸 <h1>~<h6> 标签（无 class），
@@ -762,6 +956,63 @@ html, body {
     border-radius: 0;
     padding: 0;
 }
+
+/* 代码块装饰：语言标签 + 复制按钮（Obsidian 风）
+   容器 .code-block 包住 pre；header 浮在顶部右侧不挤占代码区。
+   复制按钮在暗色主题下默认几乎透明，悬浮时显形，避免干扰阅读。 */
+.preview .code-block {
+    position: relative;
+    margin: 0.8em 0;
+}
+.preview .code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 28px;
+    padding: 0 8px 0 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    font-size: 11px;
+    color: var(--fg-2);
+    font-family: var(--font-mono);
+}
+.preview .code-block-lang {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    user-select: none;
+}
+.preview .code-block-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--fg-2);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.preview .code-block-copy:hover {
+    background: var(--bg-3);
+    color: var(--fg-0);
+    border-color: var(--border-strong);
+}
+.preview .code-block-copy.is-flashed {
+    background: var(--accent-faint);
+    color: var(--accent-hover);
+    border-color: var(--accent);
+}
+.preview .code-block > pre {
+    /* 顶角与 header 圆角对齐；header 已用上圆角，pre 仅用下圆角 */
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    margin: 0;
+}
 .preview a {
     color: var(--md-link);
     text-decoration: none;
@@ -775,6 +1026,14 @@ html, body {
     border-bottom-color: currentColor;
     background: var(--accent-faint);
 }
+/* 外部链接（target=_blank）加 ↗ 标记，与内部锚点/wiki-link 区分（审查 🟢-10） */
+.preview a[target="_blank"]::after {
+    content: "↗";
+    font-size: 0.72em;
+    margin-left: 2px;
+    opacity: 0.6;
+    vertical-align: super;
+}
 .preview code {
     background: var(--bg-2);
     color: var(--md-code);
@@ -786,10 +1045,14 @@ html, body {
 .preview table {
     border-collapse: collapse;
     margin: 0.6em 0;
+    max-width: 100%;
 }
 .preview th, .preview td {
     border: 1px solid var(--border);
     padding: 4px 10px;
+    /* 单元内长串断行，避免一列超宽把整表撑出视口（审查 🟡-12） */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 .preview img {
     max-width: 100%;
@@ -1017,6 +1280,18 @@ kbd {
     user-select: none;
 }
 
+/* 状态栏文件路径可点击复制（审查 🟢-10） */
+#statusPath {
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 70%;
+}
+#statusPath:hover {
+    color: var(--fg-1);
+}
+
 /* ===== 弹窗 ===== */
 .litemd-dialog {
     border: 1px solid var(--border-strong);
@@ -1136,4 +1411,118 @@ html.theme-anim *::after {
     }
     .splash-inner { animation: none; }
     .splash-spinner span { animation: none; }
+}
+
+/* ===== 窄窗口防御（审查 🟡-13）=====
+   最小窗口宽 800px 时顶栏 10 个图标按钮 + 品牌 + meta 可能溢出。
+   窄窗下压缩间距与按钮尺寸，保证工具栏完整可用。 */
+@media (max-width: 900px) {
+    .topbar { gap: 8px; padding-left: 10px; }
+    .actions { gap: 2px; }
+    .actions button { width: 26px; height: 26px; }
+    .actions .sep { margin: 0 2px; }
+    .brand { font-size: 13px; letter-spacing: 0.4px; }
+    .meta { font-size: 11px; }
+}
+
+/* ===== 预览链接与本地资源（v0.2.6）=====
+   预览区所有 <a> 的点击都被拦截（放任默认行为会导航到 http://wails.localhost/…
+   触发 404 白屏），以下样式配合新引入的提示层与资源状态标记。 */
+
+/* 浮层提示：显示"链接无法在应用内打开"等信息。
+   用 fixed 独立层而非插入 #app —— 后者是固定 grid 行高，插进去会压坏布局。 */
+.toast-layer {
+    position: fixed;
+    top: 46px;
+    right: 12px;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 380px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--bg-3, var(--bg-2));
+    color: var(--fg-0);
+    font-size: 12px;
+    line-height: 1.5;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+    animation: toast-in 160ms ease-out;
+}
+
+.toast-close {
+    flex: none;
+    margin-left: auto;
+    padding: 0 4px;
+    border: none;
+    background: transparent;
+    color: var(--fg-2);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.toast-close:hover { color: var(--fg-0); }
+.toast-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
+}
+
+/* 本地图片解析失败：明确显示破图，而不是留一个空白占位 */
+.preview img[data-asset-broken="1"] {
+    border: 1px dashed var(--danger);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+/* 对话框里的路径用等宽字体，长路径断行仍可读 */
+.litemd-dialog .mono { font-family: var(--font-mono); }
+
+/* ===== Mermaid 图表容器（v0.2.8） =====
+   替换前的 ```mermaid 代码块，加载中是等宽原文（便于校对），加载成功为 SVG，
+   加载失败为 .is-error 错误态占位。SVG 居中显示，最大宽度 100% 防溢出。 */
+.preview-content .mermaid-block {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 1em 0;
+    padding: 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 6px;
+    overflow-x: auto;
+    min-height: 40px;
+}
+.preview-content .mermaid-block[data-state="loading"],
+.preview-content .mermaid-block[data-state="error"] {
+    white-space: pre;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-2);
+    text-align: left;
+    justify-content: flex-start;
+}
+.preview-content .mermaid-block[data-state="error"] {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: var(--bg-1);
+}
+.preview-content .mermaid-block svg {
+    max-width: 100%;
+    height: auto;
 }

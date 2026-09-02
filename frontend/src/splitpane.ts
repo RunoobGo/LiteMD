@@ -46,6 +46,31 @@ export class SplitPane {
             this.applyRatio();
             this.onChange?.(this.ratio);
         });
+        // 键盘可达性（审查 🟡-8）：把手可聚焦（tabindex=0），
+        // ←/→ 微调比例，Home/End 到最小/最大。WAI-ARIA separator 模式。
+        this.handle.addEventListener("keydown", (e) => this.onKeydown(e));
+    }
+
+    /** 键盘调整：←/→ 步进 2%，Home/End 到 15%/85% 边界 */
+    private onKeydown(e: KeyboardEvent): void {
+        if (this.mode !== "both") return;
+        let delta = 0;
+        switch (e.key) {
+            case "ArrowLeft": delta = -0.02; break;
+            case "ArrowRight": delta = 0.02; break;
+            case "Home": e.preventDefault(); this.setRatio(0.15); return;
+            case "End": e.preventDefault(); this.setRatio(0.85); return;
+            default: return;
+        }
+        e.preventDefault();
+        this.setRatio(this.ratio + delta);
+    }
+
+    /** 设置比例（夹取到 0.15..0.85）并通知监听方 */
+    private setRatio(r: number): void {
+        this.ratio = Math.max(0.15, Math.min(0.85, r));
+        this.applyRatio();
+        this.onChange?.(this.ratio);
     }
 
     setMode(mode: SplitMode) {
@@ -74,10 +99,15 @@ export class SplitPane {
             try { this.handle.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
             this.onChange?.(this.ratio);
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
+        // 审查 🟡-3：拖拽被系统打断（触屏手势冲突 / Alt-Tab）时派发的是
+        // pointercancel 而非 pointerup。旧版只听 up：dragging 永真、
+        // 监听器永久残留，此后鼠标一动分栏比例就跟着变（幽灵拖拽）。
+        window.addEventListener("pointercancel", onUp);
     }
 
     private onDrag(e: PointerEvent) {
@@ -92,5 +122,7 @@ export class SplitPane {
     private applyRatio() {
         const pct = (this.ratio * 100).toFixed(2);
         this.host.style.setProperty("--split-ratio", pct + "%");
+        // aria-valuenow 用整数百分比：拖动/键盘调整时屏幕阅读器播报友好
+        this.handle.setAttribute("aria-valuenow", String(Math.round(this.ratio * 100)));
     }
 }

@@ -16,6 +16,10 @@ export async function askUnsaved(fileName: string): Promise<UnsavedChoice> {
     const dlg = document.getElementById("unsavedDialog") as HTMLDialogElement;
     const nameEl = document.getElementById("unsavedFileName");
     if (nameEl) nameEl.textContent = fileName;
+    // 关键：ESC 关闭对话框不修改 returnValue，它残留上一次按钮写入的值——
+    // 连续关闭第二个未保存标签时按 ESC 会“复用”上次的选择（如「放弃修改」），
+    // 造成静默丢数据。必须在每次 showModal 前显式清零（审查 🔴-2）。
+    dlg.returnValue = "";
     if (!dlg.open) dlg.showModal();
 
     return new Promise<UnsavedChoice>((resolve) => {
@@ -73,6 +77,8 @@ export async function confirmQuit(tabManager: TabManager): Promise<boolean> {
     if (!dlg) return false;
     const hint = document.getElementById("quitHint");
     if (hint) hint.textContent = "关闭窗口将丢失未保存的内容。";
+    // 与 askUnsaved 同源：ESC 残留上次的 "quit" 会导致按 ESC 直接退出丢数据
+    dlg.returnValue = "";
     if (!dlg.open) dlg.showModal();
     return new Promise<boolean>((resolve) => {
         const handler = () => {

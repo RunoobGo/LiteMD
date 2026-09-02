@@ -48,6 +48,45 @@ export async function copyImageAsset(targetPath: string, base64Data: string): Pr
     return await bind("CopyImageAsset")(targetPath, base64Data);
 }
 
+// ============================================================================
+// 链接与本地资源（v0.2.6：预览链接不再触发 WebView 导航）
+// ============================================================================
+
+/** 链接目标解析结果（对应 Go 侧 main.LinkTarget） */
+export interface LinkTargetInfo {
+    /** 绝对路径；不存在时是"应该在哪"的路径，供提示展示 */
+    path: string;
+    exists: boolean;
+    /** markdown | text | other | dir | missing */
+    kind: string;
+    anchor: string;
+}
+
+/**
+ * 解析 Markdown 链接目标。
+ *
+ * 这是预览链接不再"点一下就白屏"的关键：相对路径在 Go 侧换算成磁盘绝对路径，
+ * 前端据此决定在应用内打开还是交系统程序，而不是交给 WebView 去导航。
+ */
+export async function resolveLocalPath(basePath: string, href: string): Promise<LinkTargetInfo> {
+    return await bind("ResolveLocalPath")(basePath, href);
+}
+
+/** 用系统默认浏览器/邮件客户端打开外链（Go 侧校验 http/https/mailto/tel 白名单） */
+export async function openExternal(url: string): Promise<void> {
+    await bind("OpenExternal")(url);
+}
+
+/** 用系统默认程序打开本地文件（PDF / Excel / 图片等） */
+export async function openPath(path: string): Promise<void> {
+    await bind("OpenPath")(path);
+}
+
+/** 读取本地图片为 data URL，供预览区相对路径图片回填 */
+export async function readLocalAsset(path: string): Promise<string> {
+    return await bind("ReadLocalAsset")(path);
+}
+
 // E2E 测试可读
 declare global {
     interface Window {
@@ -62,4 +101,8 @@ window.__litemd__bindings = {
     GetConfig: getConfig,
     PushRecent: pushRecent,
     CopyImageAsset: copyImageAsset,
+    ResolveLocalPath: resolveLocalPath,
+    OpenExternal: openExternal,
+    OpenPath: openPath,
+    ReadLocalAsset: readLocalAsset,
 };

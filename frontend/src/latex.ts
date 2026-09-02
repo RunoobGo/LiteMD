@@ -25,6 +25,7 @@
 //    状态机与按起点排序+游标二分，单次渲染最坏 O(n)。
 
 import katex from "katex";
+import { escapeHtml } from "./html";
 
 export interface LatexFormula {
     /** 公式源码（不含定界符） */
@@ -93,17 +94,38 @@ function findFenceRanges(md: string): Range[] {
     return ranges;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => {
-        switch (c) {
-            case "&": return "&amp;";
-            case "<": return "&lt;";
-            case ">": return "&gt;";
-            case "\"": return "&quot;";
-            case "'": return "&#39;";
-            default: return c;
-        }
-    });
+/** 单个公式 → KaTeX HTML。渲染失败时降级为可读的错误提示，不抛异常。 */
+export function renderFormula(f: LatexFormula): string {
+    // 公式缓存（审查 🟡-7）：连续输入时每次全量重渲都会重算所有公式，
+    // 同一源码+模式的结果是确定的，纯浪费。上限防无界增长，超限整清。
+    const key = `${f.display ? "D" : "I"}\u0000${f.tex}`;
+    const hit = formulaCache.get(key);
+    if (hit !== undefined) return hit;
+    const html = renderFormulaUncached(f);
+    if (formulaCache.size >= FORMULA_CACHE_MAX) formulaCache.clear();
+    formulaCache.set(key, html);
+    return html;
+}
+
+const FORMULA_CACHE_MAX = 500;
+const formulaCache = new Map<string, string>();
+
+function renderFormulaUncached(f: LatexFormula): string {
+    try {
+        return katex.renderToString(f.tex, {
+            displayMode: f.display,
+            throwOnError: false,
+            errorColor: "#e06c75",
+            strict: false,
+            trust: false,
+            maxSize: 50,
+            maxExpand: 1000,
+            output: "htmlAndMathml",
+        });
+    } catch {
+        // 极端兜底：KaTeX 自身崩溃时也不应让整个预览挂掉
+        return `<code class="latex-error">${escapeHtml(f.tex)}</code>`;
+    }
 }
 
 /**
@@ -206,25 +228,8 @@ export function extractLatex(md: string): { text: string; ext: LatexExtraction; 
     return { text: out, ext: { formulas }, re };
 }
 
-/** 单个公式 → KaTeX HTML。渲染失败时降级为可读的错误提示，不抛异常。 */
-export function renderFormula(f: LatexFormula): string {
-    try {
-        return katex.renderToString(f.tex, {
-            displayMode: f.display,
-            throwOnError: false,
-            errorColor: "#e06c75",
-            strict: false,
-            trust: false,
-            maxSize: 50,
-            maxExpand: 1000,
-            output: "htmlAndMathml",
-        });
-    } catch {
-        // 极端兜底：KaTeX 自身崩溃时也不应让整个预览挂掉
-        return `<code class="latex-error">${escapeHtml(f.tex)}</code>`;
-    }
-}
-
+/** 单个公式 → KaTeX HTML。渲染失败时降级为可读的错误提示，不抛异常。
+ *  实现见文件上方 renderFormula（含缓存）。 */
 /**
  * 还原公式占位符。
  *
