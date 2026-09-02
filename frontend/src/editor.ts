@@ -9,7 +9,7 @@
 import { EditorState, Compartment, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
 import { autocompletion, completionKeymap, startCompletion } from "@codemirror/autocomplete";
 import { bracketMatching, foldGutter, indentOnInput, indentUnit } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -51,6 +51,8 @@ export class MarkdownEditor {
     private onCursorChange: CursorChangeListener | null;
     private themeCompartment = new Compartment();
     private baseThemeCompartment = new Compartment();
+    // P0-4：history 放进 Compartment，切 tab 时整体换新实例以清空 undo 栈
+    private historyCompartment = new Compartment();
     private imageDropHandler: ImageDropHandler | null = null;
 
     constructor(host: HTMLElement, initialContent: string, onChange: EditorChangeListener, theme: LiteMDTheme = { base: "dark" }, onCursorChange?: CursorChangeListener) {
@@ -59,11 +61,14 @@ export class MarkdownEditor {
         const extensions = [
             lineNumbers(),
             foldGutter(),
-            history(),
+            this.historyCompartment.of(history()),
             indentOnInput(),
             indentUnit.of("    "),
             bracketMatching(),
             highlightActiveLine(),
+            // P1-1：search() 提供 searchState field，searchKeymap 的
+            // openSearchPanel/closeSearchPanel 依赖它——漏注册时 Ctrl+F 是空操作
+            search(),
             highlightSelectionMatches(),
             autocompletion(),
             keymap.of([
@@ -142,10 +147,14 @@ export class MarkdownEditor {
     /**
      * 替换文档内容（用于切换 tab 时）。
      *
-     * **必须**通过 `Transaction.addToHistory.of(false)` 标注不进 undo 历史：
-     * CodeMirror 的 history() 扩展默认会把所有 transaction 记入历史；若不加标注，
-     * 切换标签后用户按 Ctrl+Z（本意是撤销自己的编辑）会把 A 文件的内容还原到 B
-     * 文件里，进而触发保存逻辑把 A 内容写进 B 文件 —— 跨文件数据污染。
+     * 双重防护（P0-4）：
+     *  1. `Transaction.addToHistory.of(false)`：切换本身不进 undo 历史；
+     *  2. `historyCompartment.reconfigure(history())`：换一个全新的 history
+     *     实例，**清空整个 undo 栈**。仅靠第 1 条不够——栈里还留着上一个
+     *     文件的编辑记录，切到 B 后按 Ctrl+Z 会把 A 的变更逆放回 B 的文档，
+     *     触发保存后即跨文件数据污染。CodeMirror 无法序列化 history 状态，
+     *     「换新实例清栈」是切换场景下唯一正确的隔离方式（代价：切回来的
+     *     tab 不保留之前的 undo 历史，属可接受取舍）。
      */
     setContent(content: string) {
         if (this.view.state.doc.toString() === content) return;
@@ -154,6 +163,7 @@ export class MarkdownEditor {
             annotations: Transaction.addToHistory.of(false),
             selection: { anchor: 0 },
             scrollIntoView: true,
+            effects: this.historyCompartment.reconfigure(history()),
         });
     }
 
