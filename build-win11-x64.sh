@@ -30,7 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 export PATH="$PATH:$(go env GOPATH)/bin:/usr/local/go-packages/bin"
-export GOTOOLCHAIN=auto          # go.mod 要求 go1.25，缺失时自动拉取工具链
+export GOTOOLCHAIN=auto          # go.mod 要求 go1.27.1，缺失时自动拉取工具链
 export GOOS=windows
 export GOARCH=amd64
 
@@ -38,7 +38,7 @@ OUT="${OUT:-$ROOT/dist}"
 
 # ---- 前置检查 ----
 need() { command -v "$1" >/dev/null 2>&1 || { echo "✗ 缺少依赖: $1 — $2"; exit 1; }; }
-need go        "安装 Go 1.21+（工具链会自动升级到 1.25）"
+need go        "安装 Go 1.27+（工具链会自动对齐 go.mod）"
 need wails     "go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0"
 need makensis  "apt-get install -y nsis"
 need zip       "apt-get install -y zip"
@@ -75,6 +75,14 @@ fi
 # 放在 bump 之前会导致 VERSION 先被填成旧值，使递增守卫 -z "${VERSION:-}" 恒为假。
 VERSION="${VERSION:-$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)}"
 VERSION="${VERSION:-0.2.0}"
+
+# P1-12：VERSION= 显式指定时不回写任何事实源——若与 wails.json 内部版本不一致，
+# 交付文件名与 exe 内部版本（VIProductVersion / 关于框）会出现两套版本号。给出明确警告。
+WAILS_VER="$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)"
+if [ -n "${VERSION+x}" ] && [ "${VERSION}" != "${WAILS_VER}" ]; then
+  echo "==> 警告：VERSION=${VERSION} 与 wails.json 的 ${WAILS_VER} 不一致——" \
+       "交付文件名将用 ${VERSION}，exe 内部版本仍为 ${WAILS_VER}（VERSION= 分支不回写事实源）。"
+fi
 
 echo "==> LiteMD v${VERSION} — Windows 11 x64 精简构建"
 
@@ -123,7 +131,11 @@ trap 'rm -rf "$TMP"' EXIT
 # （曾偶发 zip 只写出 1.8KB 空壳而退出码仍为 0，故显式设下限）。
 verify_zip() {
   local f="$1"; local name="$2"; local min=$((1024 * 1024))
-  local size; size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+  # P0-6：GNU 专用的 stat -c%s 在 macOS（BSD stat）上报 illegal option，
+  # 且这是构建的最后一步——前端编译、交叉编译全部白跑。改用 wc -c，
+  # macOS/Linux 通用；输出可能带前导空格，tr 掉。
+  local size; size=$(wc -c < "$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+  size="${size:-0}"
   if [ "$size" -lt "$min" ]; then
     echo "✗ ${name} 体积异常（${size} 字节 < 1MB），打包失败"
     return 1
