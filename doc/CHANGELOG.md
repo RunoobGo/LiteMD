@@ -5,6 +5,353 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ---
 
+## [0.2.8] — 2026-09-01
+
+新增 **Mermaid 图表渲染**（评估报告 P1）：动态 import 启动≈0、图级缓存 +30MB
+内存 0ms 命中、竞态防护、securityLevel strict。前端全量 376 断言 0 失败。
+
+### ✨ 新增
+
+- **`<code class="language-mermaid">` 代码块自动渲染**：在 render() 阶段
+  把 `<pre><code.language-mermaid>` 替换为 `.mermaid-block` 容器，异步水合
+  成 SVG；不进入 `.code-block` 装饰（图表不是代码，无复制按钮）。
+- **图级缓存（LRU 64）**：缓存键 `theme + \0 + code`，同图同主题毫秒级命中。
+- **主题跟随**：`applyTheme` 末尾触发 `preview.onThemeChange(theme)`，已渲染图
+  按新主题重新水合；不同主题缓存各自保留。
+- **加载/语法错误降级**：`is-error` 容器保留原文 + 错误文案，便于校对修改。
+- **测试接缝 `setMermaidLoader`**：node/jsdom 注入 fake 模块测缓存/隔离/
+  失败/loader 异常；浏览器/E2E 走真实 dynamic import。
+
+### 🔒 安全（mermaid 11）
+
+- `securityLevel: 'strict'`：禁用 click 回调与危险 HTML，href 协议白名单。
+- `startOnLoad: false`：杜绝 mermaid 自动扫文档渲染。
+- mermaid 输出的 SVG 直接 `innerHTML` 注入，依赖 strict 净化；后续若需
+  进一步收紧可改为 `<img src="data:image/svg+xml,...">` + DOM 净化。
+
+### 🏗️ 结构
+
+- **`frontend/src/mermaid.ts`**：懒加载单例 + LRU + setMermaidLoader 接缝。
+- **Preview 类扩展**：`replaceMermaidBlocks`（decorate 之前替换）、
+  `hydrateMermaidBlocks(holders, gen, theme)`（异步 SVG 注入）、`onThemeChange`
+  （仅重 hydrate 已有块，不重 render 整文档）。
+- **style.css** 新增 `.mermaid-block` / `[data-state=loading|error]` 样式。
+- **`main.ts applyTheme`**：末尾调用 `preview.onThemeChange(base)`。
+
+### 🧪 测试
+
+- 新增 `mermaid.ts` + `mermaid.test.ts`（**22 断言**）：基础渲染、缓存命中、
+  主题隔离、错误降级、空代码、LRU 上限、loader 失败。
+- `preview.test.ts` 增补 **9 断言**（Preview 实例化集成）：替换发生、不
+  进入 `.code-block`、成功路径注入 `<svg>`、错误路径 `data-state=error`、
+  快速切换仅保留最新文档的 mermaid 块。
+- 修复 `preview.test-bootstrap.ts` 缺 `getComputedStyle`（mermaid ensureInitialized
+  在 node 环境会 TypeError → null）。
+- 前端全量 **376 断言 0 失败**（preview 84 / obsidian 45 / latex 55 /
+  titlebar 21 / tabs 22 / md-escape 30 / toc 33 / user-css 64 / mermaid 22）。
+- 新增 `e2e/sprint11.sh`（E2E，见仓库）：真实 Chromium 下 flowchart 渲染
+  出 svg、错误语法降级、主题切换重渲染、缓存命中零耗时。
+
+### 📦 产物
+
+- 主 JS **966KB / 317.86KB gzip**（v0.2.7 是 963KB/316.83KB，仅 +3KB）。
+- **mermaid 自动按图种分包**：cynefin chunk 690KB/155KB gzip 等多个按需 chunk。
+- 启动时主 chunk 不含 mermaid，文档无 mermaid 时零开销；首次出现按需下载。
+
+---
+
+## [0.2.7] — 2026-09-01
+
+新增**内嵌 HTML 渲染**与**内嵌 CSS 渲染**（含 `<style>` 块与 style 属性），
+配套作用域隔离与五类攻击面防护。前端全量 362 断言 0 失败。
+
+### ✨ 新增
+
+- **内嵌 HTML 渲染**：DOMPurify 白名单扩充 26 个语义/媒体标签——
+  `figure`/`figcaption`/`details`/`summary`/`mark`/`abbr`/`q`/`cite`/`small`/
+  `dl`/`dt`/`dd`/`caption`/`col`/`colgroup`/`address`/`time`/`var`/`samp`/
+  `bdi`/`bdo`/`wbr`/`video`/`audio`/`source`/`track`/`picture`；属性扩充
+  `colspan`/`rowspan`/`controls`/`loop`/`muted`/`poster`/`datetime` 等。
+  `autoplay` 不放行（防自动播放骚扰）。`button`/`form`/`iframe`/`input`
+  等交互元素仍一律剥除。
+- **内嵌 CSS 渲染（`<style>` 块）**：marked 输出中的 `<style>` 块由新模块
+  `user-css.ts` 接管——提取 → `scopeUserCss` 重写为 **`.preview-content`
+  作用域 CSS** → 以 `<style data-user-css>` 拼回渲染输出。支持普通规则、
+  `@media`/`@supports`/`@container` 递归、`@keyframes`（内部不前缀）、
+  `@font-face` 等声明型 at-rule；`html`/`body`/`:root` 开头的选择器映射为
+  预览容器自身（符合「文档样式作用于正文」的直觉）。
+- **style 属性渲染**：`<div style="color:red">` 等 30 余常用属性放行，
+  经 DOMPurify `uponSanitizeAttribute` hook 声明级过滤。
+- **data URI 图片**：`<img src="data:image/png;base64,...">` 直通渲染
+  （`svg+xml`/`text/html` 等非白名单 MIME 显式拒绝）。
+
+### 🔒 安全（内嵌 CSS 的五类攻击面防护）
+
+1. **UI 欺骗（钓鱼）**：恶意文档用 `position:fixed` + `z-index:99999`
+   盖住整个应用伪造界面 → 声明黑名单直接丢弃 `position` 非 relative/static
+   值、`z-index`、`top/right/bottom/left/inset`；作用域前缀保证用户 CSS
+   最远只能命中 `.preview-content` 包裹层内部（编辑器/侧栏/标题栏不可达）。
+2. **外发跟踪/内网探测**：`background-image:url(http://evil/track)` →
+   `url()` 仅放行 `#fragment` 与 `data:`；声明值含 `//` 一律丢弃（覆盖
+   `image-set()`/`src()` 等全部加载函数）；`@import`/`@charset`/`@namespace`
+   整条丢弃。
+3. **HTML 逃逸**：CSS 字符串内 `</style>` 会让浏览器提前终止 style 块 →
+   `buildUserStyleTag` 输出转义 `</style`；逃逸出的 HTML 本就落回
+   DOMPurify 管线清洗，双保险。
+4. **旧 IE 向量**：`expression()`/`behavior`/`-moz-binding` 声明丢弃。
+5. **data URI 收窄**：DOMPurify 默认对 img/video 等放行全部 data:/blob:，
+   hook 收窄为图片 base64 MIME 白名单（`svg+xml` 可携带脚本向量，拒绝）。
+
+### 🏗️ 结构
+
+- **Preview 增加 `.preview-content` 包裹层**：渲染内容全部落在
+  `host(.preview) > wrap(.preview-content)` 内，是用户 CSS 的作用域边界；
+  flow-root 建立 BFC，用户 CSS 的 float 不外溢。滚动容器仍是 `.preview`，
+  滚动/同步滚动/大纲 API 不变；`sync-scroll` 等外部模块的后代查询穿透
+  包裹层零改动。行号选择器 `.preview > [data-line]` 同步改为后代形式。
+
+### 🧪 测试
+
+- 新增 `frontend/src/user-css.ts` + `user-css.test.ts`（64 断言）：前缀化
+  （含 `:not()` 内逗号、属性选择器字符串）、at-rule 分支、声明黑名单、
+  url 白名单、`</style>` 逃逸转义、Nesting 整块丢弃。
+- `preview.test.ts` 增补 26 断言：HTML 白名单正反向、style 属性过滤、
+  `<style>` 作用域化、data URI 收窄；修复中发现并验证 DOMPurify 对
+  媒体标签的 data: 兜底行为（已用 hook 收窄）。前端全量 **362 断言
+  0 失败**（preview 75 / user-css 64 / obsidian 45 / latex 55 / titlebar 21 /
+  tabs 22 / md-escape 30 / link-handler 33 / toc 17）。
+- 新增 `e2e/sprint10.sh`（E2E，见仓库）：真实 WebView 下的样式生效与
+  作用域隔离断言。
+
+---
+
+## [0.2.6] — 2026-09-01
+
+修复预览页链接跳转 404 卡死（🔴 严重：一次误点击即丢失全部未保存内容）。
+新增 `e2e/sprint9.sh`（26 断言）与 `internal/links` 包（Go 单测 8 组）。
+
+### 🐛 修复
+
+- **预览区相对链接点击导致应用 404 卡死**（🔴，用户报告）：`[举例](../../文档名)`
+  此前被原样保留 `href` 且无人拦截，点击让 WebView2 就地导航到
+  `http://wails.localhost/文档名` → assetserver 未命中返回 404 空白页 →
+  整个前端 SPA 被卸载（无边框窗口的标题栏/关闭按钮都由前端渲染，
+  界面完全消失，只能杀进程重启，各标签未保存内容全部丢失）。
+  三层修复：
+  1. **渲染/交互层**：`preview.ts` 事件委托拦截**所有** `a[href]`（含中键
+     auxclick / Ctrl+点击），`preventDefault` 后按 `classifyHref` 分类分流——
+     外链/mailto 交系统默认程序（Go 白名单 http/https/mailto/tel）、
+     本地 Markdown/文本在应用内打开（复用 tab 去重与最近文件）、
+     其他已存在文件**二次确认后**交系统默认程序、不存在给出明确提示、
+     未保存文档引导先保存（相对链接以其所在目录为基准）。
+  2. **路径解析层**：新增 `internal/links` 包 + 4 个 binding
+     （`ResolveLocalPath`/`OpenExternal`/`OpenPath`/`ReadLocalAsset`）。
+     路径解析全部在 Go 侧完成：URL 百分号解码、`file://` 剥离、反斜杠
+     归一、跨平台绝对路径判定（盘符/UNC）、`..` 折叠、扩展名分类；
+     无扩展名目标按 Obsidian 约定嗅探文件头（8KB、无 NUL、合法 UTF-8）
+     归为 Markdown。
+  3. **兜底层**：assetserver 加 `navGuard` Middleware，未命中的 GET 一律
+     302 回 `/?nav=<路径>`，前端显示浮层提示"链接无法在应用内打开"——
+     任何漏网导航（未来新代码、右键新窗口等）都不再白屏卡死。
+
+### ✨ 新增
+
+- **标题锚点跳转**：marked v5+ 不再生成 heading id，`[跳转](#标题)` 点了
+  永远没反应。渲染后为 h1–h6 补 GitHub 风格 slug id（重复自动加序号），
+  锚点点击滚动预览区。
+- **本地相对路径图片显示**：`![](../img.png)` 此前请求不存在的 HTTP 路径
+  必然破图。渲染后异步解析为磁盘文件（限 10MB、白名单图片扩展名）回填
+  data URL；失败显示虚线边框提示；renderGen 机制防止异步回填串版。
+- **浮层提示组件**：fixed 定位独立层（不插入 grid 布局），textContent 防
+  XSS，4–6 秒自动消失。
+
+### 🧪 测试
+
+- 新增 `internal/links`：路径解析 12 组、错误语义、kind 判定（含无扩展名
+  嗅探）、scheme 白名单、图片读取限制，Go 单测全绿。
+- 新增 `navguard_test.go`：兜底中间件——404 → 302 `/?nav=`、正常资源/首页/
+  `/wails/` 端点/非 GET 均原样透传。
+- 新增 `frontend/src/link-handler.ts`（分类纯函数）+ 33 条单测，前端全量
+  272 断言 0 失败。
+- 新增 `e2e/sprint9.sh` 26 断言：相对链接应用内打开且**不导航**、外链走
+  OpenExternal、二次确认开/取消、断链提示、锚点滚动、未保存引导、中键
+  拦截、图片 data URL 回填、wiki-link 回归、编辑器回归。
+- 回归：sprint4（16）、sprint6（29）、sprint7（30）、sprint8（14）全绿。
+
+---
+
+## [0.2.5] — 2026-09-01
+
+### ♻️ 调整布局
+
+- **标题栏增高 / 标签栏压缩**：`grid-template-rows` 第 1 行 32px → **40px**，
+  第 2 行 36px → **30px**。标题栏恢复 Win11 常规标题栏高度（突出应用身份与
+  窗口拖动区），标签栏收紧把空间让给正文；`sprint7` 场景 3 同步更新断言。
+  标题栏 40 / 标签栏 30 = 4:3 比例，层次对比更清晰。
+
+---
+
+## [0.2.4] — 2026-09-01
+
+本次为 v0.2.3 全面代码审查（Go / 前端 TS / UI 三维度）后的集中修复，
+共修 🔴 3 项、🟡 14 项、🟢 10 项。新增 `e2e/sprint8.sh`（14 断言）覆盖关键回归。
+
+### 🐛 修复
+
+- **复制按钮监听器随渲染无限累积**（🔴，sprint7 引入）：`preview.ts` 把
+  代码块复制按钮的 `click` 监听器写在 `render()` 内，每次渲染追加一个、
+  只增不减——长编辑会话点击一次复制会执行成百上千次 clipboard 写入。
+  移到 constructor（与 wiki-link 监听并列，host 从不被 innerHTML 清空）。
+- **对话框 returnValue 残留导致 ESC 误执行上次选择**（🔴）：ESC 关闭
+  `<dialog>` 不修改 `returnValue`，它保留上一次按钮写入的值。连续关闭
+  第二个未保存标签时按 ESC 会「复用」上次的「放弃」→ 静默丢数据。
+  `askUnsaved` / `confirmQuit` 在 `showModal()` 前显式 `returnValue = ""`。
+- **config.json 损坏后 PushRecent 永久失败且无法自愈**（🟡）：`Mutate`
+  对 `json.Unmarshal` 失败直接 return，损坏文件永远不被覆盖。引入
+  `ErrCorrupted` 哨兵区分「已降级 Default 可继续」与「读取失败应中断」，
+  Mutate 遇损坏时以默认值继续并落盘覆盖，实现自愈（含回归测试）。
+- **未保存文档拖入图片在 Windows 真机必失败**（🟡）：`main.ts` 对无 path
+  标签硬编码 `/mock/assets/`（mock 专用路径），Windows 上非绝对路径被
+  Go 侧 `safeWritePath` 拒绝。桌面端（有 `window.runtime`）引导先保存；
+  mock 的 `CopyImageAsset` 补绝对路径校验，对齐真实 binding 行为。
+- **拖拽分隔条未监听 pointercancel**（🟡）：触屏手势冲突 / Alt-Tab 打断
+  拖拽时派发 `pointercancel` 而非 `pointerup`，`dragging` 永真、监听器
+  永久残留——此后鼠标移动分栏比例/侧栏宽度跟着变。`splitpane` 与
+  `sidebar` 同听 `pointercancel` 复位并摘除监听器。
+- **图片插入追加到文档末尾且光标重置**（🟡）：新增 `insertAtCursor`，
+  在光标处插入图片 markdown；新增每标签光标/滚动位置记忆，切回恢复。
+
+### ✨ 新增
+
+- **标签栏键盘可达性**（🔴）：roving tabindex（仅活动标签入 Tab 序），
+  ←/→/↑/↓ 切换激活、Home/End 跳首尾、Enter/Space 激活、Delete/Backspace 关闭。
+- **TOC 键盘导航**（🟡）：容器单 Tab 入口，↑/↓ 在可见行间移动并跳转、
+  ←/→ 折叠/展开、Home/End 跳首尾、Enter 跳转。
+- **分屏把手键盘调整**（🟡）：`role="separator"` + `aria-valuenow`，
+  ←/→ 步进 2%、Home/End 到边界。
+
+### ♻️ 优化
+
+- **渲染性能**（🟡）：KaTeX 公式结果缓存（连续输入不再重算相同公式）；
+  `renderMarkdown` 整文 LRU（8 条）——切 tab 往返跳过全管线。
+- **callout 标题**（🟢）：改走 `marked.parseInline`，标题内 `**加粗**` /
+  `` `代码` `` 与正文一致渲染（旧版显示字面星号）。
+- **工具函数收敛**：`escapeHtml` 抽到 `html.ts` 唯一事实源（原 main.ts
+  与 latex.ts 双份）；`marked.setOptions` 收敛到 `preview.ts` 一处。
+- **UI 细节**（🟡/🟢）：tab 关闭按钮对比度提升、预览长单词/长 URL 换行、
+  窄窗口媒体查询、外部链接 `↗` 标记、状态栏路径点击复制、图片
+  `loading="lazy"`、tooltip `:focus-visible` 触发。
+- **工程卫生**：删除 `._*` AppleDouble 残留与临时 CHANGELOG；
+  `build_windows/` 改名 `nsis-src/`（同步构建脚本与文档）；
+  构建脚本 `ls | head` 补 `|| true` 使失败报错生效。
+
+---
+
+## [0.2.3] — 2026-09-01
+
+### 🐛 修复
+
+- **侧边栏收起后内容栏未自动扩展**（v0.2.1 引入）：`sidebar.ts` 用
+  `style.setProperty("--sidebar-w", width)` 把列宽写到 `#app` 的 inline style，
+  开关时只更新 data 属性、没同步写变量 → 收起后 `--sidebar-w` 仍是 240px，
+  `1fr` 内容列吃不到 240px 空间。`applyVisible` 与 `applyWidth` 互相感知可见性：
+  收起时把变量强制归零，展开时恢复；拖动时只在可见状态下更新。
+- **顶栏 tooltip 被目录栏 / 标签栏遮挡**：`.topbar` 自身没设 z-index，
+  按 DOM 顺序被后续兄弟（`.sidebar` / `.tabbar`）盖住；tooltip z:100 只在
+  topbar 内部有效，跨不过自身边界。给 `.topbar` 加 `position: relative; z-index: 10`，
+  提为顶层 stacking context。
+- **预览中相对路径链接不可点击**（v0.2.x 起）：`DOMPurify.sanitize` 的
+  `ALLOWED_URI_REGEXP` 限得太死，仅允许 `https?:` / `mailto:` / `tel:` / `/` / `#`，
+  `./foo` / `../foo` / `foo` 全部被剥 → `<a>` 渲染但 `href=null`、cursor: auto。
+  改为显式接受相对路径，同时仍拒绝 `javascript:` / `data:` / `vbscript:` /
+  大小写绕过。
+
+### ✨ 新增
+
+- **代码块装饰（Obsidian 风）**：每个有语言标签的代码块顶部加 header，含
+  「语言名（大写灰字）」+「复制按钮（inline SVG 剪贴板图标）」。
+  - 仅扫描 `pre > code[class*="language-"]`，无语言标签的代码块不装饰
+  - header 用 `border-bottom: none` + pre 用 `border-top-left-radius: 0` 圆角对齐
+  - 复制：调 `navigator.clipboard.writeText`，成功后按钮 1.2s 内显「已复制」+ 高亮
+  - 装饰在 `preview.ts render()` 内、scrub 之后做，pre 上的 `data-line` 保留
+    → 同步滚动 / 大纲跳转不被破坏
+- **顶栏高度压缩**：`min-height` 40px → 32px（Win11 标题栏标准），`grid-template-rows`
+  第 1 行同步改为 32px。释放 12px 给文档区，与侧边栏标题 28px 同档。
+
+### 🧪 测试
+
+- 新增 `e2e/sprint7.sh`：侧边栏内容栏扩展（3 模式 / 6 断言）/ topbar stacking context
+  与 tooltip 浮出 / topbar 高度 / 链接 href 注入（5 路径 + 3 危险 scheme 过滤）/
+  代码块装饰（容器数 / 语言标签 / 复制按钮 / data-line 保留 / 截图）。28 断言全过。
+- 回归：sprint1-6 + 单测全过。
+- 视觉截图：`e2e/sprint7-tooltip-on-top.png`、`e2e/sprint7-topbar-compact.png`、
+  `e2e/sprint7-codeblocks.png`。
+
+## [0.2.2] — 2026-09-01
+
+### 🐛 修复
+
+- **预览模式下点击目录树无法跳转**（v0.2.1 引入）：仅预览模式下编辑器 pane 为
+  `display:none`，`revealLine()` 对它 dispatch 滚动、`focus()` 都是空操作，
+  点击大纲条目后界面毫无反应。
+  - 改为按视图模式分流跳转目标：仅预览时滚动预览区，分屏 / 仅编辑时跳编辑器
+    （分屏下由同步滚动把预览一并带过去）。
+  - 预览侧复用 `render()` 已注入的 `data-line`（原文行号）定位内容块，
+    不另建一套标题索引 —— 两套索引最容易失步。
+  - 找不到行号精确相等的块时退到"最后一个位于目标行之前的块"：标题被包在
+    列表 / callout 等容器里时，其块行号等于容器起始行而非标题所在行。
+- **仅预览模式下大纲高亮不跟随**：该模式没有编辑器光标可用，高亮会一直停在
+  跳转前的位置，手动滚预览也不更新。新增预览区滚动监听（rAF 节流），
+  由视口顶部所在标题驱动高亮。
+- **空文档与"有内容但无标题"文档切换时大纲占位文案不刷新**（sprint6 E2E 检出）：
+  `update()` 用 `flat.map(...).join("\n")` 做签名短路，但两种空状态的 `flat`
+  都是空数组 → 签名都是 `""` → 切到无标题文档时命中短路、不重建 DOM，
+  提示文案卡在「未打开文档」。签名加入 `emptyKind` 区分两种空状态。
+
+### 🧪 测试
+
+- 新增 `e2e/sprint6.sh`：侧边栏开关 + Ctrl+B / 大纲解析（围栏、frontmatter、
+  Setext、层级缩进）/ 折叠态按路径键 / 三模式点击跳转 / 滚动跟随高亮 /
+  空状态提示 / 跨 Sprint 回归。29 项断言全通过。
+- Playwright 真机浏览器验证四种场景全部通过：仅预览跳转（目标标题精确落在
+  距顶 8px 留白处）、预览滚动驱动高亮、分屏跳转 + 同步滚动、仅编辑跳转。
+- 全量前端套件 269 项断言通过；`tsc --noEmit` 无错误；Go 测试全通过。
+
+## [0.2.1] — 2026-09-01
+
+### ✨ 新增
+
+- **文档大纲（目录树）**：左侧边栏以层级树展示当前文档的 H1–H6 标题，
+  点击跳转到对应行，并跟随光标高亮所在章节。
+  - 解析同时支持 ATX（`# 标题`）与 Setext（`标题` + `===` / `---`）两种写法；
+  - 跳过围栏代码块与 YAML frontmatter —— 避免 shell 注释里的 `# 安装`
+    被误判为标题、`key: value` 被 Setext 规则误升级为 H2；
+  - 标题文本自动剥除 `**加粗**` / `` `代码` `` / `[链接](url)` /
+    `[[双链|别名]]` / 图片 / HTML 标签等行内标记；
+  - 子章节可折叠，折叠状态按树中位置路径记忆，编辑标题文字不会丢失；
+  - 层级跳变（H2 直接跟 H4）时 H4 挂在 H2 下，不制造空的中间层级节点。
+- **左侧边栏容器**：可折叠（顶栏按钮 / 面板内箭头 / `Ctrl+B`）、
+  可拖拽调宽（双击复位），显隐与宽度写入 localStorage。
+  容器与内容解耦，后续可直接挂载文件树等新面板。
+
+### 🔧 修复
+
+- `build-win11-x64.sh` 在干净检出时失败：`mkdir -p build/windows` 后
+  直接往 `build/windows/installer/` 复制 `project.nsi`，目录不存在导致 `cp` 报错。
+  改为 `mkdir -p build/windows/installer`。
+- 安装包版本信息滞后：wails 只在 `wails_tools.nsh` 缺失时才生成它，
+  版本升级后会沿用旧文件。构建前删除该文件强制重新生成。
+- 构建脚本新增版本号自动递增（patch 位 +1），并同步 `wails.json` /
+  `app.go` / `index.html` / `dev.html` / `mocks.ts` 五处版本事实源，
+  避免「安装包是新版、启动屏还是旧版」。用 `SKIP_BUMP=1` 或 `VERSION=x.y.z` 可绕过。
+
+### 🧪 测试
+
+- 新增 `frontend/src/toc.test.ts`：30 项断言，覆盖层级识别、围栏代码块排除、
+  frontmatter 排除、`#hashtag` / `#######` 伪标题、Setext 消歧、
+  行内标记清洗、层级跳变嵌套。
+- 全量前端套件 269 项断言通过（7 套件）；`tsc --noEmit` 无错误；Go 测试全通过。
+
 ## [0.2.0] — 2026-08-12
 
 **首个生产可用版本**：对标 Obsidian 快捕场景，启动 < 1.5s、安装包 3MB、内存 < 200MB。
@@ -91,5 +438,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ---
 
+[0.2.2]: https://github.com/litemd/litemd/releases/tag/v0.2.2
+[0.2.1]: https://github.com/litemd/litemd/releases/tag/v0.2.1
 [0.2.0]: https://github.com/litemd/litemd/releases/tag/v0.2.0
 [0.1.0]: https://github.com/litemd/litemd/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 # LiteMD 技术文档
 
-> 最后更新：2026-08-31（对齐当前代码快照 v0.2.0）
+> 最后更新：2026-09-01（对齐当前代码快照 v0.2.2）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
 
 ---
@@ -99,14 +99,17 @@ LiteMD/
 ├── app_test.go / app_integration_test.go / startupfile_test.go
 ├── internal/
 │   ├── config/             # ~/.litemd/config.json 持久化（主题/字号/最近文件）
-│   └── fileio/             # 文件读写（原子写 + safeWritePath 守卫）
+│   ├── fileio/             # 文件读写（原子写 + safeWritePath 守卫）
+│   └── links/              # 链接解析/外部打开/本地资源（v0.2.6，见 §4.1）
 ├── frontend/
 │   ├── src/
 │   │   ├── main.ts         # 应用主入口：事件绑定/快捷键/窗口流程
 │   │   ├── titlebar.ts     # 无边框标题栏：窗口控制按钮/双击最大化/状态同步
 │   │   ├── tabs.ts         # TabManager：标签生命周期 + dirty 状态
 │   │   ├── editor.ts       # CodeMirror 6 封装
-│   │   ├── preview.ts      # 渲染管线主流程（marked+DOMPurify+链接加固）
+│   │   ├── preview.ts      # 渲染管线主流程（marked+DOMPurify+链接加固+全量点击拦截）
+│   │   ├── user-css.ts     # 内嵌 CSS 安全层（<style> 作用域化 + style 属性过滤，v0.2.7）
+│   │   ├── link-handler.ts # 链接分类纯函数（classifyHref/slug 生成，v0.2.6）
 │   │   ├── latex.ts        # LaTeX 公式提取/渲染/还原（KaTeX）
 │   │   ├── obsidian.ts     # Obsidian 语法：双链/callout/frontmatter
 │   │   ├── file-ops.ts     # 与后端 binding 的桥接层
@@ -117,8 +120,8 @@ LiteMD/
 │   ├── index.html          # 生产入口
 │   ├── dev.html            # 浏览器开发入口（含 mock）
 │   └── vite.config.js      # 构建配置（含 KaTeX 字体裁剪插件）
-├── build_windows/          # NSIS 安装脚本
-├── e2e/                    # E2E 脚本（sprint1-5）
+├── nsis-src/              # NSIS 安装脚本（安装脚本事实源）
+├── e2e/                    # E2E 脚本（sprint4/6/7/8/9 为有效回归集；1/2/3/5 历史脚本 bug 未修）
 ├── doc/                    # 技术文档（本文件 + CHANGELOG + archive/）
 └── build-win11-x64.sh      # 一键构建脚本
 ```
@@ -132,15 +135,17 @@ Markdown 源文本
   → ① extractLatex(md)          ← LaTeX 公式抽成占位符（随机盐）
   → ② preprocessAll(text)       ← Obsidian 双链 / callout / frontmatter
   → ③ marked.parse(html)        ← Markdown → HTML
-  → ④ DOMPurify.sanitize        ← 严格白名单清洗
-  → ⑤ hardenLinks(html)         ← 外链加 target=_blank + rel=noopener
-  → ⑥ restoreLatex(html)        ← 占位符还原为 KaTeX HTML（仅文本节点）
+  → ④ extractStyleBlocks(html)  ← 摘除 <style> 块（v0.2.7，防被 FORBID_TAGS 剥掉）
+  → ⑤ DOMPurify.sanitize        ← 严格白名单清洗（style 属性经 hook 声明级过滤）
+  → ⑥ hardenLinks(html)         ← 外链加 target=_blank + rel=noopener
+  → ⑦ restoreLatex(html)        ← 占位符还原为 KaTeX HTML（仅文本节点）
+  → ⑧ buildUserStyleTag(css)    ← 用户 CSS 作用域化后拼回 <style data-user-css>（v0.2.7）
 ```
 
 **顺序为什么必须这样（两个硬约束）：**
 
 1. **公式提取必须在 marked 之前**（① 先于 ③）：否则 `a_i * b_j` 里的 `*` 会被 marked 解析为斜体标记，公式被破坏。
-2. **公式还原必须在 DOMPurify 之后**（⑥ 后于 ④）：KaTeX 输出依赖内联 `style` 属性与 MathML 标签，若在清洗前注入会被 DOMPurify 剥离。
+2. **公式还原必须在 DOMPurify 之后**（⑦ 后于 ⑤）：KaTeX 输出依赖内联 `style` 属性与 MathML 标签，若在清洗前注入会被 DOMPurify 剥离。
 
 **公式占位符的安全设计（2026-08-31 加固）：**
 
@@ -159,14 +164,68 @@ Markdown 源文本
 ### 3.1 DOMPurify 配置
 
 ```ts
-ALLOWED_TAGS: a/p/div/span/em/strong/b/i/u/s/code/pre/blockquote/ul/ol/li/h1-h6/table/thead/tbody/tr/th/td/img/figure/figcaption/hr/br/details/summary/mark/kbd
-FORBID_ATTR: onerror/onload/onclick/onmouseover/onmouseout/onfocus/onblur/style/srcdoc
-ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|\/|#)/i
+ALLOWED_TAGS: a/p/div/span/em/strong/b/i/u/s/code/pre/blockquote/ul/ol/li/h1-h6/
+              table/thead/tbody/tr/th/td/img/figure/figcaption/hr/br/details/summary/
+              mark/kbd + v0.2.7: dl/dt/dd/caption/col/colgroup/abbr/q/cite/small/
+              address/time/var/samp/bdi/bdo/wbr/video/audio/source/track/picture
+ALLOWED_ATTR: v0.2.7 起 style 属性放行（经 hook 声明级过滤，见 3.2）
+              + controls/loop/muted/preload/poster/width/height/colspan/rowspan/
+              span/scope/datetime/start/reversed/open/dir/kind/srclang/label/type
+FORBID_ATTR:  onerror/onload/onclick/onmouseover/onmouseout/onfocus/onblur/srcdoc
+              （style 已从禁用列表移除，改由 hook 过滤）
+ALLOWED_URI_REGEXP: https?:/mailto:/tel:/相对路径 + data:image/(png|gif|jpeg|
+              jpg|webp|avif|bmp|x-icon);base64,（v0.2.7，不含 svg+xml）
 ```
 
-注意：`style` 属性对 KaTeX 输出是**有意放行**的（公式还原发生在 DOMPurify 之后），这一层依赖 KaTeX `trust:false` 保证输出安全。
+注意：`style` 属性对 KaTeX 输出是**有意放行**的（公式还原发生在 DOMPurify 之后），这一层依赖 KaTeX `trust:false` 保证输出安全。v0.2.7 起用户 HTML 的 style 属性也放行，但每个声明值都会经过 `uponSanitizeAttribute` hook 的声明级过滤（黑名单 + url 白名单，见 4.2）。
 
-### 3.2 LaTeX 公式语法
+### 3.2 内嵌 CSS（`<style>` 块与 style 属性，v0.2.7）
+
+`user-css.ts` 提供三层能力，威胁模型见其头注释（UI 欺骗 / 外发跟踪 /
+HTML 逃逸 / 旧 IE 向量 / data URI 收窄）：
+
+- `extractStyleBlocks(html)`：`<style>` 块非贪婪摘取（与浏览器 raw-text
+  解析语义一致——CSS 字符串内的 `</style>` 同样会提前终止）；
+- `scopeUserCss(css)`：手写 CSS 重写器——`@media/@supports/@container`
+  递归前缀化、`@keyframes` 内部不前缀、`@font-face` 等声明型 at-rule 仅
+  过滤声明、`html/body/:root` 映射为 `.preview-content` 本体、`@import`
+  等无块 at-rule 与嵌套规则（Nesting）整块丢弃；
+- `filterInlineStyle(css)`：声明级黑名单——`position` 仅 relative/static、
+  `z-index`/`top/right/bottom/left/inset` 丢弃、`expression/behavior/
+  -moz-binding` 丢弃、含 `//` 的值丢弃（覆盖 url()/image-set()/src() 全部
+  加载函数）、`url()` 仅放行 `#fragment` 与 `data:`。
+
+预览 DOM 结构：`#preview(.preview, 滚动容器) > .preview-content(作用域
+边界, BFC)`，用户 CSS 选择器一律被前缀化为 `.preview-content …`，最远
+只影响预览区内部；`buildUserStyleTag` 输出前转义 `</style` 防 HTML 逃逸。
+
+### 3.3 Mermaid 图表（v0.2.8）
+
+```mermaid
+flowchart LR
+    md --> replaceMermaidBlocks --> hydrateMermaidBlocks --> mermaid.render
+```
+
+- **动态 import**：`import("mermaid")` 由 vite 自动分到独立 chunk（按图种
+  分包，cynefin 等典型图 690KB/155KB gzip），主 JS 不内联——文档无
+  mermaid 时启动零开销。
+- **图级缓存（LRU 64）**：缓存键 `theme + \0 + code`，切 tab / 撤销重做 /
+  主题切换前同图零开销。
+- **`securityLevel: 'strict'`**：禁用 click 回调与危险 HTML，href 协议白名单；
+  输出 SVG 通过 innerHTML 注入（依赖 strict 净化）。
+- **`startOnLoad: false`**：杜绝 mermaid 自动扫文档渲染（仅在用户主动
+  Preview.render 后由 hydrateMermaidBlocks 显式调用 render）。
+- **竞态防护**：与图片解析同款——`renderGen` + `holder.isConnected` 双
+  守卫，快速切 tab 时过期渲染直接丢弃。
+- **主题切换**：`applyTheme` 末尾 `preview.onThemeChange(theme)`；onThemeChange
+  不重 render 整文档，仅对已有 `.mermaid-block` 重新水合（缓存按 theme
+  隔离）。
+- **失败降级**：`renderMermaid` 返回 `null` → `.is-error` 容器保留原码 +
+  错误文案，便于校对修改。
+- **测试接缝 `setMermaidLoader`**：node/jsdom 注入 fake 模块，避开 939KB
+  真 chunk 下载；浏览器/E2E 走真实 dynamic import。
+
+### 3.4 LaTeX 公式语法
 
 - 行内：`$...$`（紧邻定界符不得为空白，避免货币误判）
 - 块级：`$$...$$`
@@ -190,8 +249,39 @@ KaTeX 配置：`trust:false`（禁 `\href`/`\url`/`\htmlClass`/`\htmlStyle`/`\ht
 | 6 | 公式还原（仅文本节点） | `latex.ts` |
 | 7 | DOM 兜底 scrub（移除 on* / javascript:） | `preview.ts` |
 | 8 | 写路径守卫（绝对路径/Clean/Windows 保留设备名） | `fileio/safepath.go` |
+| 9 | 链接点击全量拦截（杜绝 WebView 导航到 wails.localhost 未知路径） | `preview.ts` |
+| 10 | 外部打开 scheme 白名单（http/https/mailto/tel）+ 本地路径解析守卫 | `internal/links` |
+| 11 | 内嵌 CSS 作用域隔离（声明黑名单 + url 白名单 + `.preview-content` 前缀 + `</style` 转义） | `user-css.ts` |
+| 12 | Mermaid securityLevel strict + startOnLoad false + LRU 缓存 + 竞态防护 + 错误降级 | `mermaid.ts` |
 
 **原则**：DOMPurify 是唯一且充分的 HTML 清洗层；KaTeX 输出注入是设计上的例外，依赖 `trust:false` + 占位符防伪双重保护。
+
+### 4.1 预览链接与本地资源（v0.2.6）
+
+预览区跑在 `http://wails.localhost` 源上，放任 `[文本](../a.md)` 的默认行为
+会让 WebView **就地导航**到不存在的 HTTP 路径 → 404 → 整个 SPA 被卸载（卡死、
+未保存内容丢失）。因此点击被三层处理：
+
+```
+点击 <a> ──► preview.ts preventDefault（click + auxclick，含 Ctrl/中键）
+              │ classifyHref：external / mail / anchor / local / unsafe
+              ▼
+         main.ts 分流
+          ├─ external/mail ──► OpenExternal（Go 白名单校验）→ 系统浏览器
+          ├─ anchor ──► 预览区内滚动（h1-h6 自动补 slug id）
+          └─ local ──► ResolveLocalPath（Go：解码/file://剥离/盘符/UNC/../折叠）
+                        ├─ markdown|text ──► OpenFile → 新标签（含去重）
+                        ├─ other ──► 二次确认 → OpenPath（系统默认程序）
+                        ├─ dir ──► 提示
+                        ├─ missing ──► 提示"文件不存在"
+                        └─ 未保存文档 ──► 引导先保存（ErrNoBase）
+兜底：assetserver navGuard Middleware —— 任何未命中资源的 GET 302 回
+/?nav=<路径>，前端浮层提示，永不白屏。
+```
+
+无扩展名目标按 Obsidian 约定嗅探文件头（≤8KB、无 NUL、合法 UTF-8）归为
+Markdown。相对路径图片经 `ResolveLocalPath` + `ReadLocalAsset`（≤10MB、
+图片扩展名白名单）异步回填 data URL，`renderGen` 防串版。
 
 ---
 
@@ -234,9 +324,9 @@ OUT=/path/to/dist ./build-win11-x64.sh
 
 | 产物 | 说明 |
 |---|---|
-| `LiteMD-0.2.0-Setup-x64.exe` | NSIS 安装版（LZMA 固实压缩） |
-| `LiteMD-0.2.0-Portable-x64.zip` | 便携版（解压即用） |
-| `LiteMD-0.2.0-Portable-x64-upx.zip` | UPX 压缩便携版（可选产物） |
+| `LiteMD-0.2.1-Setup-x64.exe` | NSIS 安装版（LZMA 固实压缩） |
+| `LiteMD-0.2.1-Portable-x64.zip` | 便携版（解压即用） |
+| `LiteMD-0.2.1-Portable-x64-upx.zip` | UPX 压缩便携版（可选产物） |
 
 ### 6.2 体积优化策略（已落地）
 
@@ -270,16 +360,18 @@ cd frontend && LITEMD_TEST=latex npx tsx src/preview.test-bootstrap.ts
 cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 ```
 
-### 7.2 当前统计（2026-08-31）
+### 7.2 当前统计（2026-09-01，v0.2.7）
 
 | 套件 | 断言数 |
 |---|---|
-| Go（app + config + fileio） | 约 45 Test 函数 |
-| preview.test.ts | 22 |
+| Go（app + config + fileio + links） | 约 60 Test 函数（links 含路径解析 12 组/kind 判定/白名单） |
+| preview.test.ts | 75（v0.2.7 增内嵌 HTML/CSS 正反向 26 项） |
+| user-css.test.ts | 64（前缀化/at-rule 分支/声明黑名单/逃逸转义，v0.2.7） |
 | obsidian.test.ts | 45（含 ReDoS 防护 9 项） |
 | latex.test.ts | 55（含占位符防伪 5 项 + ReDoS 守卫 2 项） |
 | titlebar.test.ts | 11（按钮/手势/状态同步/降级） |
-| E2E（sprint1-5） | 部分失效，见 §8 待办 |
+| link-handler.test.ts | 33（链接分类/锚点切分/slug 生成） |
+| E2E sprint4 / 6 / 7 / 8 / 9 / 10 | 16 / 29 / 30 / 14 / 26 / 新增，全绿 |
 
 ### 7.3 安全专项测试
 
@@ -300,6 +392,9 @@ cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 - `.mkdn` 扩展名未注册文件关联（仅 md/markdown/mdown/mkd）
 - 前端不消费 `GetConfig`/`SetConfig`（主题在 localStorage，字号不持久化）
 - 无外部文件变更检测（用户决策取消目录监控）
+- 内嵌 CSS 不支持 CSS Nesting（嵌套规则块整块丢弃）与 `@import`/
+  `@layer`；远程字体 `url()` 不可用（仅 `data:` 内联），v0.2.7 设计取舍
+- Mermaid 图表渲染未实现（评估见 v0.2.6 期报告，P1 候选）
 
 ### 8.2 待办（P0 已修，P1+ 待做）
 
