@@ -15,7 +15,7 @@ import { preprocessAll, parseFrontmatter, findCalloutTransforms } from "./obsidi
 import { extractLatex, restoreLatex } from "./latex";
 import { classifyHref, assignHeadingIds, type ParsedLink } from "./link-handler";
 import { filterInlineStyle, extractStyleBlocks, buildUserStyleTag } from "./user-css";
-import { renderMermaid, type MermaidTheme } from "./mermaid";
+import { renderMermaid, type MermaidResult, type MermaidTheme } from "./mermaid";
 
 export interface PreviewOptions {
     /** 预留：自定义 marked 配置钩子 */
@@ -650,10 +650,10 @@ export class Preview {
         if (!list.length) return;
         await Promise.all(list.map(async (holder) => {
             const code = holder.dataset.code || "";
-            const svg = await renderMermaid(code, theme);
+            const result = await renderMermaid(code, theme);
             // 过期结果 / 元素被新一次渲染替换：丢弃
             if (gen !== this.renderGen || !holder.isConnected) return;
-            applyMermaidResult(holder, svg);
+            applyMermaidResult(holder, result);
         }));
     }
 
@@ -682,15 +682,33 @@ function currentMermaidTheme(): MermaidTheme {
     return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
-/** 把 renderMermaid 结果应用到占位容器（SVG 注入或错误降级） */
-function applyMermaidResult(holder: HTMLElement, svg: string | null): void {
-    if (svg) {
-        holder.innerHTML = svg; // mermaid 11 securityLevel:strict 输出已净化
+/**
+ * 把 renderMermaid 结果应用到占位容器（SVG 注入或错误降级）。
+ * 按 reason 区分提示（P0-1）：引擎加载失败 ≠ 用户语法错误，不能谎报。
+ */
+function applyMermaidResult(holder: HTMLElement, result: MermaidResult): void {
+    if (result.ok) {
+        holder.innerHTML = result.svg; // mermaid 11 securityLevel:strict 输出已净化
         holder.dataset.state = "ok";
-    } else {
-        holder.textContent = `Mermaid 语法错误，已按原码展示：\n\n${holder.dataset.code || ""}`;
-        holder.dataset.state = "error";
+        return;
     }
+    const code = holder.dataset.code || "";
+    let msg: string;
+    switch (result.reason) {
+        case "load":
+            msg = "Mermaid 图表引擎加载失败（依赖缺失或资源加载异常），已按原码展示。";
+            break;
+        case "timeout":
+            msg = "Mermaid 渲染超时（图表可能过于复杂），已按原码展示。";
+            break;
+        case "empty":
+            msg = "Mermaid 代码块为空，已按原码展示。";
+            break;
+        default:
+            msg = "Mermaid 语法错误，已按原码展示。";
+    }
+    holder.textContent = `${msg}\n\n${code}`;
+    holder.dataset.state = "error";
 }
 
 /** decodeURIComponent 的安全包装：非法编码串（裸 %）不会抛异常 */
