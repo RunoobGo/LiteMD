@@ -34,8 +34,6 @@ export GOTOOLCHAIN=auto          # go.mod 要求 go1.25，缺失时自动拉取�
 export GOOS=windows
 export GOARCH=amd64
 
-VERSION="${VERSION:-$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)}"
-VERSION="${VERSION:-0.2.0}"
 OUT="${OUT:-$ROOT/dist}"
 
 # ---- 前置检查 ----
@@ -45,11 +43,49 @@ need wails     "go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0"
 need makensis  "apt-get install -y nsis"
 need zip       "apt-get install -y zip"
 
+# ---- 版本号自动递增（第三级 patch）----
+# 规则：每次打包安装包，patch 位 +1（0.2.0 → 0.2.1），保证产物版本号单调不重复。
+# 绕过方式：
+#   SKIP_BUMP=1 ./build-win11-x64.sh    沿用 wails.json 当前版本（重打包同一版）
+#   VERSION=1.0.0 ./build-win11-x64.sh  直接指定，既不读取也不回写 wails.json
+if [ -z "${VERSION:-}" ] && [ -z "${SKIP_BUMP:-}" ]; then
+  CUR="$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)"
+  case "$CUR" in
+    *.*.*)
+      MAJ="${CUR%%.*}"; REST="${CUR#*.}"; MIN="${REST%%.*}"; PAT="${REST#*.}"
+      case "$PAT" in
+        ''|*[!0-9]*) echo "✗ 无法解析版本号第三位(patch)：$CUR"; exit 1;;
+      esac
+      NEXT="${MAJ}.${MIN}.$((PAT + 1))"
+      ;;
+    *) echo "✗ 版本号格式不是 x.y.z：$CUR"; exit 1;;
+  esac
+  echo "==> 版本号递增：$CUR → $NEXT"
+  # 五处版本事实源一并同步。app.go 的 AppVersion 是应用内显示的版本，
+  # index.html/dev.html 是启动屏的 v 号，mocks.ts 是浏览器 mock 的 AppInfo；
+  # 只改 wails.json 会导致"安装包是新版、关于框还是旧版"。
+  sed -i.bak "s/\"productVersion\":[[:space:]]*\"$CUR\"/\"productVersion\": \"$NEXT\"/" wails.json
+  sed -i.bak "s/const AppVersion = \"$CUR\"/const AppVersion = \"$NEXT\"/" app.go
+  sed -i.bak "s/>v$CUR</>v$NEXT</" frontend/index.html frontend/dev.html
+  sed -i.bak "s/\"$CUR-mock\"/\"$NEXT-mock\"/" frontend/src/mocks.ts
+  rm -f wails.json.bak app.go.bak frontend/index.html.bak frontend/dev.html.bak frontend/src/mocks.ts.bak
+fi
+
+# 必须在版本号递增之后读取：这两行读的就是刚被 sed 改过的 wails.json。
+# 放在 bump 之前会导致 VERSION 先被填成旧值，使递增守卫 -z "${VERSION:-}" 恒为假。
+VERSION="${VERSION:-$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)}"
+VERSION="${VERSION:-0.2.0}"
+
 echo "==> LiteMD v${VERSION} — Windows 11 x64 精简构建"
 
 # ---- 1. 同步 NSIS 工程（build/windows 是 wails 实际读取的目录）----
-mkdir -p build/windows
-cp -f build_windows/installer/project.nsi build/windows/installer/project.nsi
+mkdir -p build/windows/installer
+cp -f nsis-src/installer/project.nsi build/windows/installer/project.nsi
+# wails 只在 wails_tools.nsh 缺失时才生成它（为了不覆盖用户自定义宏）。
+# 版本升级后若沿用上一版残留的文件，安装包内的 ProductVersion 会滞后于
+# wails.json。这里删掉强制重新生成——本项目的自定义逻辑全在 project.nsi 里，
+# wails_tools.nsh 用的是官方模板，重新生成等价且更安全。
+rm -f build/windows/installer/wails_tools.nsh
 
 # ---- 2. 前端产物 ----
 echo "==> 构建前端"
@@ -69,7 +105,9 @@ wails build \
   -clean
 
 EXE="build/bin/LiteMD.exe"
-SETUP="$(ls build/bin/LiteMD-Setup-*-installer.exe 2>/dev/null | head -1)"
+# pipefail 下 ls 无匹配会返回非零并在 set -e 下直接杀死脚本，
+# 加 `|| true` 让「✗ 未生成安装包」的友好报错得以生效（审查 🟡-5）
+SETUP="$(ls build/bin/LiteMD-Setup-*-installer.exe 2>/dev/null | head -1 || true)"
 [ -f "$EXE" ]   || { echo "✗ 未生成 $EXE"; exit 1; }
 [ -f "$SETUP" ] || { echo "✗ 未生成安装包"; exit 1; }
 
