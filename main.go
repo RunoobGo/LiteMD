@@ -3,7 +3,11 @@ package main
 import (
 	"embed"
 	"log"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -12,6 +16,47 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// navGuard 兜底：任何没被静态资源命中的 GET 请求都重定向回首页，而不是返回 404。
+//
+// 为什么要这层：预览区的 Markdown 链接（[x](../a.md)）只要有一处漏网（中键点击、
+// 右键"新窗口打开"、未来新代码引入的裸 <a>），WebView2 就会导航到
+// http://wails.localhost/a.md → assetserver 未命中 → 404 空白页 → 整个前端 SPA
+// 被卸载。LiteMD 是无边框窗口，标题栏与关闭按钮都由前端渲染，此时界面完全消失、
+// 只剩白屏，用户只能杀进程，各标签未保存内容全部丢失。
+//
+// 重定向到 /?nav=<原路径> 后由前端提示"该链接无法在应用内打开"，界面保持可用。
+// 注意：wails dev 模式下资产由 vite dev server 提供、本中间件不生效，
+// 但 vite 自带 SPA fallback，未知路径同样回退到 index.html，不会白屏。
+func navGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 放行 Wails 内建端点（/wails/runtime 等）与非 GET 请求
+		if r.Method != http.MethodGet || strings.HasPrefix(r.URL.Path, "/wails/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := httptest.NewRecorder()
+		next.ServeHTTP(rec, r)
+		if rec.Code != http.StatusNotFound {
+			copyResponse(w, rec)
+			return
+		}
+		http.Redirect(w, r, "/?nav="+url.QueryEscape(r.URL.Path), http.StatusFound)
+	})
+}
+
+// copyResponse 把 recorder 记录的结果原样写回真实 ResponseWriter。
+func copyResponse(w http.ResponseWriter, rec *httptest.ResponseRecorder) {
+	for k, vv := range rec.Header() {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(rec.Code)
+	if rec.Body.Len() > 0 {
+		_, _ = w.Write(rec.Body.Bytes())
+	}
+}
 
 func main() {
 	// Create an instance of the app structure
@@ -38,7 +83,8 @@ func main() {
 		MinHeight: 600,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:     assets,
+			Middleware: navGuard,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,

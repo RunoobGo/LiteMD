@@ -55,6 +55,24 @@ export namespace main {
 	        this.modified = source["modified"];
 	    }
 	}
+	export class LinkTarget {
+	    path: string;
+	    exists: boolean;
+	    kind: string;
+	    anchor: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkTarget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.exists = source["exists"];
+	        this.kind = source["kind"];
+	        this.anchor = source["anchor"];
+	    }
+	}
 
 }
 

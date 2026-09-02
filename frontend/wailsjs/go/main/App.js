@@ -22,12 +22,28 @@ export function OpenDialog() {
   return window['go']['main']['App']['OpenDialog']();
 }
 
+export function OpenExternal(arg1) {
+  return window['go']['main']['App']['OpenExternal'](arg1);
+}
+
 export function OpenFile(arg1) {
   return window['go']['main']['App']['OpenFile'](arg1);
 }
 
+export function OpenPath(arg1) {
+  return window['go']['main']['App']['OpenPath'](arg1);
+}
+
 export function PushRecent(arg1) {
   return window['go']['main']['App']['PushRecent'](arg1);
+}
+
+export function ReadLocalAsset(arg1) {
+  return window['go']['main']['App']['ReadLocalAsset'](arg1);
+}
+
+export function ResolveLocalPath(arg1, arg2) {
+  return window['go']['main']['App']['ResolveLocalPath'](arg1, arg2);
 }
 
 export function SaveDialog(arg1) {

@@ -12,6 +12,7 @@ import (
 
 	"litemd/internal/config"
 	"litemd/internal/fileio"
+	"litemd/internal/links"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -231,6 +232,74 @@ func (a *App) flushPendingNotify() {
 	if ctx := a.currentCtx(); ctx != nil {
 		wailsruntime.EventsEmit(ctx, "litemd:openExternalFile")
 	}
+}
+
+// ============================================================================
+// 链接与本地资源绑定
+// ============================================================================
+
+// LinkTarget 是 ResolveLocalPath 对前端的返回结构。
+//
+// 背景：预览区的 [文本](../xxx.md) 若放任 WebView 处理，会就地导航到
+// http://wails.localhost/xxx.md → assetserver 404 → 整个前端被卸载（界面卡死、
+// 未保存内容丢失）。前端因此拦截所有链接点击，先经本方法解析，再决定动作：
+// markdown/text 在应用内打开，other 交系统默认程序，missing 提示用户。
+type LinkTarget struct {
+	Path   string `json:"path"`   // 绝对路径；不存在时是"应该在哪"的路径，供提示展示
+	Exists bool   `json:"exists"` // 目标是否存在
+	Kind   string `json:"kind"`   // markdown | text | other | dir | missing
+	Anchor string `json:"anchor"` // 目标文件内的锚点（无则空串）
+}
+
+// ResolveLocalPath 解析 Markdown 链接目标。
+//
+// baseFile 是当前文档的绝对路径（相对链接以其所在目录为基准，未保存文档传空串）；
+// href 是预览 DOM 上的原始 href（可能带百分号编码 / #锚点 / ?查询）。
+//
+// 错误语义（前端按类型分别提示）：
+//   - errors.Is(err, links.ErrNoBase)：相对链接但当前文档未保存 → 引导先保存
+//   - errors.Is(err, links.ErrNotLocal)：带 http/mailto 等协议 → 应走 OpenExternal
+//   - errors.Is(err, links.ErrEmptyTarget)：href 为空
+func (a *App) ResolveLocalPath(baseFile, href string) (LinkTarget, error) {
+	t, err := links.Resolve(baseFile, href)
+	if err != nil {
+		return LinkTarget{}, err
+	}
+	return LinkTarget{Path: t.Path, Exists: t.Exists, Kind: string(t.Kind), Anchor: t.Anchor}, nil
+}
+
+// OpenExternal 用系统默认浏览器/邮件客户端打开外链。
+//
+// 只放行 http/https/mailto/tel：被打开的 .md 内容不受信任，未做 scheme 白名单
+// 就丢给系统程序等同于给文档作者一个"打开任意本地文件"的原语。
+func (a *App) OpenExternal(rawURL string) error {
+	u, err := links.ValidateExternalURL(rawURL)
+	if err != nil {
+		return err
+	}
+	ctx := a.currentCtx()
+	if ctx == nil {
+		return errors.New("app not ready")
+	}
+	wailsruntime.BrowserOpenURL(ctx, u)
+	return nil
+}
+
+// OpenPath 用系统默认程序打开一个本地文件（PDF / Excel / 图片等）。
+//
+// 安全前提：路径必须绝对、存在且是常规文件（links.OpenWithSystem 强制校验）；
+// 前端在此之前还应完成"非文本文件是否打开"的二次确认。
+func (a *App) OpenPath(path string) error {
+	return links.OpenWithSystem(path)
+}
+
+// ReadLocalAsset 读取本地图片为 data URL，供预览区的 <img src> 回填。
+//
+// 相对路径图片在 wails.localhost 源下会被解析成不存在的 HTTP 路径而破图，
+// 这里返回 data:image/…;base64,… 让本地图片正常显示。
+// 限制：仅白名单图片扩展名、单文件 ≤ links.MaxAssetBytes（10MB）。
+func (a *App) ReadLocalAsset(path string) (string, error) {
+	return links.ReadAssetDataURL(path)
 }
 
 // ============================================================================

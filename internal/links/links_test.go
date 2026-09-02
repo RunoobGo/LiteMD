@@ -1,0 +1,206 @@
+package links
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// 说明：Resolve 的路径计算刻意不依赖 filepath.IsAbs，因此 Windows 形态的
+// 路径（C:/vault/a.md、//server/share）在 Linux CI 上也能得到一致结果。
+
+func TestResolveRelative(t *testing.T) {
+	cases := []struct {
+		name     string
+		base     string
+		href     string
+		wantPath string
+		wantAnc  string
+	}{
+		{"上级两级", "/vault/notes/a/b.md", "../../文档名", "/vault/文档名", ""},
+		{"上级一级", "/vault/notes/a.md", "../parent.md", "/vault/parent.md", ""},
+		{"同级点斜杠", "/vault/notes/a.md", "./sibling.md", "/vault/notes/sibling.md", ""},
+		{"裸文件名", "/vault/notes/a.md", "note.md", "/vault/notes/note.md", ""},
+		{"子目录", "/vault/a.md", "sub/note.md", "/vault/sub/note.md", ""},
+		{"百分号编码中文", "/vault/notes/a.md", "../../%E6%96%87%E6%A1%A3.md", "/文档.md", ""},
+		{"标准查询锚点顺序", "/vault/a.md", "sub/b.md?x=1#sec", "/vault/sub/b.md", "sec"},
+		{"锚点内的问号按规范保留", "/vault/a.md", "sub/b.md#sec?x=1", "/vault/sub/b.md", "sec?x=1"},
+		{"Windows 基准上级", "C:/vault/notes/a.md", "../c.md", "C:/vault/c.md", ""},
+		{"Windows 反斜杠", "C:/vault/a.md", "sub\\note.md", "C:/vault/sub/note.md", ""},
+		{"file 协议本地文件", "/vault/a.md", "file:///C:/docs/x.md", "C:/docs/x.md", ""},
+		{"file 协议 UNC", "/vault/a.md", "file://server/share/x.md", "//server/share/x.md", ""},
+		{"越出根目录的点点", "/vault/a.md", "../../../../etc/x.md", "/etc/x.md", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Resolve(c.base, c.href)
+			if err != nil {
+				t.Fatalf("Resolve(%q, %q) 出错: %v", c.base, c.href, err)
+			}
+			if got.Path != c.wantPath {
+				t.Fatalf("路径 = %q, 期望 %q", got.Path, c.wantPath)
+			}
+			if got.Anchor != c.wantAnc {
+				t.Fatalf("锚点 = %q, 期望 %q", got.Anchor, c.wantAnc)
+			}
+		})
+	}
+}
+
+func TestResolveErrors(t *testing.T) {
+	if _, err := Resolve("/vault/a.md", ""); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("空 href 期望 ErrEmptyTarget, 得到 %v", err)
+	}
+	if _, err := Resolve("", "../x.md"); !errors.Is(err, ErrNoBase) {
+		t.Fatalf("未保存文档 + 相对链接期望 ErrNoBase, 得到 %v", err)
+	}
+	for _, href := range []string{"https://example.com", "mailto:a@b.com", "ftp://x/y", "javascript:alert(1)"} {
+		if _, err := Resolve("/vault/a.md", href); !errors.Is(err, ErrNotLocal) {
+			t.Fatalf("href=%q 期望 ErrNotLocal, 得到 %v", href, err)
+		}
+	}
+}
+
+func TestResolveAnchorOnly(t *testing.T) {
+	got, err := Resolve("/vault/a.md", "#%E6%A0%87%E9%A2%98")
+	if err != nil {
+		t.Fatalf("纯锚点不应报错: %v", err)
+	}
+	if got.Path != "" || got.Kind != KindMissing {
+		t.Fatalf("纯锚点应返回空路径 + missing, 得到 %+v", got)
+	}
+}
+
+func TestResolveKinds(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "note.md"), "# x")
+	writeFile(t, filepath.Join(dir, "plain.txt"), "x")
+	writeFile(t, filepath.Join(dir, "img.png"), "\x89PNG")
+	writeFile(t, filepath.Join(dir, "文档名"), "# 无扩展名的 Obsidian 风格笔记\n")
+	writeFile(t, filepath.Join(dir, "bindata"), "\x00\x01\x02binary")
+	if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(dir, "note.md")
+
+	cases := []struct {
+		href     string
+		wantKind Kind
+		exists   bool
+	}{
+		{"note.md", KindMarkdown, true},
+		{"plain.txt", KindText, true},
+		{"img.png", KindOther, true},
+		{"subdir", KindDir, true},
+		{"missing.pdf", KindMissing, false},
+		// Obsidian 约定：无扩展名链接指向同库笔记，嗅探为 UTF-8 文本后按 Markdown 归类
+		{"文档名", KindMarkdown, true},
+		{"bindata", KindOther, true},
+	}
+	for _, c := range cases {
+		got, err := Resolve(base, c.href)
+		if err != nil {
+			t.Fatalf("Resolve(%q) 出错: %v", c.href, err)
+		}
+		if got.Kind != c.wantKind || got.Exists != c.exists {
+			t.Fatalf("href=%q: kind=%s exists=%v, 期望 %s/%v", c.href, got.Kind, got.Exists, c.wantKind, c.exists)
+		}
+	}
+}
+
+func TestValidateExternalURL(t *testing.T) {
+	for _, u := range []string{"https://example.com", "http://a.b/c?d=1", "mailto:a@b.com", "tel:+8613800000000"} {
+		if _, err := ValidateExternalURL(u); err != nil {
+			t.Fatalf("白名单 URL %q 被拒: %v", u, err)
+		}
+	}
+	for _, u := range []string{"file:///C:/x.pdf", "javascript:alert(1)", "ftp://x/y", "data:text/html,hi", ""} {
+		if _, err := ValidateExternalURL(u); !errors.Is(err, ErrSchemeNotAllowed) {
+			t.Fatalf("危险 URL %q 应被拒, 得到 %v", u, err)
+		}
+	}
+}
+
+func TestOpenWithSystemRejectsNonFile(t *testing.T) {
+	dir := t.TempDir()
+	// 不存在的文件：必须被拒，且不能启动任何外部进程
+	if err := OpenWithSystem(filepath.Join(dir, "nope.pdf")); !errors.Is(err, ErrNotFile) {
+		t.Fatalf("不存在文件期望 ErrNotFile, 得到 %v", err)
+	}
+	// 目录：同样拒绝
+	if err := OpenWithSystem(dir); !errors.Is(err, ErrNotFile) {
+		t.Fatalf("目录期望 ErrNotFile, 得到 %v", err)
+	}
+	// 相对路径：拒绝（历史 bug 类：相对路径在 WebView 下基准不确定）
+	if err := OpenWithSystem("rel.pdf"); !errors.Is(err, ErrNotFile) {
+		t.Fatalf("相对路径期望 ErrNotFile, 得到 %v", err)
+	}
+}
+
+func TestOpenWithSystemDetached(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "doc.pdf")
+	writeFile(t, target, "%PDF-1.4")
+
+	var gotName string
+	var gotArgs []string
+	runDetached = func(name string, args ...string) error {
+		gotName, gotArgs = name, args
+		return nil
+	}
+	t.Cleanup(func() { runDetached = defaultRunDetached }) // 恢复，避免污染后续测试
+
+	if err := OpenWithSystem(target); err != nil {
+		t.Fatalf("OpenWithSystem 出错: %v", err)
+	}
+	if gotName == "" || len(gotArgs) == 0 {
+		t.Fatal("未调用进程启动")
+	}
+	if gotArgs[len(gotArgs)-1] != target {
+		t.Fatalf("末位参数应为目标路径, 得到 %q", gotArgs[len(gotArgs)-1])
+	}
+	if runtime.GOOS != "windows" && gotName == "rundll32" {
+		t.Fatalf("非 Windows 平台不该用 rundll32")
+	}
+}
+
+func TestReadAssetDataURL(t *testing.T) {
+	dir := t.TempDir()
+	png := filepath.Join(dir, "pic.png")
+	writeFile(t, png, "\x89PNG\r\n\x1a\n fake")
+
+	got, err := ReadAssetDataURL(png)
+	if err != nil {
+		t.Fatalf("读取图片出错: %v", err)
+	}
+	if !strings.HasPrefix(got, "data:image/png;base64,") {
+		t.Fatalf("data URL 前缀异常: %.40s", got)
+	}
+
+	// 非图片扩展名：拒绝
+	exe := filepath.Join(dir, "a.exe")
+	writeFile(t, exe, "MZ")
+	if _, err := ReadAssetDataURL(exe); err == nil {
+		t.Fatal("非图片类型应被拒")
+	}
+	// 不存在：拒绝
+	if _, err := ReadAssetDataURL(filepath.Join(dir, "nope.png")); err == nil {
+		t.Fatal("不存在的图片应被拒")
+	}
+	// 超限：拒绝（10MB 上限）
+	big := filepath.Join(dir, "big.png")
+	writeFile(t, big, strings.Repeat("x", MaxAssetBytes+1))
+	if _, err := ReadAssetDataURL(big); err == nil {
+		t.Fatal("超上限图片应被拒")
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("写入 %s 失败: %v", path, err)
+	}
+}

@@ -13,9 +13,17 @@ export function GetConfig():Promise<config.Config>;
 
 export function OpenDialog():Promise<string>;
 
+export function OpenExternal(arg1:string):Promise<void>;
+
 export function OpenFile(arg1:string):Promise<main.FilePayload>;
 
+export function OpenPath(arg1:string):Promise<void>;
+
 export function PushRecent(arg1:string):Promise<config.Config>;
+
+export function ReadLocalAsset(arg1:string):Promise<string>;
+
+export function ResolveLocalPath(arg1:string,arg2:string):Promise<main.LinkTarget>;
 
 export function SaveDialog(arg1:string):Promise<string>;
 
