@@ -75,9 +75,12 @@ CM_BUNDLE=$(ls -l frontend/dist/assets/main.*.js | awk '{print $5}')
 CM_KB=$((CM_BUNDLE / 1024))
 [[ "$CM_KB" -lt 1000 ]] && ok "main.js: ${CM_KB}KB < 1000KB" || fail "main.js 过大: ${CM_KB}KB"
 
+# v0.2.8 起：mermaid 11 按图种分包到独立 chunks（实测 cynefin 单图 690KB/155KB gzip，
+# 总 ~3-4MB），按需懒加载不影响启动（main.js 体积守卫见场景 2，< 1000KB 不变）。
+# 总 dist 阈值 1500KB → 5000KB 以容纳 mermaid chunks。
 TOTAL=$(du -sb frontend/dist/assets 2>/dev/null | awk '{print $1}')
 TOTAL_KB=$((TOTAL / 1024))
-[[ "$TOTAL_KB" -lt 1500 ]] && ok "Total bundle: ${TOTAL_KB}KB < 1500KB" || fail "Bundle 过大: ${TOTAL_KB}KB"
+[[ "$TOTAL_KB" -lt 5000 ]] && ok "Total bundle: ${TOTAL_KB}KB < 5000KB（含 mermaid 按需 chunks）" || fail "Bundle 过大: ${TOTAL_KB}KB"
 
 # ============================================================================
 log "场景 3: 100KB 文档注入 + 渲染（< 500ms）"
