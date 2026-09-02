@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -83,10 +84,7 @@ func ReadText(path string) (string, error) {
 
 // WriteText 将文本写入 path。存在则覆盖。
 //
-// 实现：写入同目录下的临时文件 → 强制刷盘（Sync）→ 原子 rename。
-// Sync 是关键：缺少时掉电/内核 panic 可能让 rename 之后的元数据先于
-// 数据落盘，导致目标文件长度正确但内容为空或半截（违背本函数
-// 「防止崩溃导致原文件损坏」的设计目标）。
+// 实现见 writeAtomic：同目录临时文件 → fsync → 原子 rename → 目录 fsync。
 func WriteText(path, content string) error {
 	clean, err := safeWritePath(path)
 	if err != nil {
@@ -95,22 +93,43 @@ func WriteText(path, content string) error {
 	// 统一以 Clean 后的路径落盘（审查 🟢-1）：safeWritePath 返回值此前被
 	// 丢弃，tmp 与 rename 目标仍用原始拼写——同一路径的两种写法最终指向
 	// 同一文件，但返回口径不一致。统一后写入目标唯一确定。
-	path = clean
+	return writeAtomic(clean, []byte(content))
+}
+
+// writeAtomic 是全项目唯一的原子写实现（P0-3：此前 WriteText 与
+// WriteBase64File 各持一份重复实现，且都有两个缺口）：
+//
+//  1. 权限丢失：CreateTemp 固定 0600，覆盖已有文件时原权限被永久改写——
+//     Windows 上 ACL 继承的读权限被抹掉后，同步工具/其他账户会读不到笔记。
+//     现覆盖已有文件时沿用其原 mode 位。
+//  2. 目录 fsync：rename 后未刷父目录，掉电时可能出现「旧的没了、新的
+//     也没有」。POSIX 上对目录句柄 Sync；Windows 不支持目录句柄 Sync，
+//     依赖 NTFS 元数据日志保证 rename 原子性，显式跳过。
+//
+// 失败路径由 defer 统一清理临时文件；rename 成功后清理调用会失败，无害。
+func writeAtomic(path string, data []byte) (err error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
+	}
+	// 权限保留：目标已存在时沿用原 mode（跟随符号链接的场景由调用方知晓）
+	perm := os.FileMode(0o644)
+	if st, serr := os.Stat(path); serr == nil && st.Mode().IsRegular() {
+		perm = st.Mode().Perm()
 	}
 	tmp, err := os.CreateTemp(dir, ".litemd-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp: %w", err)
 	}
 	tmpPath := tmp.Name()
-	// 不论成功失败都尝试清理 tmp 文件
 	defer func() {
 		_ = os.Remove(tmpPath)
 	}()
-
-	if _, err := tmp.WriteString(content); err != nil {
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write: %w", err)
 	}
@@ -125,6 +144,13 @@ func WriteText(path, content string) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("rename: %w", err)
 	}
+	// rename 元数据落盘（见函数注释：Windows 跳过）
+	if runtime.GOOS != "windows" {
+		if d, derr := os.Open(dir); derr == nil {
+			_ = d.Sync()
+			_ = d.Close()
+		}
+	}
 	return nil
 }
 
@@ -132,6 +158,10 @@ func WriteText(path, content string) error {
 //
 // 使用场景：用户在 LiteMD 中拖入图片 → 前端把图片转为 Base64 → 调用此方法。
 // 失败会返回原始错误（包含 decode/io 失败的具体上下文）。
+//
+// 大小上限（P0-2）：解码后超过 MaxAssetWriteSize（20MB）拒绝。解码前先按
+// base64 膨胀率（4 字符 → 3 字节）做入参长度预检，避免超大入参先被完整
+// 解码进内存才被拒（内存放大）。
 func WriteBase64File(path, base64Data string) error {
 	clean, err := safeWritePath(path)
 	if err != nil {
@@ -148,34 +178,17 @@ func WriteBase64File(path, base64Data string) error {
 	if idx := strings.LastIndex(base64Data, ","); idx >= 0 && strings.HasPrefix(base64Data, "data:") {
 		base64Data = base64Data[idx+1:]
 	}
+	// 解码前预检：base64 长度上限 ≈ (cap+2)/3*4，超出直接拒绝，不做无效解码
+	if maxB64 := (MaxAssetWriteSize + 2) / 3 * 4; len(base64Data) > maxB64 {
+		return fmt.Errorf("%w: base64 payload %d chars exceeds asset limit (%d bytes decoded)",
+			ErrTooLarge, len(base64Data), MaxAssetWriteSize)
+	}
 	data, err := base64.StdEncoding.DecodeString(base64Data)
 	if err != nil {
 		return fmt.Errorf("decode base64: %w", err)
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
+	if len(data) > MaxAssetWriteSize {
+		return fmt.Errorf("%w: decoded %d bytes exceeds asset limit (%d)", ErrTooLarge, len(data), MaxAssetWriteSize)
 	}
-	tmp, err := os.CreateTemp(dir, ".litemd-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write: %w", err)
-	}
-	// 数据先落盘：避免断电后 rename 的元数据先于数据持久化
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("rename: %w", err)
-	}
-	return nil
+	return writeAtomic(path, data)
 }

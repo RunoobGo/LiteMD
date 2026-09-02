@@ -353,21 +353,26 @@ func (a *App) AppInfo() AppInfo {
 	}
 }
 
-// CopyImageAsset 把 base64 编码的图片数据持久化到目标路径，并返回最终写入路径。
+// CopyImageAsset 把 base64 编码的图片数据持久化到当前文档所在目录的 assets/ 下。
 //
-// 典型用法：用户拖入一张图片 → 前端读取为 base64 → 调此 binding 写入 .md 同目录的 assets/
-// 约束：路径必须以 `/` 或盘符开头；base64 是去除 data:image/...;base64, 前缀后的纯数据。
+// P0-2 修复：旧签名 (targetPath, base64Data) 让前端指定任意绝对路径，等价于
+// 「任意文件写入原语」——前端被注入时可以往启动目录/配置文件写任意字节。
+// 现改为 (baseFile, assetName, base64Data)：写入位置由后端从文档目录推导
+// （<文档目录>/assets/<assetName>），assetName 校验纯文件名 + 图片扩展名
+// 白名单 + 128 字符上限，解码内容限 20MB（fileio.MaxAssetWriteSize）。
+// 前端失去指定写入位置的能力，写入范围被结构性限死在 assets/ 内。
 //
-// 错误：
-//   - errors.Is(err, fileio.ErrIsBinary) 等
-func (a *App) CopyImageAsset(targetPath, base64Data string) (string, error) {
-	if targetPath == "" {
-		return "", errors.New("target path is empty")
-	}
+// 返回最终写入的绝对路径（供前端生成 markdown 引用）。
+func (a *App) CopyImageAsset(baseFile, assetName, base64Data string) (string, error) {
 	if base64Data == "" {
-		return targetPath, errors.New("base64 data is empty")
+		return "", errors.New("base64 data is empty")
 	}
-	// 直接复用 fileio 的原子写（前缀剥除由调用方负责）
-	// 这里我们假定 base64Data 是 data uri 中的";"后的纯 base64
-	return targetPath, fileio.WriteBase64File(targetPath, base64Data)
+	target, err := fileio.AssetWritePath(baseFile, assetName)
+	if err != nil {
+		return "", err
+	}
+	if err := fileio.WriteBase64File(target, base64Data); err != nil {
+		return "", err
+	}
+	return target, nil
 }
