@@ -165,6 +165,41 @@ func TestStoreMutate_Concurrent(t *testing.T) {
 	}
 }
 
+// TestStoreMutate_HealsCorruptedConfig 是审查 🟡-4 的回归守卫：
+// config.json 损坏后 Mutate 应以 Default 继续（而非中断），
+// 落盘覆盖损坏文件；下一次 Load 读到合法 JSON。
+func TestStoreMutate_HealsCorruptedConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := NewStore()
+	p, err := s.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("not json {{{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := s.Mutate(func(c Config) Config {
+		return PushRecent(c, "/healed/a.md", 10)
+	})
+	if err != nil {
+		t.Fatalf("mutate on corrupted config should self-heal, got err: %v", err)
+	}
+	if len(cfg.RecentFiles) != 1 || cfg.RecentFiles[0] != "/healed/a.md" {
+		t.Fatalf("mutate result wrong: %+v", cfg.RecentFiles)
+	}
+	// 落盘后文件应已被合法 JSON 覆盖
+	if _, err := s.Load(); err != nil {
+		t.Fatalf("config should be healed after mutate: %v", err)
+	}
+	got, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentFiles) != 1 || got.RecentFiles[0] != "/healed/a.md" {
+		t.Fatalf("healed config lost the mutation: %+v", got.RecentFiles)
+	}
+}
+
 func pathFor(w, i int) string {
 	return "/notes/w" + strconv.Itoa(w) + "-f" + strconv.Itoa(i) + ".md"
 }

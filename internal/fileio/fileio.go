@@ -88,9 +88,14 @@ func ReadText(path string) (string, error) {
 // 数据落盘，导致目标文件长度正确但内容为空或半截（违背本函数
 // 「防止崩溃导致原文件损坏」的设计目标）。
 func WriteText(path, content string) error {
-	if _, err := safeWritePath(path); err != nil {
+	clean, err := safeWritePath(path)
+	if err != nil {
 		return err
 	}
+	// 统一以 Clean 后的路径落盘（审查 🟢-1）：safeWritePath 返回值此前被
+	// 丢弃，tmp 与 rename 目标仍用原始拼写——同一路径的两种写法最终指向
+	// 同一文件，但返回口径不一致。统一后写入目标唯一确定。
+	path = clean
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
@@ -128,9 +133,11 @@ func WriteText(path, content string) error {
 // 使用场景：用户在 LiteMD 中拖入图片 → 前端把图片转为 Base64 → 调用此方法。
 // 失败会返回原始错误（包含 decode/io 失败的具体上下文）。
 func WriteBase64File(path, base64Data string) error {
-	if _, err := safeWritePath(path); err != nil {
+	clean, err := safeWritePath(path)
+	if err != nil {
 		return err
 	}
+	path = clean // 与 WriteText 同源：统一以 Clean 后路径落盘（审查 🟢-1）
 	if strings.TrimSpace(base64Data) == "" {
 		return errors.New("empty base64 data")
 	}

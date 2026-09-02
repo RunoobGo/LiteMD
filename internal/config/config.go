@@ -36,25 +36,42 @@ func Default() Config {
 
 const fileName = "config.json"
 
+// ErrCorrupted 配置文件内容损坏（JSON 解析失败）时由 loadLocked 返回。
+// 此时返回值已降级为 Default()——调用方可据 errors.Is 区分「损坏」与
+// 「读取失败」：前者可带着默认值继续执行并落盘自愈，后者应中断。
+var ErrCorrupted = errors.New("config corrupted")
+
 // Store 提供线程安全的配置持久化。
 type Store struct {
 	mu sync.Mutex
+	// pathOnce/pathVal/pathErr: 配置目录终身不变，Path() 结果缓存
+	// （每次 Load/Save 都会调用，重复 MkdirAll+Join 是纯浪费——审查 🟢-2）。
+	// 测试中每个用例新建 Store 实例 + t.Setenv("HOME", ...)，缓存
+	// 作用域为实例级，不会被跨用例污染。
+	pathOnce sync.Once
+	pathVal  string
+	pathErr  error
 }
 
 // NewStore 创建一个 Store。
 func NewStore() *Store { return &Store{} }
 
-// Path 返回配置文件应位于的完整路径。目录不存在时会自动创建。
+// Path 返回配置文件应位于的完整路径。目录不存在时会自动创建（仅首次）。
 func (s *Store) Path() (string, error) {
-	dir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("home dir: %w", err)
-	}
-	cfgDir := filepath.Join(dir, ".litemd")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir %s: %w", cfgDir, err)
-	}
-	return filepath.Join(cfgDir, fileName), nil
+	s.pathOnce.Do(func() {
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			s.pathErr = fmt.Errorf("home dir: %w", err)
+			return
+		}
+		cfgDir := filepath.Join(dir, ".litemd")
+		if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+			s.pathErr = fmt.Errorf("mkdir %s: %w", cfgDir, err)
+			return
+		}
+		s.pathVal = filepath.Join(cfgDir, fileName)
+	})
+	return s.pathVal, s.pathErr
 }
 
 // Load 读取并解析配置。文件不存在返回 Default，不会报错。
@@ -79,8 +96,10 @@ func (s *Store) loadLocked() (Config, error) {
 	}
 	cfg := Default()
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		// 配置损坏时降级到默认，避免阻塞用户使用
-		return Default(), fmt.Errorf("parse %s: %w (using defaults)", p, err)
+		// 配置损坏时降级到默认，避免阻塞用户使用。
+		// 以 ErrCorrupted 标记：调用方（如 Mutate）可区分「已降级可继续」
+		// 与「读取失败应中断」，前者落盘即覆盖损坏文件实现自愈。
+		return Default(), fmt.Errorf("%w: parse %s: %v", ErrCorrupted, p, err)
 	}
 	return cfg, nil
 }
@@ -133,11 +152,16 @@ func (s *Store) saveLocked(cfg Config) error {
 // 并发场景（多标签快速连续保存触发的 PushRecent）存在丢更新窗口：
 // 两个 goroutine 同时 Load 到同一份旧配置，后写者覆盖前写者的结果。
 // Mutate 保证读到的配置在写回前不会被其他调用方插入修改。
+//
+// 审查 🟡-4：配置文件损坏（ErrCorrupted）时继续执行而非中断——
+// loadLocked 已降级为 Default，走完 fn + 落盘即覆盖损坏文件，
+// 自愈后续读写；旧版直接 return，损坏的 config.json 永远无法被
+// 自动修复，PushRecent 每次都失败。真实 IO 错误（读取失败）仍中断。
 func (s *Store) Mutate(fn func(Config) Config) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg, err := s.loadLocked()
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrCorrupted) {
 		return cfg, err
 	}
 	out := fn(cfg)
