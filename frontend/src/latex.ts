@@ -111,7 +111,42 @@ export function renderFormula(f: LatexFormula): string {
 const FORMULA_CACHE_MAX = 500;
 const formulaCache = new Map<string, string>();
 
+/** 公式渲染的资源/特征闸门：超过任一阈值直接降级，避免拖垮预览。 */
+const FORMULA_MAX_BYTES = 8 * 1024; // 8KB；超过基本是恶意/粘贴失误
+/** 逃逸 maxSize 控制的命令：本身合法，但可让 KaTeX 渲染出不受约束的尺寸/层叠内容。 */
+const ESCAPE_MAX_SIZE_COMMANDS = [
+    "\\raisebox",
+    "\\scalebox",
+    "\\resizebox",
+    "\\reflectbox",
+    "\\rotatebox",
+    "\\fbox",
+    "\\boxed",
+    "\\colorbox",
+    "\\fcolorbox",
+    "\\phantom",
+    "\\hphantom",
+    "\\vphantom",
+];
+const ESCAPE_MAX_SIZE_RE = new RegExp(
+    `(?:${ESCAPE_MAX_SIZE_COMMANDS.map((c) => c.replace(/\\/g, "\\\\")).join("|")})`,
+    "i",
+);
+/** 纯长度类单位注入（99999em / 99999ex / 1e6pt 等）也可让排版逃出 maxSize。 */
+const HUGE_LENGTH_RE = /-?\d{4,}\s*(?:em|ex|pt|px|pc|in|cm|mm|mu|cm)\b/i;
+
+function isTooHeavy(tex: string): boolean {
+    if (tex.length > FORMULA_MAX_BYTES) return true;
+    if (ESCAPE_MAX_SIZE_RE.test(tex)) return true;
+    if (HUGE_LENGTH_RE.test(tex)) return true;
+    return false;
+}
+
 function renderFormulaUncached(f: LatexFormula): string {
+    // 闸门：超过尺寸/含逃逸 maxSize 命令/含异常长度单位 → 降级为可读错误，不送进 KaTeX
+    if (isTooHeavy(f.tex)) {
+        return `<code class="latex-error">${escapeHtml(f.tex.slice(0, 200))}${f.tex.length > 200 ? "…" : ""}</code>`;
+    }
     try {
         return katex.renderToString(f.tex, {
             displayMode: f.display,

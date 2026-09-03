@@ -30,6 +30,7 @@ const suites: Record<string, string> = {
     "link-handler": "./link-handler.test",
     "user-css": "./user-css.test",
     "mermaid": "./mermaid.test",
+    "font-size": "./font-size.test",
 };
 
 const suiteName = process.env.LITEMD_SUITE;
@@ -38,7 +39,7 @@ if (suiteName) {
     // ------------------------------------------------------------------
     // 子模式：jsdom 全局 + 单套件
     // ------------------------------------------------------------------
-    const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>");
+    const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: "http://localhost/" });
     // @ts-ignore - jsdom 不在 TypeScript 标准库
     (globalThis as any).window = dom.window as any;
     (globalThis as any).document = dom.window.document;
@@ -51,6 +52,8 @@ if (suiteName) {
     // titlebar.test.ts 派发 dblclick / resize 需要
     (globalThis as any).MouseEvent = dom.window.MouseEvent;
     (globalThis as any).Event = dom.window.Event;
+    // font-size.test.ts 模拟 localStorage 抛错
+    (globalThis as any).localStorage = dom.window.localStorage;
 
     const mod = suites[suiteName] ?? "./preview.test";
     void import(mod); // 套件失败自带 process.exit(1)，子进程退出码即结果

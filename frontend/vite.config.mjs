@@ -37,6 +37,23 @@ export default {
                 main: resolve(import.meta.dirname, "index.html"),
                 dev: resolve(import.meta.dirname, "dev.html"),
             },
+            // 按 vendor 拆包：避免主 chunk 超过 500KB 告警，并让增量构建/HMR
+            // 对单个 vendor 改动只重编对应分块。mermaid 已是动态 import 自然拆出。
+            output: {
+                manualChunks: (id) => {
+                    if (!id.includes("node_modules")) return undefined;
+                    if (id.includes("codemirror") || id.includes("@lezer") || id.includes("@codemirror")) {
+                        return "vendor-codemirror";
+                    }
+                    if (id.includes("katex")) {
+                        return "vendor-katex";
+                    }
+                    if (id.includes("marked") || id.includes("dompurify")) {
+                        return "vendor-marked";
+                    }
+                    return "vendor";
+                },
+            },
         },
     },
     server: {

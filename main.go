@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -101,6 +102,22 @@ func main() {
 			UniqueId: "litemd-single-instance-lock-0f2c8a64",
 			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
 				files := extractStartupFiles(data.Args)
+				if len(files) == 0 {
+					return
+				}
+				for _, p := range files {
+					app.startupFiles.push(p)
+				}
+				app.notifyExternalOpen()
+			},
+		},
+		// macOS Finder 双击 / "打开方式" 关联：与冷启动共用 startupFiles 队列
+		// + notifyExternalOpen 兜底（startup 前的回调会置 pendingNotify
+		// 等 startup 后补发；单实例锁已覆盖"应用已运行"路径）。
+		// wails v2 签名：OnFileOpen(filePath string)，多次双击会多次回调。
+		Mac: &mac.Options{
+			OnFileOpen: func(filePath string) {
+				files := extractStartupFiles([]string{filePath})
 				if len(files) == 0 {
 					return
 				}

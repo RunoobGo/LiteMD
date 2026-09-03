@@ -31,6 +31,7 @@ import {
 import { parseFrontmatter } from "./obsidian";
 import { buildImageMarkdown, normalizeImagePath } from "./md-escape";
 import { escapeHtml } from "./html";
+import { applyInitialFontSize, getFontSize, setFontSize } from "./font-size";
 import type { ParsedLink } from "./link-handler";
 import { ConsumeStartupFile } from "../wailsjs/go/main/App";
 import { EventsOn, WindowIsMaximised, WindowMinimise, WindowToggleMaximise, Quit } from "../wailsjs/runtime/runtime";
@@ -253,6 +254,35 @@ function toggleSyncScroll() {
     updateSyncScrollButton();
 }
 
+// =============================================================================
+// 编辑区字号（局部持久化，#11 P2 待办：字号跨会话保留）
+// =============================================================================
+
+/** 启动时调用：读 localStorage → 写 CSS 变量 → 更新按钮标签。 */
+function applyInitialFontPref(): void {
+    applyInitialFontSize();
+    updateFontSizeLabel();
+}
+
+/** 把当前字号写进"字号标签"和按钮 tooltip，避免出现「按钮固定 14px 但实际是 18px」的不一致。 */
+function updateFontSizeLabel(): void {
+    const n = getFontSize();
+    const lbl = document.querySelector<HTMLElement>(".actions .font-size-label");
+    if (lbl) lbl.textContent = `${n}px`;
+}
+
+/** 调整字号（delta 可正可负），钳位 + 持久化 + 更新标签。 */
+function adjustFontSize(delta: number): void {
+    setFontSize(getFontSize() + delta);
+    updateFontSizeLabel();
+}
+
+/** 重置到默认 14px。 */
+function resetFontSize(): void {
+    setFontSize(14);
+    updateFontSizeLabel();
+}
+
 // Preview 渲染 debounce。审查 P1-3：固定 16ms 对大文档太激进 —— 打字
 // 间隔普遍大于一帧，等于每敲一个键就全量重渲染（实测 100KB 文档单次
 // 563ms），主线程持续卡顿。按文档大小分档：小文档保持一帧（16ms）的
@@ -405,6 +435,9 @@ function initEditorAndPreview() {
     syncScroll.setEnabled(loadSyncScrollPref());
     syncScroll.setActive(split.getMode() === "both");
     updateSyncScrollButton();
+
+    // 编辑区字号：与主题/同步滚动同套路，启动时从 localStorage 恢复
+    applyInitialFontPref();
 
     lastRenderedActiveId = tm.activeId;
     renderFrontmatterPanel();
@@ -868,6 +901,9 @@ document.querySelectorAll<HTMLButtonElement>(".actions button").forEach((btn) =>
             case "open": handleOpen(); break;
             case "save": handleSave(); break;
             case "save-as": handleSaveAs(); break;
+            case "font-smaller": adjustFontSize(-1); break;
+            case "font-larger": adjustFontSize(+1); break;
+            case "font-reset": resetFontSize(); break;
             case "mode-both": setMode("both"); break;
             case "mode-left": setMode("left"); break;
             case "mode-right": setMode("right"); break;
@@ -1072,6 +1108,9 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         sidebar.toggle();
     }
+    else if (e.key === "=" || e.key === "+") { e.preventDefault(); adjustFontSize(+1); }
+    else if (e.key === "-" || e.key === "_") { e.preventDefault(); adjustFontSize(-1); }
+    else if (e.key === "0") { e.preventDefault(); resetFontSize(); }
 });
 
 installBeforeUnloadGuard(tm);

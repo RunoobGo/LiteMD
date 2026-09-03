@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -237,4 +238,84 @@ func TestAppPushRecent_Limit10(t *testing.T) {
 	if last != "/notes/n05.md" {
 		t.Fatalf("last recent 期望 /notes/n05.md，实际为 %q（limit=10 边界错）", last)
 	}
+}
+
+// TestOnFileOpen_PushAndNotify 验证 macOS Finder 双击路径：
+//  1. 合法 .md 路径入 startupFiles 队 + 发出 litemd:openExternalFile 事件
+//  2. 非 Markdown 后缀 / 不存在 / 空路径被 extractStartupFiles 滤掉，不入队
+//  3. "回调先于 startup"的真实场景：pendingNotify 置位 + startup 后 flush 补发
+//
+// 复用 emitEvent 接缝（与 OnSecondInstanceLaunch 测试同套路），无需启动 wails。
+func TestOnFileOpen_PushAndNotify(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	mdPath := filepath.Join(dir, "clicked.md")
+	if err := os.WriteFile(mdPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	badPath := filepath.Join(dir, "clicked.exe")
+
+	t.Run("合法 .md 路径：入队 + startup 后补发事件", func(t *testing.T) {
+		a := NewApp()
+		// 替换 emitEvent 接缝
+		var calls int
+		emitEvent = func(_ context.Context, _ string) { calls++ }
+		t.Cleanup(func() { emitEvent = defaultEmitEvent })
+
+		// 1) OnFileOpen 在 startup 之前到达（真实 macOS 启动序列）
+		files := extractStartupFiles([]string{mdPath})
+		if len(files) != 1 {
+			t.Fatalf("extractStartupFiles 滤掉了合法路径：files=%v", files)
+		}
+		for _, p := range files {
+			a.startupFiles.push(p)
+		}
+		a.notifyExternalOpen() // ctx==nil → pendingNotify=true，不发事件
+		if calls != 0 {
+			t.Fatalf("ctx==nil 时不应发事件，实际 calls=%d", calls)
+		}
+		a.ctxMu.RLock()
+		if !a.pendingNotify {
+			a.ctxMu.RUnlock()
+			t.Fatal("预期 pendingNotify=true（startup 前的补发位）")
+		}
+		a.ctxMu.RUnlock()
+
+		// 2) startup 注入 ctx → flushPendingNotify 应补发一次事件
+		a.startup(context.Background())
+		if calls != 1 {
+			t.Fatalf("startup 后预期补发 1 次，实际 calls=%d", calls)
+		}
+		// 路径在队列里仍可被 ConsumeStartupFile 取到
+		if got := a.startupFiles.pop(); got != mdPath {
+			t.Fatalf("队首 = %q, want %q", got, mdPath)
+		}
+	})
+
+	t.Run("非 Markdown 后缀：被 extractStartupFiles 拒，不入队", func(t *testing.T) {
+		a := NewApp()
+		var calls int
+		emitEvent = func(_ context.Context, _ string) { calls++ }
+		t.Cleanup(func() { emitEvent = defaultEmitEvent })
+
+		files := extractStartupFiles([]string{badPath})
+		if len(files) != 0 {
+			t.Fatalf("非 Markdown 路径应被滤掉，实际 files=%v", files)
+		}
+		// 不调用 notifyExternalOpen（与 main.go 的 OnFileOpen 行为一致）
+		a.startup(context.Background())
+		if calls != 0 {
+			t.Fatalf("拒绝路径不应触发事件，calls=%d", calls)
+		}
+		if got := a.startupFiles.pop(); got != "" {
+			t.Fatalf("队首 = %q, want 空（拒绝路径不入队）", got)
+		}
+	})
+
+	t.Run("空路径：被拒", func(t *testing.T) {
+		files := extractStartupFiles([]string{""})
+		if len(files) != 0 {
+			t.Fatalf("空路径应被拒，实际 files=%v", files)
+		}
+	})
 }

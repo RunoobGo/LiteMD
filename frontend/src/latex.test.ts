@@ -194,5 +194,33 @@ assert(roundTrip.includes("```"), "还原后代码块原文恢复");
 }
 
 // ============================================================================
+// 闸门：逃逸 maxSize 的命令 + 异常长度单位 + 超大公式 → 降级为 latex-error，
+// 不送进 KaTeX（防止撑爆 DOM / 拖垮预览）
+console.log("\n闸门（逃逸 maxSize）：");
+{
+    const cases: Array<{ name: string; tex: string }> = [
+        { name: "\\raisebox", tex: "\\raisebox{0pt}{100pt}{x}" },
+        { name: "\\scalebox", tex: "\\scalebox{100}{x}" },
+        { name: "\\resizebox", tex: "\\resizebox{100pt}{!}{x}" },
+        { name: "\\fbox", tex: "\\fbox{a \\fbox{b \\fbox{c \\fbox{d}}}}" },
+        { name: "\\colorbox", tex: "\\colorbox{red}{x}" },
+        { name: "嵌套 phantom", tex: "a\\phantom{b\\phantom{c\\phantom{d}}}" },
+        { name: "异常长度单位 (99999em)", tex: "x^{99999em}" },
+        { name: "超大公式 8KB+", tex: "x" + "+y".repeat(5000) },
+    ];
+    for (const c of cases) {
+        const out = renderMarkdown(`$${c.tex}$`);
+        assert(out.includes("latex-error"),
+               `${c.name} → 降级为 latex-error，不送进 KaTeX`);
+    }
+}
+// 反向用例：普通公式不能被误判为过重
+{
+    const out = renderMarkdown("$a + b$");
+    assert(out.includes("katex"), "普通公式 $a + b$ 仍走 KaTeX 渲染");
+    assert(!out.includes("latex-error"), "普通公式不触发 latex-error 降级");
+}
+
+// ============================================================================
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);
