@@ -25,6 +25,7 @@ import {
     openExternal,
     openPath,
     readLocalAsset,
+    setUnsavedCount,
     type LinkTargetInfo,
 } from "./file-ops";
 import { parseFrontmatter } from "./obsidian";
@@ -133,10 +134,21 @@ function toggleTheme(): void {
 // TabManager + 编辑器/预览
 // =============================================================================
 
+// 审查 P1-11：把未保存标签数上报给 Go 侧 OnBeforeClose 守卫。
+// OS 级关闭（任务栏/Alt+F4/Cmd+Q）不经过前端 confirmQuit，Go 侧需要
+// 该计数决定是否弹原生确认框。TabManager.notify 仅在 dirty 翻转时触发
+// （tabs.ts syncLiveContent），不会每键一次 IPC。
+function reportUnsaved() {
+    let n = 0;
+    for (const t of tm.tabs.values()) if (t.dirty) n++;
+    void setUnsavedCount(n).catch(() => { /* mock 未就绪等异常不阻塞 UI */ });
+}
+
 const tm = new TabManager(() => {
     renderTabs();
     refreshActiveEditor();
     renderFrontmatterPanel();
+    reportUnsaved();
 });
 
 let editor: MarkdownEditor | null = null;

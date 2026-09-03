@@ -32,3 +32,5 @@ export function SaveFile(arg1:string,arg2:string,arg3:number):Promise<number>;
 export function SaveFileAs(arg1:string,arg2:string):Promise<string>;
 
 export function SetConfig(arg1:config.Config):Promise<void>;
+
+export function SetUnsavedCount(arg1:number):Promise<void>;

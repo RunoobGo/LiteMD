@@ -65,6 +65,10 @@ build/*.log
 # build-windows.sh 由 nsis-src/ rsync 生成的同步目录（构建产物，不入库）
 build/windows/
 
+# 审查 P1-13：旧构建流程的残留目录（脚本实际用的是 build/windows/）。
+# 此前 .gitignore 只写了 build/windows/（斜杠对不上），6 个文件已入库。
+build_windows/
+
 # UPX/打包中间产物
 build/*.tmp
 

@@ -233,6 +233,11 @@ const mockFs = new InMemoryMockFs();
                 mockFs.savedFiles.push({ path: targetPath, content: `<base64:${stripped.length}chars>` });
                 return targetPath;
             },
+            // 审查 P1-11：Go 侧 OnBeforeClose 守卫的计数上报。
+            // mock 环境记录最近一次上报值，E2E 可据此断言 dirty 状态同步。
+            SetUnsavedCount: async (n: number) => {
+                (window as any).__litemd__unsavedCount = n;
+            },
         },
     },
 };

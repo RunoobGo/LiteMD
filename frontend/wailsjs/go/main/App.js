@@ -61,3 +61,7 @@ export function SaveFileAs(arg1, arg2) {
 export function SetConfig(arg1) {
   return window['go']['main']['App']['SetConfig'](arg1);
 }
+
+export function SetUnsavedCount(arg1) {
+  return window['go']['main']['App']['SetUnsavedCount'](arg1);
+}

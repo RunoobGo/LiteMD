@@ -106,6 +106,16 @@ export async function readLocalAsset(path: string): Promise<string> {
     return await bind("ReadLocalAsset")(path);
 }
 
+/**
+ * 上报未保存标签数（审查 P1-11）。
+ *
+ * Go 侧 OnBeforeClose 是同步钩子，无法回询前端；dirty 计数变化时
+ * 主动推给 Go，关闭窗口时据此决定是否弹原生确认框。
+ */
+export async function setUnsavedCount(n: number): Promise<void> {
+    await bind("SetUnsavedCount")(n);
+}
+
 // E2E 测试可读
 declare global {
     interface Window {

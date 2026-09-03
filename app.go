@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"litemd/internal/config"
@@ -42,6 +43,11 @@ type App struct {
 	// 在同一临界区内翻转，否则"读 ctx 为 nil"与"置标记"之间会被 startup
 	// 插队，标记再无补发时机。
 	pendingNotify bool
+
+	// unsaved 前端上报的未保存标签数（审查 P1-11：OnBeforeClose 守卫用）。
+	// 未保存状态的事实源在前端 TabManager，Go 侧同步钩子无法回询，
+	// 故由前端在 dirty 计数变化时主动上报（见 SetUnsavedCount）。
+	unsaved atomic.Int32
 }
 
 // NewApp 构造应用实例。store 注入便于测试替换。
@@ -69,9 +75,66 @@ func (a *App) currentCtx() context.Context {
 // shutdown 是 Wails 生命周期钩子。当前无需收尾工作:
 // 配置在每次 SetConfig/PushRecent 时即时落盘,文件保存也是即时原子写,
 // 不存在"内存态需在退出前刷盘"的场景。保留钩子供未来扩展。
+// 审查 P1-11：经 main.go 的 OnShutdown 接入（此前从未注册，属死代码）。
 func (a *App) shutdown(ctx context.Context) {
 	_ = ctx
 }
+
+// ============================================================================
+// 关闭守卫（审查 P1-11）
+// ============================================================================
+
+// SetUnsavedCount 由前端在未保存标签数变化时上报。
+//
+// Wails v2 的 OnBeforeClose 是同步钩子（必须立即返回 bool），Go 侧无法
+// 异步回询前端状态，因此采用"前端主动上报 + Go 侧计数"模式。前端
+// TabManager 的 notify 仅在 dirty 翻转时触发（非每键一次），IPC 开销
+// 可忽略；极端时序下（上报晚于窗口关闭判定）最多多弹一次确认框，
+// 不会丢数据。
+func (a *App) SetUnsavedCount(n int) {
+	if n < 0 {
+		n = 0
+	}
+	a.unsaved.Store(int32(n))
+}
+
+// beforeClose 是 wails OnBeforeClose 钩子。
+//
+// OS 级关闭路径（任务栏关闭 / Alt+F4 / Cmd+Q / 窗口管理器关闭）不经过
+// 前端标题栏的 confirmQuit 协商，beforeunload 在 WebView 关闭序列中也
+// 不可靠 —— Go 侧原生确认框是最后一道闸：有未保存标签时弹窗确认，
+// 用户取消则阻止关闭。
+//
+// 返回值语义遵循 wails 约定：true = 阻止关闭。
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	n := a.unsaved.Load()
+	if n <= 0 {
+		return false
+	}
+	return !confirmCloseDialog(ctx, int(n))
+}
+
+// confirmCloseDialog 弹原生关闭确认框，返回 true = 用户确认退出。
+// 接缝化便于测试替换（与 emitEvent 同套路）。
+var confirmCloseDialog = func(ctx context.Context, unsaved int) bool {
+	selection, err := wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+		Type:    wailsruntime.QuestionDialog,
+		Title:   "未保存的修改",
+		Message: fmt.Sprintf("有 %d 个标签页包含未保存的修改，关闭窗口将丢失这些修改。确定退出吗？", unsaved),
+		Buttons: []string{"退出", "取消"},
+
+		DefaultButton: "取消",
+		CancelButton:  "取消",
+	})
+	if err != nil {
+		// 弹窗失败按"取消"处理：宁可阻止关闭，也不让未保存修改静默丢失
+		return false
+	}
+	return selection == "退出"
+}
+
+// defaultConfirmCloseDialog 保存真实实现，供测试替换后还原。
+var defaultConfirmCloseDialog = confirmCloseDialog
 
 // ============================================================================
 // 文件 IO 绑定
