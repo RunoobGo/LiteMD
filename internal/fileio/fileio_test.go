@@ -28,6 +28,21 @@ func TestReadText_InvalidUTF8(t *testing.T) {
 	}
 }
 
+// TestReadText_NULByte 审查 P1-9：NUL 是合法 UTF-8，utf8.Valid 拦不住，
+// 但契约一直承诺"含 NUL → ErrIsBinary"。UTF-16LE 的 ASCII 文本就是典型
+// 命中场景（"h\x00i\x00"），之前会被当成普通文本读进编辑器。
+func TestReadText_NULByte(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "utf16.md")
+	if err := os.WriteFile(p, []byte("h\x00i\x00\n\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ReadText(p)
+	if !errors.Is(err, ErrIsBinary) {
+		t.Fatalf("want ErrIsBinary, got %v", err)
+	}
+}
+
 func TestReadWriteRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "hello.md")

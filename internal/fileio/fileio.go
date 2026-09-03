@@ -84,6 +84,16 @@ func ReadText(path string) (string, error) {
 	if !utf8.Valid(data) {
 		return "", fmt.Errorf("%w: %s", ErrIsBinary, path)
 	}
+	// NUL 字节检测（审查 P1-9）：NUL 是合法 UTF-8，utf8.Valid 拦不住，
+	// 但函数契约一直承诺"含 NUL → ErrIsBinary"，此前注释与实现不符。
+	// UTF-16/32 编码的文本、带 padding 的二进制都以大量 NUL 为特征，
+	// 读进编辑器是一堆不可见字符，保存时还可能写坏原编码。
+	//
+	// 顺序要紧：先 Valid 再查 NUL —— 两类文件都会命中 NUL，但无效 UTF-8
+	// 应该报更具体的"非法 UTF-8"。
+	if bytes.IndexByte(data, 0) >= 0 {
+		return "", fmt.Errorf("%w: contains NUL byte: %s", ErrIsBinary, path)
+	}
 	return string(data), nil
 }
 

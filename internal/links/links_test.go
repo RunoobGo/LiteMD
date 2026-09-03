@@ -198,6 +198,95 @@ func TestReadAssetDataURL(t *testing.T) {
 	}
 }
 
+// TestOpenWithSystemRejectsExecutable 审查 P1-4：
+// "交给系统默认程序打开"对可执行类型等同于执行，Go 侧必须有硬拦截。
+func TestOpenWithSystemRejectsExecutable(t *testing.T) {
+	dir := t.TempDir()
+	// 替换启动接缝，确保被拒时没有真的拉起外部进程
+	called := false
+	runDetached = func(string, ...string) error { called = true; return nil }
+	t.Cleanup(func() { runDetached = defaultRunDetached })
+
+	for _, name := range []string{"run.exe", "install.bat", "x.cmd", "s.ps1", "s.scr", "short.lnk", "a.sh", "b.app"} {
+		target := filepath.Join(dir, name)
+		writeFile(t, target, "fake")
+		if err := OpenWithSystem(target); !errors.Is(err, ErrExecutableType) {
+			t.Fatalf("%s 期望 ErrExecutableType, 得到 %v", name, err)
+		}
+	}
+	if called {
+		t.Fatal("被拒的类型不该启动任何外部进程")
+	}
+}
+
+// TestRequireExistingFileRejectsNonRegular 审查 P1-4/P1-5：
+// FIFO / 设备 / 目录都必须被拒 —— 它们的 Size() 为 0，能绕过大小预检。
+func TestRequireExistingFileRejectsNonRegular(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 无 POSIX FIFO")
+	}
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "fifo.png")
+	if err := mkfifo(fifo); err != nil {
+		t.Skipf("无法创建 FIFO: %v", err)
+	}
+	for _, fn := range []func(string) error{
+		func(p string) error { _, err := requireExistingFile(p); return err },
+		func(p string) error { _, err := ReadAssetDataURL(p); return err },
+		func(p string) error { return OpenWithSystem(p) },
+	} {
+		if err := fn(fifo); !errors.Is(err, ErrNotFile) {
+			t.Fatalf("FIFO 期望 ErrNotFile, 得到 %v", err)
+		}
+	}
+}
+
+// TestReadAssetDataURLSVGDisabled 审查 P1-5：.svg 默认关闭，显式开启后可读。
+func TestReadAssetDataURLSVGDisabled(t *testing.T) {
+	dir := t.TempDir()
+	svg := filepath.Join(dir, "pic.svg")
+	writeFile(t, svg, "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")
+
+	if _, err := ReadAssetDataURL(svg); !errors.Is(err, ErrSVGDisabled) {
+		t.Fatalf("默认应拒绝 svg, 得到 %v", err)
+	}
+	AllowSVG = true
+	t.Cleanup(func() { AllowSVG = false })
+	got, err := ReadAssetDataURL(svg)
+	if err != nil {
+		t.Fatalf("开启后应可读 svg: %v", err)
+	}
+	if !strings.HasPrefix(got, "data:image/svg+xml;base64,") {
+		t.Fatalf("svg data URL 前缀异常: %.40s", got)
+	}
+}
+
+// TestCheckEditable 审查 P1-9：OpenFile 的扩展名兜底。
+func TestCheckEditable(t *testing.T) {
+	allow := []string{
+		"/vault/note.md", "/vault/note.markdown", "/vault/a.mdown",
+		"/vault/data.json", "/vault/log.txt", "/vault/c.csv",
+		"/vault/Obsidian 笔记", // 无扩展名（Obsidian 约定）
+	}
+	for _, p := range allow {
+		if err := CheckEditable(p); err != nil {
+			t.Fatalf("%s 应允许在编辑器打开, 得到 %v", p, err)
+		}
+	}
+	deny := []string{
+		"/home/u/.ssh/id_rsa", "/home/u/.ssh/id_ed25519",
+		"/proj/.env", "/proj/.env.local", "/home/u/.netrc",
+		"/home/u/cert.pem", "/home/u/server.key", "/home/u/vault.kdbx",
+		"/home/u/.bash_history",
+		"/proj/main.go", "/proj/app.py", // 源码类：不在文本白名单内
+	}
+	for _, p := range deny {
+		if err := CheckEditable(p); !errors.Is(err, ErrNotEditable) {
+			t.Fatalf("%s 应被拒, 得到 %v", p, err)
+		}
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

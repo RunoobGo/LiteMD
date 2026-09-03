@@ -57,6 +57,56 @@ var textExts = map[string]bool{
 	".txt": true, ".text": true, ".log": true, ".csv": true, ".json": true, ".yaml": true, ".yml": true,
 }
 
+// ErrNotEditable 目标不是允许在编辑器中打开的文本类型（审查 P1-9）。
+//
+// 打开对话框带 "All Files (*.*)" 过滤器，等于给了"读任意 UTF-8 明文"的口子：
+// ~/.ssh/id_rsa、.env、.pem 私钥都是合法 UTF-8，ReadText 会照读不误，随后
+// 内容进编辑器、进预览、可能随文档一起被保存或外发。
+var ErrNotEditable = errors.New("file type is not openable in the editor")
+
+// secretExts 即便扩展名"看起来像文本"也一律拒绝的类型：密钥/凭据类。
+var secretExts = map[string]bool{
+	".pem": true, ".key": true, ".p12": true, ".pfx": true, ".jks": true,
+	".keystore": true, ".kdbx": true, ".gpg": true, ".pgp": true, ".asc": true,
+}
+
+// secretNames 无扩展名（或扩展名不在管控内）的敏感文件名。
+//
+// 这些文件在三大系统上都没有扩展名，靠扩展名白名单拦不住，只能按名字判。
+var secretNames = map[string]bool{
+	"id_rsa": true, "id_dsa": true, "id_ecdsa": true, "id_ed25519": true,
+	".env": true, ".env.local": true, ".netrc": true, ".npmrc": true,
+	".htpasswd": true, ".gitconfig": true, ".bash_history": true,
+	".zsh_history": true, ".pgpass": true, ".my.cnf": true,
+}
+
+// CheckEditable 判定 path 是否允许在编辑器中打开（审查 P1-9）。
+//
+// 放行：Markdown 扩展名、纯文本扩展名，以及"无扩展名且不在敏感名单内"
+// （Obsidian 习惯用 [[文档名]] 省略 .md，Resolve 已按同样口径把无扩展名的
+// 文本文件归为 KindMarkdown，这里必须保持一致，否则链接能打开、手动打开
+// 却被拒，行为自相矛盾）。
+//
+// 其余一律 ErrNotEditable。返回 nil 表示允许。
+func CheckEditable(path string) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	if secretExts[ext] {
+		return fmt.Errorf("%w: %s", ErrNotEditable, ext)
+	}
+	if name := strings.ToLower(filepath.Base(path)); secretNames[name] {
+		return fmt.Errorf("%w: %s", ErrNotEditable, name)
+	}
+	switch {
+	case markdownExts[ext], textExts[ext]:
+		return nil
+	case ext == "":
+		// 无扩展名：放行（Obsidian 约定），敏感文件名已在上一步拦掉
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrNotEditable, ext)
+	}
+}
+
 // Target 是一个链接目标的解析结果。
 //
 // Path 恒为绝对路径（不存在时也是"应该在哪"的绝对路径，供前端提示展示）。

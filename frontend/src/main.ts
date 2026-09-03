@@ -515,7 +515,7 @@ async function openLocalLink(link: ParsedLink): Promise<void> {
             // openInCurrentIfEmpty 内含 tab 去重（已打开则激活）与最近文件推送
             openInCurrentIfEmpty(await openFile(t.path)); // payload.modified 由 openInCurrentIfEmpty 传递
         } catch (e) {
-            showError("打开失败", `${t.path}\n\n${errMsg(e)}`);
+            showError("打开失败", openErrorText(e, t.path));
         }
         return;
     }
@@ -559,6 +559,30 @@ function confirmOpenWithSystem(path: string): Promise<boolean> {
 
 function errMsg(e: unknown): string {
     return (e as Error)?.message ?? String(e);
+}
+
+/**
+ * 打开文件的错误转中文提示（审查 P1-9 配套）。
+ *
+ * Go 侧只为安全兜底返回英文错误串，直接弹给用户看不懂。这里按错误关键词
+ * 映射成人话；兜不住的原样透出（保留排障信息）。
+ */
+function openErrorText(e: unknown, path: string): string {
+    const raw = errMsg(e);
+    const pick = (zh: string) => `${path}\n\n${zh}\n\n（原始错误：${raw}）`;
+    if (raw.includes("not openable in the editor")) {
+        return pick(
+            "LiteMD 是 Markdown 编辑器，只打开 .md/.markdown/.txt 等文本文件；" +
+                "出于安全考虑也不读取密钥与凭据类文件（id_rsa、.env、.pem 等）。"
+        );
+    }
+    if (raw.includes("invalid UTF-8") || raw.includes("NUL byte")) {
+        return pick("这个文件不是纯文本（含二进制内容），无法在编辑器中打开。");
+    }
+    if (raw.includes("not a regular file")) {
+        return pick("目标不是普通文件（可能是目录、管道或设备文件）。");
+    }
+    return pick("无法打开该文件。");
 }
 
 function safeDecodeURI(s: string): string {
@@ -835,14 +859,15 @@ function handleNew() {
 }
 
 async function handleOpen() {
+    let path = ""; // 提到 try 外：失败提示要带路径
     try {
-        const path = await pickOpenPath();
+        path = await pickOpenPath();
         if (!path) return;
         const payload = await openFile(path);
         // 在空新建页上打开 → 覆盖当前标签;其他情况 → 追加新标签
         openInCurrentIfEmpty(payload);
     } catch (e) {
-        showError("打开失败", (e as Error).message ?? String(e));
+        showError("打开失败", openErrorText(e, path));
     }
 }
 

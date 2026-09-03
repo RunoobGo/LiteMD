@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"litemd/internal/config"
@@ -38,7 +37,11 @@ type App struct {
 	ctx           context.Context
 	store         *config.Store
 	startupFiles  *startupFileQueue // 文件关联打开的待开文件（启动参数 / 二实例参数）
-	pendingNotify atomic.Bool       // 前端就绪前收到二实例打开请求的补发标记
+	// pendingNotify 前端就绪前收到二实例打开请求的补发标记。
+	// 审查 P1-8：由 ctxMu（写锁）而非 atomic 保护 —— 它必须与 ctx 的读写
+	// 在同一临界区内翻转，否则"读 ctx 为 nil"与"置标记"之间会被 startup
+	// 插队，标记再无补发时机。
+	pendingNotify bool
 }
 
 // NewApp 构造应用实例。store 注入便于测试替换。
@@ -92,6 +95,12 @@ type FilePayload struct {
 func (a *App) OpenFile(path string) (FilePayload, error) {
 	if path == "" {
 		return FilePayload{}, errors.New("path is empty")
+	}
+	// 审查 P1-9：只放行 Markdown / 纯文本类型。打开对话框带 "All Files"
+	// 过滤器，缺了这道兜底，ReadText（只校验 UTF-8）会把 ~/.ssh/id_rsa、
+	// .env 这类明文凭据原样读进编辑器。
+	if err := links.CheckEditable(path); err != nil {
+		return FilePayload{}, err
 	}
 	content, err := fileio.ReadText(path)
 	if err != nil {
@@ -237,22 +246,65 @@ func (a *App) ConsumeStartupFile() (FilePayload, error) {
 // 置 pendingNotify 标记,startup 完成后由 flushPendingNotify 补发;
 // 即使补发也失败(极端:前端事件监听未注册),文件仍在队列中,
 // 前端下次消费(事件触发或重启)仍可取到,不丢数据。
+//
+// 审查 P1-8:"读 ctx → 置标记"必须与 startup 的"写 ctx → 补发"互斥,
+// 否则存在交叉窗口:本函数读到 ctx==nil 后被挂起,startup 写完 ctx 并
+// 执行了 flushPendingNotify(此时标记还是 false,空转返回),标记随后才被
+// 置 true,且再无补发时机 —— 用户双击了 .md,第二个实例把路径塞进队列,
+// 主界面却永远收不到事件。因此全程持 ctxMu 写锁,并把标记改成锁内 bool。
 func (a *App) notifyExternalOpen() {
-	if ctx := a.currentCtx(); ctx != nil {
-		wailsruntime.EventsEmit(ctx, "litemd:openExternalFile")
-		return
+	ctx := a.takeCtxForNotify()
+	if ctx != nil {
+		emitEvent(ctx, openExternalFileEvent)
 	}
-	a.pendingNotify.Store(true)
+}
+
+// openExternalFileEvent 前端监听的事件名（"有关联文件待打开"）。
+const openExternalFileEvent = "litemd:openExternalFile"
+
+// emitEvent 是事件发送接缝，真实实现转调 wails runtime。
+//
+// 单测需要验证"通知不丢不重"（审查 P1-8）：runtime.EventsEmit 在 ctx 里
+// 拿不到 wails 的 events 对象时会直接 log.Fatal 终止进程，无法在测试中调用，
+// 故留出接缝供测试替换（与 links.runDetached 同一套路）。
+var emitEvent = func(ctx context.Context, name string) {
+	wailsruntime.EventsEmit(ctx, name)
+}
+
+// defaultEmitEvent 保存真实实现，供测试替换后还原。
+var defaultEmitEvent = emitEvent
+
+// takeCtxForNotify 在 ctxMu 保护下取 ctx:取到则直接可发事件;
+// 取不到(ctx 尚未就绪)则置挂起标记,返回 nil。
+// takeCtxForNotify 在 ctxMu 保护下取 ctx:取到则直接可发事件;
+// 取不到(ctx 尚未就绪)则置挂起标记,返回 nil。
+//
+// 关键在于"读 ctx"与"置标记"必须在同一临界区内:startup 的"写 ctx +
+// flushPendingNotify"若插在两者之间,标记会被置位在补发之后,再无补发时机
+// (审查 P1-8;回归测试见 app_notify_test.go 的 ConcurrentNoStuck)。
+func (a *App) takeCtxForNotify() context.Context {
+	a.ctxMu.Lock()
+	defer a.ctxMu.Unlock()
+	if a.ctx != nil {
+		return a.ctx
+	}
+	a.pendingNotify = true
+	return nil
 }
 
 // flushPendingNotify 补发挂起的通知(仅 startup 后调用一次;
-// CAS 保证与并发到达的 notifyExternalOpen 至多发一次)。
+// 标记在 ctxMu 下与 ctx 一起翻转,至多补发一次)。
 func (a *App) flushPendingNotify() {
-	if !a.pendingNotify.CompareAndSwap(true, false) {
+	a.ctxMu.Lock()
+	if !a.pendingNotify {
+		a.ctxMu.Unlock()
 		return
 	}
-	if ctx := a.currentCtx(); ctx != nil {
-		wailsruntime.EventsEmit(ctx, "litemd:openExternalFile")
+	a.pendingNotify = false
+	ctx := a.ctx
+	a.ctxMu.Unlock()
+	if ctx != nil {
+		emitEvent(ctx, openExternalFileEvent)
 	}
 }
 
