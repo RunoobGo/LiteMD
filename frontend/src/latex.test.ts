@@ -153,11 +153,15 @@ assert(roundTrip.includes("```"), "还原后代码块原文恢复");
            "占位符伪造：img 标题属性内的占位符形态不进入公式表");
 }
 
-// 占位符盐每次不同（不可预测）
+// 占位符盐：会话级恒定（审查 P1-3 块缓存前提）—— 同一文本跨渲染产生
+// 相同占位符，preview 的分块缓存才能命中；盐本身仍是进程内随机值
+// （用户编写文档时不可得知），且防伪核心层（PH_LIKE_RE 预剥除）与盐无关
 {
     const s1 = extractLatex("$x$").re.source;
     const s2 = extractLatex("$x$").re.source;
-    assert(s1 !== s2, "占位符盐每次不同（防伪造前提）");
+    assert(s1 === s2, "占位符盐会话内恒定（同一文本跨渲染占位符稳定）");
+    assert(s1.startsWith("LTMDPHLX") && s1.includes("(\\d+)ZX"),
+           "占位符仍为随机盐形态（LTMDPHLX{盐}(序号)ZX）");
 }
 
 // 还原只在文本节点（> 与 < 之间）替换 —— 即便剥除逻辑被绕过，属性也不被突破

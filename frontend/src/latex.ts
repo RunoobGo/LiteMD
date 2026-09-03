@@ -15,9 +15,10 @@
 //    \htmlStyle / \htmlData / \includegraphics 等可注入 HTML 的命令，输出仅为
 //    纯 MathML + span，无 XSS 面。另设 maxSize / maxExpand 防御宏展开炸弹。
 //
-// 4. **占位符防伪**：每次提取生成不可预测的随机盐作为占位符后缀，
-//    且提取阶段会先把用户文本中所有「占位符形态」的字符串剥成空串。
-//    双保险使攻击者无法在文档中伪造占位符触发还原阶段的属性上下文注入。
+// 4. **占位符防伪**：占位符带不可预测的随机盐（会话级，见 extractLatex
+//    注释），且提取阶段会先把用户文本中所有「占位符形态」的字符串剥成
+//    空串。双保险使攻击者无法在文档中伪造占位符触发还原阶段的属性
+//    上下文注入（剥除层与盐无关，独立成立）。
 //
 // 5. **FENCE / inRanges 的线性实现**：旧版用跨行懒惰正则 FENCE_RE，在
 //    「多个未闭合围栏」输入下 O(n²)（每翻倍输入耗时涨 4 倍）；inRanges
@@ -201,12 +202,19 @@ function extractInSegment(seg: string, formulas: LatexFormula[], ph: (n: number)
  * 返回的 `re` 调用 `restoreLatex`，否则公式会被 marked 破坏或被 DOMPurify
  * 清洗掉。
  *
- * 每次调用生成新的随机盐，攻击者无法在文档中伪造占位符触发还原阶段的
- * 属性上下文注入（即使猜中盐，提取前也会先把所有占位符形态剥成空串）。
+ * 盐为**会话级**（进程生命周期内恒定，懒初始化一次）——审查 P1-3 的
+ * 块缓存要求同一文本跨渲染产生相同占位符，若每次调用换盐，含公式
+ * 文档的 token.raw 永不稳定、缓存永不命中。防伪不受影响：
+ *   a) 会话盐仍是进程启动后不可预测的随机值（用户编写文档时无法得知）；
+ *   b) 防伪造的核心层——「提取前剥除用户文本中所有占位符形态」——与盐
+ *      无关，独立成立（见下方 PH_LIKE_RE 剥除）。
  */
+let sessionSalt: string | null = null;
+
 export function extractLatex(md: string): { text: string; ext: LatexExtraction; re: RegExp } {
     const formulas: LatexFormula[] = [];
-    const salt = newSalt();
+    if (sessionSalt === null) sessionSalt = newSalt();
+    const salt = sessionSalt;
     const ph = (n: number) => `${LATEX_PREFIX}${salt}${n}${LATEX_SUFFIX}`;
     const re = new RegExp(`${LATEX_PREFIX}${salt}(\\d+)${LATEX_SUFFIX}`, "g");
 

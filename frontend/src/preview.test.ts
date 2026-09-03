@@ -143,6 +143,27 @@ console.log("\n预览行号标注（data-line）：");
     // XSS：data-line 值是程序生成的整数，不受用户内容注入影响
     const xssLn = ln('<img src=x onerror=alert(1) data-line="99">');
     assert(!/data-line="99"/.test(xssLn), "用户构造的 data-line 被清洗流程规范化");
+
+    // 审查 P1-3：顶层块缓存。同一块文本在不同文档/不同位置出现时，
+    // 第二次渲染命中缓存，data-line 必须是**当前位置**的现算值 ——
+    // 行号不进缓存是本修复的关键不变量。
+    const shared = "shared para";
+    const d1 = ln(`# A\n\n${shared}`);
+    const d2 = ln(`# A\n\nintro\n\n${shared}\n\n# B`);
+    assert(/<p data-line="3">shared para/.test(d1), "首次渲染：shared 块行号 = 3");
+    assert(/<p data-line="5">shared para/.test(d2), "缓存命中：同一块在新位置行号 = 5（行号现算，不随缓存漂移）");
+    assert(/<h1 data-line="7"/.test(d2), "缓存命中文档的后续块行号正确");
+
+    // 局部修改：改动一个块后，其余块仍正确（命中或重渲都应对）
+    const edited = ln("p1\n\np2 EDITED\n\np3");
+    assert(/<p data-line="1">p1/.test(edited), "局部修改后未改动块 p1 输出正确");
+    assert(/<p data-line="3">p2 EDITED/.test(edited), "被修改块 p2 重新渲染");
+    assert(/<p data-line="5">p3/.test(edited), "局部修改后未改动块 p3 输出正确");
+
+    // 含公式文档的缓存稳定性：会话盐下同一公式块渲染两次输出一致
+    const f1 = ln("$x^2$ first\n\nafter");
+    const f2 = ln("$x^2$ first\n\nafter");
+    assert(f1 === f2, "会话盐恒定：同一含公式文档两次渲染输出一致（块缓存可命中）");
 }
 
 // ============================================================================

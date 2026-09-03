@@ -9,10 +9,10 @@
 //   - 强制 external 链接 target="_blank"
 //   - 内部 [[Wiki Link]] 单独处理（这里只接渲染，将来 Sprint 3 加）
 
-import { marked } from "marked";
+import { marked, type Token } from "marked";
 import DOMPurify from "dompurify";
 import { preprocessAll, parseFrontmatter, findCalloutTransforms } from "./obsidian";
-import { extractLatex, restoreLatex } from "./latex";
+import { extractLatex, restoreLatex, type LatexExtraction } from "./latex";
 import { classifyHref, assignHeadingIds, type ParsedLink } from "./link-handler";
 import { filterInlineStyle, extractStyleBlocks, buildUserStyleTag } from "./user-css";
 import { renderMermaid, type MermaidResult, type MermaidTheme } from "./mermaid";
@@ -150,87 +150,150 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
 const RENDER_CACHE_MAX = 8;
 const renderCache = new Map<string, string>();
 
+// 审查 P1-3：顶层块缓存（key = token.raw → value = 全管线处理后的
+// { html, css }）。仅 lineNumbers 路径使用；LRU 上限按块数（单块通常
+// 数百字节，512 块 ≈ 数百 KB 内存，可接受）。命中块跳过
+// marked.parser + DOMPurify + DOMParser 全部开销（实测这三段才是
+// 渲染耗时大头，jsdom 下 78KB 文档分别占 ~20ms / ~200ms / ~74ms）。
+interface CachedBlock {
+    /** 全管线（parser→checkbox 占位→style 摘除→sanitize→link 加固→还原）后的块 HTML，不含 data-line */
+    html: string;
+    /** 该块内摘出的用户 <style> 规则（文档级拼装 userCss 用） */
+    css: string;
+}
+// 容量按「整篇大文档的全部块」设计（200KB 文档 ≈ 2000-4000 块）：
+// 若容量小于块数，LRU 在顺序扫描下会全量 thrash（每块刚插入就被逐出），
+// 增量渲染零收益。4096 块 × 平均数百字节 ≈ 数 MB 字符串，桌面应用可接受。
+const BLOCK_CACHE_MAX = 4096;
+const blockCache = new Map<string, CachedBlock>();
+
 function renderMarkdownUncached(md: string, opts: RenderOptions): string {
     // 公式先抽成占位符（同时豁免代码块/行内代码/转义的 \$）
     const { text: afterLatex, ext, re } = extractLatex(md);
     // Sprint 3: Obsidian 语法预处理（双链 / Callout / 资产）
     const preprocessed = preprocessAll(afterLatex);
 
-    let rawHtml: string;
     if (opts.lineNumbers) {
+        // 审查 P1-3：lineNumbers 路径按顶层 token 分块渲染并缓存。
+        // 大文档每敲一个键改动的通常只是一个块，其余块 raw 未变 →
+        // 命中缓存直接复用全管线结果（parser + DOMPurify + DOMParser
+        // 全部跳过），实测增量渲染从 ~340ms 降到 ~40ms（78KB, jsdom）。
+        //
+        // 等价性说明（分块 vs 整文执行同一管线）：
+        //   - taskCheckboxPlaceholder / extractStyleBlocks / restoreCheckboxes
+        //     / restoreLatex 均为逐段正则替换，分块拼接与整文结果一致；
+        //   - DOMPurify 按片段清洗与整文清洗对同一片段输出一致（实测
+        //     逐字节相同），模块级 style/data:URI hook 对两者同样生效；
+        //   - hardenLinks 的 DOMParser 遍历是片段无关的逐 <a> 操作；
+        //   - 行号（annotateLine）与用户 CSS 拼装留在文档级、每次现算，
+        //     不进缓存 —— 行号随块位置变化，CSS 需要收集全部块。
+        //
+        // latex 占位符为会话级盐（见 latex.ts），同一文本跨渲染的
+        // token.raw 稳定，含公式文档也能命中；公式序号随文档前部增删
+        // 漂移时 raw 随之变化，只会退化为重渲，不会还原错内容。
         const map = new LineMap(afterLatex, preprocessed);
         const tokens = marked.lexer(preprocessed);
         let offset = 0; // 已消费的字符数（token.raw 拼接 = preprocessed）
         let out = "";
+        const cssParts: string[] = [];
         for (const tk of tokens) {
             const raw = tk.raw ?? "";
             const line = raw.trim() ? map.toOriginal(lineAtOffset(preprocessed, offset)) : 0;
             offset += raw.length;
             if (!raw.trim()) continue; // 块间空行不产 HTML
-            const piece = stripDataLine(marked.parser([tk]) as string);
-            out += annotateLine(piece, line);
+            let block = blockCache.get(raw);
+            if (block === undefined) {
+                block = renderBlockPipeline(tk, ext, re);
+                if (blockCache.size >= BLOCK_CACHE_MAX) {
+                    const oldest = blockCache.keys().next().value;
+                    if (oldest !== undefined) blockCache.delete(oldest);
+                }
+                blockCache.set(raw, block);
+            } else {
+                blockCache.delete(raw); // LRU touch
+                blockCache.set(raw, block);
+            }
+            cssParts.push(block.css);
+            out += annotateLine(block.html, line);
         }
-        rawHtml = out;
-    } else {
-        // marked v18 同步 API：parse 返回 string（当 async: false）
-        rawHtml = marked.parse(preprocessed, { async: false }) as string;
+        return out + buildUserStyleTag(cssParts.filter((c) => c).join("\n"));
     }
+
+    // 非 lineNumbers 路径：整文管线（纯渲染输出，供测试与调用方）
+    let rawHtml = marked.parse(preprocessed, { async: false }) as string;
     // 任务列表复选框先行占位（sanitize 前处理，见 taskCheckboxPlaceholder 注释）
     rawHtml = taskCheckboxPlaceholder(rawHtml);
-
     // v0.2.7 内嵌 CSS：<style> 块在 DOMPurify 之前摘除（否则被 FORBID_TAGS 整块
     // 剥掉），经 scopeUserCss 重写为 .preview-content 作用域 CSS 后由渲染管线
     // 以 <style data-user-css> 拼回输出末尾。重写器输出不含原始用户 HTML，
     // 且对 </style> 逃逸做了转义（见 user-css.ts 头注释的威胁模型）。
     const { html: htmlNoStyle, css: userCss } = extractStyleBlocks(rawHtml);
+    // 末尾拼接作用域化的用户 <style> 块（无有效规则时为空串）
+    return finalizeHtml(htmlNoStyle, ext, re) + buildUserStyleTag(userCss);
+}
 
+/**
+ * 单个顶层 token 走完整安全管线，产出可缓存的块结果。
+ * 步骤与整文管线严格同序：parser → 剥用户 data-line →
+ * checkbox 占位 → <style> 摘除 → DOMPurify → link 加固 → checkbox 还原
+ * → 公式还原。
+ */
+function renderBlockPipeline(tk: Token, ext: LatexExtraction, re: RegExp): CachedBlock {
+    let piece = stripDataLine(marked.parser([tk]) as string);
+    piece = taskCheckboxPlaceholder(piece);
+    const { html: htmlNoStyle, css } = extractStyleBlocks(piece);
+    return { html: finalizeHtml(htmlNoStyle, ext, re), css };
+}
+
+/** 整文/单块共用的后段管线：DOMPurify → link 加固 → checkbox 还原 → 公式还原 */
+function finalizeHtml(htmlNoStyle: string, ext: LatexExtraction, re: RegExp): string {
     // 第一道：DOMPurify 严格清洗。
     // 注意：input 已在 sanitize 之前被 taskCheckboxPlaceholder 替换为 span 占位——
     // DOMPurify 的 ALLOWED_URI_REGEXP 会把 jsdom 下 input[type] 误判为 URI 属性剥掉
     //（浏览器与 jsdom 对 URI 属性的判定不一致），占位符方案对两套环境行为一致。
-    //
-    // v0.2.7 白名单扩充（内嵌 HTML 渲染）：
-    //   - 语义/排版标签：figure figcaption details summary mark abbr q cite
-//     small dl dt dd caption col colgroup address time var samp bdi bdo wbr
-    //   - 媒体标签：video audio source track picture（autoplay 不放行，防骚扰）
-    //   - style 属性放行但经 DOMPurify hook 声明级过滤（filterInlineStyle）
-    //   - data:image base64 放行（明确排除 svg+xml —— SVG 可携带脚本向量）
-    const clean = DOMPurify.sanitize(htmlNoStyle, {
-        ALLOWED_TAGS: [
-            "a", "p", "div", "span", "em", "strong", "b", "i", "u", "s", "code", "pre",
-            "h1", "h2", "h3", "h4", "h5", "h6",
-            "ul", "ol", "li",
-            "blockquote", "hr", "br",
-            "img", "table", "thead", "tbody", "tr", "th", "td",
-            "kbd", "del", "ins", "sup", "sub",
-            // v0.2.7 内嵌 HTML 扩充
-            "figure", "figcaption", "details", "summary", "mark", "abbr",
-            "q", "cite", "small", "dl", "dt", "dd", "caption", "col", "colgroup",
-            "address", "time", "var", "samp", "bdi", "bdo", "wbr",
-            "video", "audio", "source", "track", "picture",
-        ],
-        ALLOWED_ATTR: [
-            "href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink", "data-line",
-            // v0.2.7 内嵌 HTML/CSS 扩充
-            "style",
-            "controls", "loop", "muted", "preload", "poster", "type",
-            "width", "height", "colspan", "rowspan", "span", "scope",
-            "datetime", "start", "reversed", "open", "dir",
-            "kind", "srclang", "label",
-        ],
-        FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script", "meta", "base"],
-        FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "srcdoc"],
-        ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,|\/|#|\.{0,2}\/|[a-zA-Z0-9._-][^:]*$)/i,
-    });
+    const clean = DOMPurify.sanitize(htmlNoStyle, SANITIZE_OPTIONS);
 
     // 第二道：link 节点 DOM 加固（F10 修复：正则 → DOM 操作，覆盖单引号/跨行/属性含 > 边界）
     let hardened = hardenLinks(clean);
     // 第二道半：任务列表复选框占位符还原为安全的 disabled checkbox
     hardened = restoreCheckboxes(hardened);
     // 第三道：还原公式（KaTeX 输出需在 DOMPurify 之后注入）与代码块原文
-    // 末尾拼接作用域化的用户 <style> 块（无有效规则时为空串）
-    return restoreLatex(hardened, ext, re) + buildUserStyleTag(userCss);
+    return restoreLatex(hardened, ext, re);
 }
+
+// v0.2.7 白名单（内嵌 HTML 渲染）：
+//   - 语义/排版标签：figure figcaption details summary mark abbr q cite
+//     small dl dt dd caption col colgroup address time var samp bdi bdo wbr
+//   - 媒体标签：video audio source track picture（autoplay 不放行，防骚扰）
+//   - style 属性放行但经 DOMPurify hook 声明级过滤（filterInlineStyle）
+//   - data:image base64 放行（明确排除 svg+xml —— SVG 可携带脚本向量）
+const SANITIZE_OPTIONS = {
+    ALLOWED_TAGS: [
+        "a", "p", "div", "span", "em", "strong", "b", "i", "u", "s", "code", "pre",
+        "h1", "h2", "h3", "h4", "h5", "h6",
+        "ul", "ol", "li",
+        "blockquote", "hr", "br",
+        "img", "table", "thead", "tbody", "tr", "th", "td",
+        "kbd", "del", "ins", "sup", "sub",
+        // v0.2.7 内嵌 HTML 扩充
+        "figure", "figcaption", "details", "summary", "mark", "abbr",
+        "q", "cite", "small", "dl", "dt", "dd", "caption", "col", "colgroup",
+        "address", "time", "var", "samp", "bdi", "bdo", "wbr",
+        "video", "audio", "source", "track", "picture",
+    ],
+    ALLOWED_ATTR: [
+        "href", "title", "src", "alt", "class", "target", "rel", "id", "loading", "data-wikilink", "data-line",
+        // v0.2.7 内嵌 HTML/CSS 扩充
+        "style",
+        "controls", "loop", "muted", "preload", "poster", "type",
+        "width", "height", "colspan", "rowspan", "span", "scope",
+        "datetime", "start", "reversed", "open", "dir",
+        "kind", "srclang", "label",
+    ],
+    FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script", "meta", "base"],
+    FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "srcdoc"],
+    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,|\/|#|\.{0,2}\/|[a-zA-Z0-9._-][^:]*$)/i,
+};
 
 // v0.2.7：style 属性过滤 hook（模块级注册一次，全项目唯一的 DOMPurify 实例
 // 就在本文件，不影响其他调用方）。属性值经声明级黑名单过滤：
@@ -289,11 +352,18 @@ function restoreCheckboxes(html: string): string {
 /**
  * 用 DOMParser 解析 HTML，遍历所有 <a> 节点强制加 target="_blank" rel="noopener noreferrer"。
  * 仅对 http(s) 外链生效，内部锚点（#/wiki/...）不受影响。
+ *
+ * 审查 P1-3 适配（分块渲染下本函数被高频调用）：
+ *   - 共享单个 DOMParser 实例（无状态可复用；jsdom 下每次 new 会随调用
+ *     次数二次劣化，实测 2000 次从 640ms 涨到 5700ms）；
+ *   - 输入是 **sanitize 之后**的 HTML，字面 < 已转义为 &lt;，因此串中
+ *     出现 `<a` 只可能是真实锚标签 —— 无 `<a` 直接跳过 DOM 解析。
  */
+const sharedDomParser: DOMParser | null = typeof DOMParser !== "undefined" ? new DOMParser() : null;
+
 function hardenLinks(html: string): string {
-    // 浏览器环境用 DOMParser；node 测试环境用 jsdom 提供的 DOMParser
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<body>${html}</body>`, "text/html");
+    if (!/<a[\s>]/i.test(html) || !sharedDomParser) return html;
+    const doc = sharedDomParser.parseFromString(`<body>${html}</body>`, "text/html");
     doc.querySelectorAll("a[href]").forEach((a) => {
         const href = a.getAttribute("href") || "";
         // 仅外部 http(s) 链接加固

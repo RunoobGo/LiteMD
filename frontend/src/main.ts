@@ -241,7 +241,19 @@ function toggleSyncScroll() {
     updateSyncScrollButton();
 }
 
-// Preview 渲染 debounce（16ms ~= 一帧；用户连打字时不会每次都全量重新解析）
+// Preview 渲染 debounce。审查 P1-3：固定 16ms 对大文档太激进 —— 打字
+// 间隔普遍大于一帧，等于每敲一个键就全量重渲染（实测 100KB 文档单次
+// 563ms），主线程持续卡顿。按文档大小分档：小文档保持一帧（16ms）的
+// 即时感，大文档拉长间隔、停顿后一次渲染（配合 preview.ts 的顶层块
+// 缓存，未改动块直接复用，停顿后的那次渲染也大幅变便宜）。
+function previewDelay(content: string): number {
+    const n = content.length;
+    if (n <= 16_000) return 16;
+    if (n <= 64_000) return 120;
+    if (n <= 256_000) return 250;
+    return 400;
+}
+
 let previewDebounce: number | null = null;
 let pendingContent: string | null = null;
 function schedulePreview(content: string) {
@@ -255,7 +267,7 @@ function schedulePreview(content: string) {
             // 走 renderPreview 而非直接 preview.render，确保 emptyPreview 空状态同步切换
             renderPreview(c);
         }
-    }, 16);
+    }, previewDelay(content));
 }
 
 function initEditorAndPreview() {
