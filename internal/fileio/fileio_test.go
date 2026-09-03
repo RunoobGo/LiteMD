@@ -9,6 +9,53 @@ import (
 	"testing"
 )
 
+// TestPublicPath_审计_R2_G1 审计 R2-G1：error 文案只露 basename，不外发
+// 完整绝对路径（防 ~/.ssh/id_rsa 之类敏感路径被显示在 toast）。
+func TestPublicPath_AuditG1(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"/Users/x/.ssh/id_rsa", "id_rsa"},
+		{"/tmp/secret.env", "secret.env"},
+		{"", ""},
+		{"/", "/"},
+		{"plain.md", "plain.md"},
+	}
+	for _, c := range cases {
+		if got := publicPath(c.in); got != c.want {
+			t.Errorf("publicPath(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestReadText_ErrorMessage_BasenameOnly 审计 R2-G1：error 文案反解
+// 只能看到 basename，反向找不到完整路径。
+func TestReadText_ErrorMessage_BasenameOnly(t *testing.T) {
+	dir := t.TempDir()
+	// 用 128 字符超长文件名将 basename 截断到 128
+	longName := strings.Repeat("a", 120) + ".md"
+	// 不存在的 .md → ErrNotFound
+	secretPath := filepath.Join(dir, "private", "notfound.md")
+	err := readTextRawForTest(secretPath)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), secretPath) {
+		t.Fatalf("error 暴露了完整路径 %q: %s", secretPath, err.Error())
+	}
+	if !strings.HasSuffix(err.Error(), "notfound.md") {
+		t.Fatalf("error 应以 basename 结尾，实际 %q", err.Error())
+	}
+	_ = longName
+}
+
+// readTextRawForTest 包内 helper：复用 ReadText 但不加额外断言包装。
+// 之所以不直接调 ReadText：避免测试读到大文件触发 stat 警告。
+func readTextRawForTest(path string) error {
+	_, err := ReadText(path)
+	return err
+}
+
 func TestReadText_NotFound(t *testing.T) {
 	_, err := ReadText(filepath.Join(t.TempDir(), "missing.md"))
 	if !errors.Is(err, ErrNotFound) {

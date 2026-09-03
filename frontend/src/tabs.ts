@@ -179,6 +179,16 @@ export class TabManager {
         return this.tabs.get(id);
     }
 
+    /** 审计 R2-F17：按 path 反查 tab（替代 id 复用检查，path 跨 IO
+     *  稳定）。未找到或空 path 返回 null。 */
+    findByPath(path: string): Tab | null {
+        if (!path) return null;
+        for (const t of this.tabs.values()) {
+            if (t.path === path) return t;
+        }
+        return null;
+    }
+
     hasAnyDirty(): boolean {
         for (const t of this.tabs.values()) if (t.dirty) return true;
         return false;

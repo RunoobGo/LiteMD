@@ -99,5 +99,25 @@ console.log("关闭与激活转移：");
 }
 
 // ============================================================================
+console.log("findByPath（审计 R2-F17 守护）：");
+{
+    const { tm } = fresh();
+    assertEq(tm.findByPath("/not-opened.md"), null, "未打开路径返回 null");
+    assertEq(tm.findByPath(""), null, "空路径返回 null");
+    const a = tm.openTab("/docs/a.md", "A");
+    const b = tm.openTab("/docs/b.md", "B");
+    assertEq(tm.findByPath("/docs/a.md")?.id, a.id, "path → a.id");
+    assertEq(tm.findByPath("/docs/b.md")?.id, b.id, "path → b.id");
+    // 关闭后再查
+    tm.closeTab(a.id, true);
+    assertEq(tm.findByPath("/docs/a.md"), null, "关闭后 path 反查返 null");
+    // 重复 path（罕见）应返首个
+    const u1 = tm.openTab("/docs/shared.md", "X");
+    const u2 = tm.openTab("/docs/shared.md", "Y"); // 去重，应激活 u1
+    assertEq(u2.id, u1.id, "openTab 已去重");
+    assertEq(tm.findByPath("/docs/shared.md")?.id, u1.id, "path → 唯一 tab");
+}
+
+// ============================================================================
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail > 0) process.exit(1);

@@ -32,6 +32,10 @@ export interface TitlebarWindow {
 const SYNC_DEBOUNCE_MS = 150;
 
 let syncTimer: number | null = null;
+/** 代际序号：审计 R2-F4 防 stale 回调翻转 is-maximised class。
+ *  每次 scheduleSync 自增；resolve 时若序号变化说明已被新调用覆盖，
+ *  旧结果丢弃。 */
+let syncGen = 0;
 
 /**
  * 初始化标题栏。
@@ -83,10 +87,15 @@ export function initTitlebar(win: TitlebarWindow | null): void {
 /** 防抖查询最大化状态并同步 topbar.is-maximised 类（驱动图标切换） */
 function scheduleSync(win: TitlebarWindow, topbar: HTMLElement): void {
     if (syncTimer !== null) window.clearTimeout(syncTimer);
+    const myGen = ++syncGen;
     syncTimer = window.setTimeout(async () => {
         syncTimer = null;
         try {
-            topbar.classList.toggle("is-maximised", await win.isMaximised());
+            const isMax = await win.isMaximised();
+            // 审计 R2-F4：异步返回时若代际已变（旧调用被新调用覆盖），
+            // 丢弃结果，避免 resize → maximize 串行时旧调用晚归翻 class。
+            if (myGen !== syncGen) return;
+            topbar.classList.toggle("is-maximised", isMax);
         } catch {
             /* 查询失败（窗口销毁竞态等）保持当前状态 */
         }

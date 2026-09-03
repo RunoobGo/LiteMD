@@ -148,3 +148,6 @@ function writeBool(key: string, v: boolean): void {
 function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
+
+/** 审计 R2 测试补强：导出 clamp 供 sidebar.test.ts 单元测试。 */
+export const _internal = { clamp };

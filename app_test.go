@@ -25,23 +25,59 @@ import (
 // 只能对 message 做子串匹配（保存冲突检测、未保存引导等分支依赖此）。
 // Go 侧任何人改写这些 sentinel 文案，前端对应功能会静默退化为通用错误
 // 弹窗——本测试让这类改动在 CI 阶段立刻失败，而不是等到用户报障。
-// 前端消费位置：frontend/src/main.ts 的 saveTabNow / openLocalLink。
+//
+// 审计 R2-F1：error 文案改为 `[code] message` 形态，前端经 errCode 解
+// 析后做精确 switch；本测试同时钉死 code 字段，确保前端切到错误码后
+// 后端改 code 也立刻暴露。
 func TestErrorTextContractForFrontend(t *testing.T) {
 	cases := []struct {
-		name string
-		got  error
-		want string // 必须 == error 全文（sentinel 不带包装前缀）
+		name    string
+		got     error
+		want    string // 全文：必须 == "[code] message"
+		wantCode string // 错误码：必须 == 紧跟 [ 后到 ] 前的部分
 	}{
-		{"ErrExternalModified（保存冲突检测）", fileio.ErrExternalModified, "file modified by another program"},
-		{"ErrNoBase（未保存文档引导）", links.ErrNoBase, "base file path is empty"},
-		{"ErrNotLocal（外链兜底分流）", links.ErrNotLocal, "link target is not a local path"},
+		{"ErrExternalModified（保存冲突检测）", fileio.ErrExternalModified, "[" + fileio.CodeExternalModified + "] file modified by another program", fileio.CodeExternalModified},
+		{"ErrNoBase（未保存文档引导）", links.ErrNoBase, "[" + links.CodeNoBase + "] base file path is empty", links.CodeNoBase},
+		{"ErrNotLocal（外链兜底分流）", links.ErrNotLocal, "[" + links.CodeNotLocal + "] link target is not a local path", links.CodeNotLocal},
+		// 审计 R2-G9：提为 package-level 哨兵后，钉死字符串 + 配套断言
+		// errors.Is 双保险。前端 main.ts includes("empty") / includes("app not ready")
+		// 分支依赖这些文案。
+		{"ErrEmptyPath（空路径）", ErrEmptyPath, "[" + CodeEmptyPath + "] path is empty", CodeEmptyPath},
+		{"ErrAppNotReady（ctx 未就绪）", ErrAppNotReady, "[" + CodeAppNotReady + "] app not ready", CodeAppNotReady},
+		{"ErrEmptyImageData（空 base64）", ErrEmptyImageData, "[" + CodeEmptyImageData + "] base64 data is empty", CodeEmptyImageData},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if c.got.Error() != c.want {
 				t.Fatalf("错误文案被修改，前端 main.ts 的子串匹配将失效：\n  got:  %q\n  want: %q", c.got.Error(), c.want)
 			}
+			if got := CodeOf(c.got); got != c.wantCode {
+				t.Fatalf("错误码被修改，前端 errCode 切换会失效：\n  got:  %q\n  want: %q", got, c.wantCode)
+			}
 		})
+	}
+}
+
+// TestErrorCodeOf_Wrapped 审计 R2-F1：错误码穿透 wrap 链。SaveFile 实际
+// 返回的 err 是 fmt.Errorf("%w: %s (disk %d, expected %d)", ErrExternalModified, ...)，
+// 必须能从 wrap 后的错误反解出 code。
+func TestErrorCodeOf_Wrapped(t *testing.T) {
+	wrapped := fmt.Errorf("%w: /tmp/x.md (disk 100, expected 50)", fileio.ErrExternalModified)
+	if got := CodeOf(wrapped); got != fileio.CodeExternalModified {
+		t.Fatalf("wrap 后 code 解析失败：got=%q want=%q", got, fileio.CodeExternalModified)
+	}
+	// 多层 wrap 也要穿透
+	doubled := fmt.Errorf("save failed: %w", wrapped)
+	if got := CodeOf(doubled); got != fileio.CodeExternalModified {
+		t.Fatalf("双层 wrap 后 code 解析失败：got=%q", got)
+	}
+	// 无码错误返回空串
+	plain := errors.New("just a plain error")
+	if got := CodeOf(plain); got != "" {
+		t.Fatalf("无码错误应返空串，got=%q", got)
+	}
+	if got := CodeOf(nil); got != "" {
+		t.Fatalf("nil err 应返空串，got=%q", got)
 	}
 }
 
@@ -56,8 +92,8 @@ func TestAppOpenFile_NotFound(t *testing.T) {
 func TestAppOpenFile_EmptyPath(t *testing.T) {
 	a := NewApp()
 	_, err := a.OpenFile("")
-	if err == nil || !strings.Contains(err.Error(), "empty") {
-		t.Fatalf("want empty-path error, got %v", err)
+	if !errors.Is(err, ErrEmptyPath) {
+		t.Fatalf("want ErrEmptyPath, got %v", err)
 	}
 }
 
@@ -93,8 +129,9 @@ func TestAppSaveFile_HappyPath(t *testing.T) {
 
 func TestAppSaveFile_EmptyPath(t *testing.T) {
 	a := NewApp()
-	if _, err := a.SaveFile("", "x", 0); err == nil {
-		t.Fatal("want error")
+	_, err := a.SaveFile("", "x", 0)
+	if !errors.Is(err, ErrEmptyPath) {
+		t.Fatalf("want ErrEmptyPath, got %v", err)
 	}
 }
 
@@ -253,7 +290,13 @@ func TestOnFileOpen_PushAndNotify(t *testing.T) {
 	if err := os.WriteFile(mdPath, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
+	// 审计 R2-G3：把非 Markdown 后缀的真实文件落盘，让
+	// extractStartupFiles 经「存在 + 常规文件 + 扩展名白名单」三道关
+	// 才能拒掉；之前 fixture 不落盘让测试"恒过"。
 	badPath := filepath.Join(dir, "clicked.exe")
+	if err := os.WriteFile(badPath, []byte("not really an exe"), 0o644); err != nil {
+		t.Fatalf("write bad fixture: %v", err)
+	}
 
 	t.Run("合法 .md 路径：入队 + startup 后补发事件", func(t *testing.T) {
 		a := NewApp()
@@ -298,9 +341,11 @@ func TestOnFileOpen_PushAndNotify(t *testing.T) {
 		emitEvent = func(_ context.Context, _ string) { calls++ }
 		t.Cleanup(func() { emitEvent = defaultEmitEvent })
 
+		// 文件已落盘（见 fixture），存在 + 常规文件检查会放行；扩展名
+		// 才是真正拒它的关。
 		files := extractStartupFiles([]string{badPath})
 		if len(files) != 0 {
-			t.Fatalf("非 Markdown 路径应被滤掉，实际 files=%v", files)
+			t.Fatalf("非 Markdown 路径应被扩展名白名单拒，实际 files=%v", files)
 		}
 		// 不调用 notifyExternalOpen（与 main.go 的 OnFileOpen 行为一致）
 		a.startup(context.Background())

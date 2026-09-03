@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -249,14 +250,61 @@ func TestReadAssetDataURLSVGDisabled(t *testing.T) {
 	if _, err := ReadAssetDataURL(svg); !errors.Is(err, ErrSVGDisabled) {
 		t.Fatalf("默认应拒绝 svg, 得到 %v", err)
 	}
-	AllowSVG = true
-	t.Cleanup(func() { AllowSVG = false })
+	SetAllowSVG(true)
+	t.Cleanup(func() { SetAllowSVG(false) })
 	got, err := ReadAssetDataURL(svg)
 	if err != nil {
 		t.Fatalf("开启后应可读 svg: %v", err)
 	}
 	if !strings.HasPrefix(got, "data:image/svg+xml;base64,") {
 		t.Fatalf("svg data URL 前缀异常: %.40s", got)
+	}
+}
+
+// TestAllowSVG_ConcurrentReadWrite 审计 R2-G2：原子切换 .svg 支持
+// 与并发读 ReadAssetDataURL 不应触发 -race 告警。
+func TestAllowSVG_ConcurrentReadWrite(t *testing.T) {
+	dir := t.TempDir()
+	svg := filepath.Join(dir, "pic.svg")
+	writeFile(t, svg, "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")
+	t.Cleanup(func() { SetAllowSVG(false) })
+
+	const writers = 4
+	const readers = 8
+	const iters = 200
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(off bool) {
+			defer wg.Done()
+			for j := 0; j < iters; j++ {
+				SetAllowSVG(off)
+			}
+		}(i%2 == 0)
+	}
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iters; j++ {
+				// 读 ReadAssetDataURL 内部读 allowSVG，与上面写并发
+				_, _ = ReadAssetDataURL(svg)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestResolveMalformedPath 审计 R2-G6：链接 href 百分号编码损坏时返
+// ErrMalformedPath（不再静默回退原文），前端可针对性提示"URL 解析失败"。
+func TestResolveMalformedPath(t *testing.T) {
+	// "%E6" 是不完整的 percent encoding，PathUnescape 会失败
+	_, err := Resolve("", "doc%E6%.md")
+	if err == nil {
+		t.Fatal("应返 ErrMalformedPath，实际为 nil")
+	}
+	if !errors.Is(err, ErrMalformedPath) {
+		t.Fatalf("want ErrMalformedPath, got %v", err)
 	}
 }
 

@@ -6,7 +6,7 @@
 //   3. CSS 变量 --md-fontsize 的写入
 //   4. 隐私模式（localStorage 抛错）下 setFontSize 不抛
 
-import { getFontSize, setFontSize, applyInitialFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_FONT_SIZE } from "./font-size";
+import { getFontSize, setFontSize, applyInitialFontSize, flushFontSizePersist, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_FONT_SIZE } from "./font-size";
 
 let pass = 0;
 let fail = 0;
@@ -47,7 +47,10 @@ console.log("\nsetFontSize（范围钳位 + 持久化 + CSS）：");
     assert(got === 20, "正常值 20 透传");
     const css = document.documentElement.style.getPropertyValue("--md-fontsize");
     assert(css === "20px", `CSS 变量被设为 20px（实际: ${css}）`);
-    try { assert(localStorage.getItem("litemd:fontSize") === "20", "localStorage 写入 20"); } catch { /* */ }
+    // 审计 R2-F16：setFontSize 防抖 200ms 后写盘。test 调
+    // flushFontSizePersist 立即落盘，断言不再依赖时序。
+    flushFontSizePersist();
+    try { assert(localStorage.getItem("litemd:fontSize") === "20", "localStorage 写入 20（防抖 flush 后）"); } catch { /* */ }
 }
 {
     resetLs();

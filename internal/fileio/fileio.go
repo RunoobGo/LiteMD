@@ -4,6 +4,11 @@
 //   - 区分"文件不存在"与"权限不足"，便于前端提示;
 //   - 对 UTF-8 文本做最小校验，避免读入二进制破坏编辑器;
 //   - 写操作采用临时文件 + rename 模式，防止崩溃导致原文件损坏。
+//
+// 错误码约定（审计 R2-F1）：所有对外暴露的 error 都在文案前挂 `[code]`
+// 前缀，前端经 errCode(err) 解析后做精确 switch。错误哨兵仍可
+// errors.Is 判别，contract_test.go 的 TestErrorTextContractForFrontend
+// 钉死文案 + 新增 TestErrorCodePrefix 钉死 code 前缀。
 package fileio
 
 import (
@@ -19,26 +24,47 @@ import (
 	"unicode/utf8"
 )
 
+// 错误码（前端 errCode 解析用；保持下划线命名，新增先入此清单再写到 var）
+const (
+	CodeNotFound         = "file_not_found"
+	CodeIsBinary         = "is_binary"
+	CodeTooLarge         = "too_large"
+	CodeNotRegular       = "not_regular"
+	CodeExternalModified = "external_modified"
+	CodeInvalidAsset     = "invalid_asset"
+)
+
 // ErrNotFound 当目标文件不存在时返回。前端可据此打开"新建文件"流程而非报错。
-var ErrNotFound = errors.New("file not found")
+var ErrNotFound = errors.New("[" + CodeNotFound + "] file not found")
 
 // ErrIsBinary 当文件包含无效 UTF-8 序列时返回。Markdown 编辑器拒绝打开二进制文件。
-var ErrIsBinary = errors.New("file contains invalid UTF-8 (binary?)")
+var ErrIsBinary = errors.New("[" + CodeIsBinary + "] file contains invalid UTF-8 (binary?)")
 
 // ErrTooLarge 当文件超过 MaxReadSize 时返回。防止超大文件导致 OOM。
-var ErrTooLarge = errors.New("file too large to read")
+var ErrTooLarge = errors.New("[" + CodeTooLarge + "] file too large to read")
 
 // ErrNotRegular 当目标是 FIFO / 设备 / socket / /proc 等非普通文件时返回。
 // 读取伪文件（/dev/zero、FIFO 等）会永久挂起或无限增长，必须在 Stat 阶段拒绝。
-var ErrNotRegular = errors.New("not a regular file")
+var ErrNotRegular = errors.New("[" + CodeNotRegular + "] not a regular file")
 
 // ErrExternalModified 当磁盘文件的 mtime 与调用方预期不符时返回。
 // 语义：文件在「打开/上次保存」之后被其他程序改过，直接写入会静默覆盖
 // 外部修改（P0-5）。前端应弹冲突确认，用户坚持时以 expectMtime=0 强制写。
-var ErrExternalModified = errors.New("file modified by another program")
+var ErrExternalModified = errors.New("[" + CodeExternalModified + "] file modified by another program")
 
 // MaxReadSize 是 ReadText 允许读取的最大文件大小（50MB）。
 const MaxReadSize = 50 << 20
+
+// 审计 R2-G1：error 文案只露 basename（`filepath.Base`），完整路径走
+// 日志/留底，不外发到 toast / IPC 序列化。`~/.ssh/id_rsa` 之类敏感
+// 路径不会被显示在错误信息里——文件已被 CheckEditable 拦截时无 path
+// 暴露，但本兜底防"open 任意 UTF-8 明文"残留信息泄露。
+func publicPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	return filepath.Base(p)
+}
 
 // ReadText 读取整个文件为 UTF-8 文本。
 //
@@ -54,17 +80,17 @@ func ReadText(path string) (string, error) {
 	st, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("%w: %s", ErrNotFound, path)
+			return "", fmt.Errorf("%w: %s", ErrNotFound, publicPath(path))
 		}
 		return "", err
 	}
 	// 拒绝非普通文件（FIFO / 设备 / socket / /proc）。这些文件的 Size() 通常为 0，
 	// 能绕过预检；读取会无限增长（/dev/zero）或永久阻塞（FIFO）。
 	if !st.Mode().IsRegular() {
-		return "", fmt.Errorf("%w: %s", ErrNotRegular, path)
+		return "", fmt.Errorf("%w: %s", ErrNotRegular, publicPath(path))
 	}
 	if st.Size() > MaxReadSize {
-		return "", fmt.Errorf("%w: %s (%d bytes)", ErrTooLarge, path, st.Size())
+		return "", fmt.Errorf("%w: %s (%d bytes)", ErrTooLarge, publicPath(path), st.Size())
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -77,12 +103,12 @@ func ReadText(path string) (string, error) {
 		return "", err
 	}
 	if len(data) > MaxReadSize {
-		return "", fmt.Errorf("%w: %s", ErrTooLarge, path)
+		return "", fmt.Errorf("%w: %s", ErrTooLarge, publicPath(path))
 	}
 	// 剥除 UTF-8 BOM
 	data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
 	if !utf8.Valid(data) {
-		return "", fmt.Errorf("%w: %s", ErrIsBinary, path)
+		return "", fmt.Errorf("%w: %s", ErrIsBinary, publicPath(path))
 	}
 	// NUL 字节检测（审查 P1-9）：NUL 是合法 UTF-8，utf8.Valid 拦不住，
 	// 但函数契约一直承诺"含 NUL → ErrIsBinary"，此前注释与实现不符。
@@ -92,7 +118,7 @@ func ReadText(path string) (string, error) {
 	// 顺序要紧：先 Valid 再查 NUL —— 两类文件都会命中 NUL，但无效 UTF-8
 	// 应该报更具体的"非法 UTF-8"。
 	if bytes.IndexByte(data, 0) >= 0 {
-		return "", fmt.Errorf("%w: contains NUL byte: %s", ErrIsBinary, path)
+		return "", fmt.Errorf("%w: contains NUL byte: %s", ErrIsBinary, publicPath(path))
 	}
 	return string(data), nil
 }

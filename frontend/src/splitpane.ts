@@ -34,10 +34,12 @@ export class SplitPane {
         this.handle = host.querySelector(".pane-handle") as HTMLElement;
 
         if (!this.left || !this.right || !this.handle) {
-            throw new Error("SplitPane: host 缺少 .pane-left/.pane-right/.pane-handle 子元素");
+            throw new Error(_internal.MISSING_CHILDREN_MSG);
         }
 
         this.applyRatio();
+        // 构造期同步一次 data-mode（默认 both），让 CSS 选择器立即生效
+        this.host.dataset.mode = this.mode;
 
         this.handle.addEventListener("pointerdown", (e) => this.startDrag(e));
         // 同时处理双击：重置比例
@@ -68,7 +70,7 @@ export class SplitPane {
 
     /** 设置比例（夹取到 0.15..0.85）并通知监听方 */
     private setRatio(r: number): void {
-        this.ratio = Math.max(0.15, Math.min(0.85, r));
+        this.ratio = _internal.clampRatio(r);
         this.applyRatio();
         this.onChange?.(this.ratio);
     }
@@ -114,8 +116,7 @@ export class SplitPane {
         if (!this.dragging) return;
         const rect = this.host.getBoundingClientRect();
         const x = e.clientX - rect.left;
-        const ratio = Math.max(0.15, Math.min(0.85, x / rect.width));
-        this.ratio = ratio;
+        this.ratio = _internal.clampRatio(x / rect.width);
         this.applyRatio();
     }
 
@@ -126,3 +127,9 @@ export class SplitPane {
         this.handle.setAttribute("aria-valuenow", String(Math.round(this.ratio * 100)));
     }
 }
+
+/** 审计 R2 测试补强：导出钳位纯函数 + 构造校验消息常量。 */
+export const _internal = {
+    clampRatio: (r: number): number => Math.max(0.15, Math.min(0.85, r)),
+    MISSING_CHILDREN_MSG: "SplitPane: host 缺少 .pane-left/.pane-right/.pane-handle 子元素",
+};

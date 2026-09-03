@@ -87,7 +87,12 @@ const CALLOUT_TYPES = new Set([
 //   - 段结束于第一个非 `> ` 开头的行
 //
 // 之前版本要求至少 1 行 body 才能匹配，导致 `> [!note] 单行` 这种合法 callout 不被识别
-const CALLOUT_RE = /(^|\n)(>+\s*\[!\w+\][^\n]*(?:\n>.*)*)/g;
+//
+// 审计 R2-F13：原 CALLOUT_RE 是 module-level /g 标志，被 findCallouts 的
+// while+exec 循环消费（exec 完会自动归零 lastIndex），但与同文件
+// findCalloutTransforms:197 的"new RegExp 局部实例"模式不一致，混用
+// 易踩坑。改用字符串源 + 局部实例统一两种用法。
+const CALLOUT_RE_SOURCE = "(^|\\n)(>+\\s*\\[!\\w+\\][^\\n]*(?:\\n>.*)*)";
 
 interface CalloutBlock {
     type: string;
@@ -98,8 +103,9 @@ interface CalloutBlock {
 /** 解析 > [!type] 块，返回块列表（包含类型和被消费的 body 行） */
 export function findCallouts(md: string): CalloutBlock[] {
     const out: CalloutBlock[] = [];
+    const re = new RegExp(CALLOUT_RE_SOURCE, "g");
     let m: RegExpExecArray | null;
-    while ((m = CALLOUT_RE.exec(md))) {
+    while ((m = re.exec(md))) {
         const block = m[2];
         // 拆分连续 blockquote 段
         const segments: string[][] = [[]];
@@ -132,7 +138,9 @@ export function findCallouts(md: string): CalloutBlock[] {
  * 让 DOMPurify 保留后渲染样式。
  */
 export function preprocessCallouts(md: string): string {
-    return md.replace(CALLOUT_RE, (_full, prefix: string, block: string) => {
+    // 审计 R2-F13：原 CALLOUT_RE 是 module-level /g 全局正则，被
+    // replace 反复用会持续推进 lastIndex，混用场景易踩坑。改局部实例。
+    return md.replace(new RegExp(CALLOUT_RE_SOURCE, "g"), (_full, prefix: string, block: string) => {
         // 拆分连续 blockquote 段（之间有空行）
         const segments: string[][] = [[]];
         for (const line of block.split("\n")) {
@@ -194,7 +202,9 @@ export interface CalloutTransform {
 
 /** 找出所有 callout 块的变换记录（与 preprocessCallouts 使用同一正则，顺序一致） */
 export function findCalloutTransforms(md: string): CalloutTransform[] {
-    const re = new RegExp(CALLOUT_RE.source, "g");
+    // 审计 R2-F13：原 CALLOUT_RE.source 在 module-level /g 标志下
+    // 隐式共享，改用常量字符串 + 局部实例统一。
+    const re = new RegExp(CALLOUT_RE_SOURCE, "g");
     const out: CalloutTransform[] = [];
     let m: RegExpExecArray | null;
     while ((m = re.exec(md))) {

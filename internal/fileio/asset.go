@@ -20,7 +20,8 @@ import (
 const MaxAssetWriteSize = 20 << 20
 
 // ErrInvalidAsset 资产名或写入目标不满足约束时返回。
-var ErrInvalidAsset = errors.New("invalid asset target")
+// 错误码见 fileio.go CodeInvalidAsset。
+var ErrInvalidAsset = errors.New("[" + CodeInvalidAsset + "] invalid asset target")
 
 // allowedAssetExts 资产扩展名白名单。CopyImageAsset 只服务「图片资产」场景，
 // 写 .exe/.bat/.md 等一律拒绝——即使写入范围已限死在 assets/ 内，

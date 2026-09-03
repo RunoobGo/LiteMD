@@ -12,7 +12,9 @@ import { main as MainT, config as ConfigT } from "../wailsjs/go/models";
 // 实际运行时如果存在 window.go.main.App，优先用它（mock 模式）
 import * as wailsBindings from "../wailsjs/go/main/App";
 
-function bind(name: string) {
+/** 审计 R2 测试补强：bind 改为导出，便于 file-ops.test.ts 单元测试
+ *  mock 优先级 / fallback / 缺失 throw 三种契约。 */
+export function bind(name: string) {
     const w = window as any;
     const mock = w.go?.main?.App?.[name];
     if (typeof mock === "function") return mock;
@@ -122,18 +124,33 @@ declare global {
         __litemd__bindings?: Record<string, (...args: any[]) => Promise<any>>;
     }
 }
-window.__litemd__bindings = {
-    OpenFile: openFile,
-    OpenDialog: pickOpenPath,
-    SaveFile: saveFile,
-    SaveFileAs: saveFileAs,
-    SaveDialog: pickSavePath,
-    GetConfig: getConfig,
-    PushRecent: pushRecent,
-    CopyImageAsset: copyImageAsset,
-    ResolveLocalPath: resolveLocalPath,
-    OpenExternal: openExternal,
-    OpenPath: openPath,
-    ReadLocalAsset: readLocalAsset,
-    SetUnsavedCount: setUnsavedCount,
-};
+// 审计 R2-F7：原先所有模式都注入到 window（含生产构建），与上方注释
+// "real binding 总是被打包"相矛盾——产线下 wailsBindings 已可用，多一
+// 份 window.__litemd__bindings 只是冗余。守 import.meta.env.DEV 后
+// 仅 dev/E2E 暴露，生产构建不会泄漏。
+// 兜底：tsx 单测环境 import.meta.env 可能 undefined，默认当 dev 走
+// （生产构建中 import.meta.env.DEV 由 Vite 显式替换为 false）。
+const isDev = (() => {
+    try {
+        const env = (import.meta as any)?.env;
+        if (env && typeof env.DEV === "boolean") return env.DEV;
+        return true; // tsx / 非 Vite 环境 → 当 dev 走
+    } catch { return true; }
+})();
+if (isDev && typeof window !== "undefined") {
+    window.__litemd__bindings = {
+        OpenFile: openFile,
+        OpenDialog: pickOpenPath,
+        SaveFile: saveFile,
+        SaveFileAs: saveFileAs,
+        SaveDialog: pickSavePath,
+        GetConfig: getConfig,
+        PushRecent: pushRecent,
+        CopyImageAsset: copyImageAsset,
+        ResolveLocalPath: resolveLocalPath,
+        OpenExternal: openExternal,
+        OpenPath: openPath,
+        ReadLocalAsset: readLocalAsset,
+        SetUnsavedCount: setUnsavedCount,
+    };
+}

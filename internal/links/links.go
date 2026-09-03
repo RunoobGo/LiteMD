@@ -36,15 +36,28 @@ const (
 	KindMissing  Kind = "missing"  // 不存在
 )
 
+// 错误码（审计 R2-F1）：见 fileio.go 顶部约定。
+const (
+	CodeEmptyTarget    = "empty_target"
+	CodeNoBase         = "no_base"
+	CodeNotLocal       = "not_local"
+	CodeNotFile        = "not_file"
+	CodeNotEditable    = "not_editable"
+	CodeMalformedPath  = "malformed_path"
+)
+
 var (
 	// ErrEmptyTarget 链接目标为空（href="#" 之外的空串）。
-	ErrEmptyTarget = errors.New("link target is empty")
+	ErrEmptyTarget = errors.New("[" + CodeEmptyTarget + "] link target is empty")
 	// ErrNoBase 相对链接缺少基准文件（当前文档尚未保存到磁盘）。
-	ErrNoBase = errors.New("base file path is empty")
+	ErrNoBase = errors.New("[" + CodeNoBase + "] base file path is empty")
 	// ErrNotLocal 目标不是本地路径（带 http/mailto 等协议），应走外部打开分支。
-	ErrNotLocal = errors.New("link target is not a local path")
+	ErrNotLocal = errors.New("[" + CodeNotLocal + "] link target is not a local path")
 	// ErrNotFile 目标不是常规文件（目录或不存在），不能交给系统程序打开。
-	ErrNotFile = errors.New("target is not a regular file")
+	ErrNotFile = errors.New("[" + CodeNotFile + "] target is not a regular file")
+	// ErrMalformedPath 审计 R2-G6：链接 href 百分号编码损坏，原本
+	// decodePath 静默回退原文让用户看到 KindMissing 时无"链接损坏"线索。
+	ErrMalformedPath = errors.New("[" + CodeMalformedPath + "] link path is malformed (invalid percent encoding)")
 )
 
 // markdownExts 在应用内编辑器打开的 Markdown 扩展名。
@@ -62,7 +75,7 @@ var textExts = map[string]bool{
 // 打开对话框带 "All Files (*.*)" 过滤器，等于给了"读任意 UTF-8 明文"的口子：
 // ~/.ssh/id_rsa、.env、.pem 私钥都是合法 UTF-8，ReadText 会照读不误，随后
 // 内容进编辑器、进预览、可能随文档一起被保存或外发。
-var ErrNotEditable = errors.New("file type is not openable in the editor")
+var ErrNotEditable = errors.New("[" + CodeNotEditable + "] file type is not openable in the editor")
 
 // secretExts 即便扩展名"看起来像文本"也一律拒绝的类型：密钥/凭据类。
 var secretExts = map[string]bool{
@@ -138,10 +151,13 @@ func Resolve(baseFile, href string) (Target, error) {
 	if hasURLScheme(path) {
 		return Target{}, fmt.Errorf("%w: %s", ErrNotLocal, path)
 	}
-	// 再解码百分号编码（%E6%96%87%E6%A1%A3.md → 文档名.md），
-	// 失败则保留原串（路径里出现裸 % 的极端情况）。
+	// 再解码百分号编码（%E6%96%87%E6%A1%A3.md → 文档名.md）。
+	// 审计 R2-G6：原失败时静默回退原文，错误链里没有"链接损坏"线索。
+	// 现返 ErrMalformedPath，前端可针对性提示"URL 解析失败"。
 	if dec, err := decodePath(path); err == nil {
 		path = dec
+	} else {
+		return Target{}, fmt.Errorf("%w: %s", ErrMalformedPath, path)
 	}
 	path = toSlashes(path)
 	if path == "" {

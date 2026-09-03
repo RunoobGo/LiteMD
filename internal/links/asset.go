@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 )
 
 // MaxAssetBytes 单张本地图片允许读入预览的上限（10MB）。
@@ -26,17 +27,30 @@ var imageExts = map[string]bool{
 	".webp": true, ".bmp": true, ".svg": true, ".ico": true, ".avif": true,
 }
 
-// ErrSVGDisabled .svg 在 AllowSVG 关闭时的拒绝错误（审查 P1-5）。
-var ErrSVGDisabled = errors.New("svg assets are disabled by default")
+// 错误码（审计 R2-F1）：见 fileio.go 顶部约定；这里定义 links 包的码。
+const CodeSVGDisabled = "svg_disabled"
 
-// AllowSVG 是否允许把 .svg 读成 data URL 回填预览（审查 P1-5）。
+// ErrSVGDisabled .svg 在 AllowSVG 关闭时的拒绝错误（审查 P1-5）。
+var ErrSVGDisabled = errors.New("[" + CodeSVGDisabled + "] svg assets are disabled by default")
+
+// allowSVG 是否允许把 .svg 读成 data URL 回填预览（审查 P1-5 / 审计 R2-G2）。
 //
 // 默认 false：SVG 是带脚本能力的文档，不是纯图片。以
 // <img src="data:image/svg+xml;base64,…"> 加载时脚本确实不会执行，但这份
 // 安全完全依赖"调用方只用 <img>"——哪天被塞进 <iframe>/<object> 或另开
 // 窗口就是 XSS。默认关闭后前端退化为破图（resolveAssetSrc 返回 null 不打断
 // 渲染）；确需支持时在此显式打开，而不是靠对调用方的隐含假设。
-var AllowSVG = false
+//
+// 审计 R2-G2：用 atomic.Bool 替代裸 var，-race 守护并发读写；测试与
+// 未来若做"用户配置驱动开关"也不会引入数据竞争。
+var allowSVG atomic.Bool
+
+// SetAllowSVG 切换 .svg 支持。生产入口不直接修改全局，避免任意时刻
+// 翻动开关；测试与未来"用户偏好"接入用此接缝。
+func SetAllowSVG(enabled bool) { allowSVG.Store(enabled) }
+
+// AllowSVG 当前是否允许 .svg。
+func AllowSVG() bool { return allowSVG.Load() }
 
 // ReadAssetDataURL 读取本地图片并返回可直接赋给 <img src> 的 data URL。
 //
@@ -57,7 +71,7 @@ func ReadAssetDataURL(path string) (string, error) {
 	if !imageExts[ext] {
 		return "", fmt.Errorf("unsupported asset type: %s", ext)
 	}
-	if ext == ".svg" && !AllowSVG {
+	if ext == ".svg" && !allowSVG.Load() {
 		return "", fmt.Errorf("%w: %s", ErrSVGDisabled, clean)
 	}
 	if st.Size() > MaxAssetBytes {

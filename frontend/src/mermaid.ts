@@ -74,9 +74,18 @@ let renderSeq = 0;
  * 每次只跑一个（P1-6）。
  */
 let renderChain: Promise<unknown> = Promise.resolve();
+/** 审计 R2-F8：renderChain 是 promise 链（.then/.catch 累计），千次
+ * render 后 GC 释放困难。每 N 次入队后重置 chain 为全新 Promise。 */
+const CHAIN_RESET_EVERY = 64;
+let chainLen = 0;
 function enqueueRender<T>(fn: () => Promise<T>): Promise<T> {
     const next = renderChain.then(fn, fn);
     renderChain = next.catch(() => { /* 链上吞错，避免污染后续任务 */ });
+    if (++chainLen >= CHAIN_RESET_EVERY) {
+        // 周期重置：截断历史链，旧 promise 链释放
+        renderChain = Promise.resolve();
+        chainLen = 0;
+    }
     return next;
 }
 

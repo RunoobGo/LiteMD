@@ -758,7 +758,14 @@ function currentMermaidTheme(): MermaidTheme {
  */
 function applyMermaidResult(holder: HTMLElement, result: MermaidResult): void {
     if (result.ok) {
-        holder.innerHTML = result.svg; // mermaid 11 securityLevel:strict 输出已净化
+        // 审计 R2-F3：mermaid 11 securityLevel:"strict" 输出已剥 on* 与
+        // javascript:，但 <foreignObject> / <use href="..."> / data-* 等
+        // 新型载体若未来 mermaid 默认行为回归会破防；这里再过一道
+        // DOMPurify 的 SVG profile，确保即便 mermaid 失守也只能写出
+        // 纯 SVG 节点。
+        holder.innerHTML = DOMPurify.sanitize(result.svg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+        });
         holder.dataset.state = "ok";
         return;
     }

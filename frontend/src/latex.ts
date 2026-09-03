@@ -98,12 +98,19 @@ function findFenceRanges(md: string): Range[] {
 /** 单个公式 → KaTeX HTML。渲染失败时降级为可读的错误提示，不抛异常。 */
 export function renderFormula(f: LatexFormula): string {
     // 公式缓存（审查 🟡-7）：连续输入时每次全量重渲都会重算所有公式，
-    // 同一源码+模式的结果是确定的，纯浪费。上限防无界增长，超限整清。
+    // 同一源码+模式的结果是确定的，纯浪费。
+    // 审计 R2-F2：原实现容量 500 满时 clear() 整清，下一次 render 会让
+    // 整文档所有公式一次性重算（thundering herd）。改为 LRU：删最老再
+    // 插入，命中率不被一次性清空打断（与 preview.ts / mermaid.ts 一致）。
     const key = `${f.display ? "D" : "I"}\u0000${f.tex}`;
     const hit = formulaCache.get(key);
     if (hit !== undefined) return hit;
     const html = renderFormulaUncached(f);
-    if (formulaCache.size >= FORMULA_CACHE_MAX) formulaCache.clear();
+    if (formulaCache.size >= FORMULA_CACHE_MAX) {
+        // Map 保持插入顺序，keys().next() 取最早插入的 key
+        const oldest = formulaCache.keys().next().value;
+        if (oldest !== undefined) formulaCache.delete(oldest);
+    }
     formulaCache.set(key, html);
     return html;
 }
@@ -133,7 +140,7 @@ const ESCAPE_MAX_SIZE_RE = new RegExp(
     "i",
 );
 /** 纯长度类单位注入（99999em / 99999ex / 1e6pt 等）也可让排版逃出 maxSize。 */
-const HUGE_LENGTH_RE = /-?\d{4,}\s*(?:em|ex|pt|px|pc|in|cm|mm|mu|cm)\b/i;
+const HUGE_LENGTH_RE = /-?\d{4,}\s*(?:em|ex|pt|px|pc|in|cm|mm|mu)\b/i;
 
 function isTooHeavy(tex: string): boolean {
     if (tex.length > FORMULA_MAX_BYTES) return true;
@@ -147,11 +154,16 @@ function renderFormulaUncached(f: LatexFormula): string {
     if (isTooHeavy(f.tex)) {
         return `<code class="latex-error">${escapeHtml(f.tex.slice(0, 200))}${f.tex.length > 200 ? "…" : ""}</code>`;
     }
+    // 审计 R2-F11：errorColor 硬编码暗红在亮主题对比度差；读 CSS 变量
+    // 走主题系统，缺变量时回退到 oneDark 红色。
+    const errorColor = (typeof getComputedStyle === "function"
+        ? getComputedStyle(document.documentElement).getPropertyValue("--md-error").trim()
+        : "") || "#e06c75";
     try {
         return katex.renderToString(f.tex, {
             displayMode: f.display,
             throwOnError: false,
-            errorColor: "#e06c75",
+            errorColor,
             strict: false,
             trust: false,
             maxSize: 50,

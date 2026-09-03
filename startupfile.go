@@ -11,7 +11,7 @@ package main
 //     暴露 openFile 回调，为已知限制）；但直接执行二进制 ./LiteMD a.md 时路径在 argv。
 //
 // 本文件提供两个原语：
-//   1. extractStartupFile：从任意 args 中解析出第一个"存在的常规文件"；
+//   1. extractStartupFile：从任意 args 中解析出第一个"编辑器可打开的常规文件"；
 //   2. startupFileQueue：待开文件队列（启动参数与二实例回调两个来源共用），
 //      前端启动时经 ConsumeStartupFile 绑定一次性消费。
 
@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"litemd/internal/links"
 )
 
 // extractStartupFiles 从参数列表中提取全部"待打开文件"的绝对路径（保持参数顺序）。
@@ -30,6 +32,9 @@ import (
 //     因此要求路径必须是磁盘上真实存在的文件，天然过滤掉这类噪音）
 //   - 相对路径基于进程工作目录规范化
 //   - 仅接受存在的常规文件（目录、设备等一律跳过）
+//   - 审计 R2-G3：再经 links.CheckEditable 过滤扩展名/敏感文件（与
+//     OpenFile 同一口径），避免 Finder 右键"打开方式 → LiteMD" 选 .exe
+//     后被入队再由 OpenFile 拒，导致无效事件触发 + 路径出现在前端
 //
 // 文件管理器多选后"打开"会传入多个路径,全部入队逐个打开。
 // 未找到返回 nil。
@@ -45,9 +50,14 @@ func extractStartupFiles(args []string) []string {
 				p = abs
 			}
 		}
-		if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
-			files = append(files, p)
+		if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+			continue
 		}
+		// 扩展名/敏感文件白名单（与 OpenFile 同口径）
+		if err := links.CheckEditable(p); err != nil {
+			continue
+		}
+		files = append(files, p)
 	}
 	return files
 }

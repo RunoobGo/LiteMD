@@ -31,6 +31,10 @@ const suites: Record<string, string> = {
     "user-css": "./user-css.test",
     "mermaid": "./mermaid.test",
     "font-size": "./font-size.test",
+    errcode: "./errcode.test",
+    "file-ops": "./file-ops.test",
+    sidebar: "./sidebar.test",
+    splitpane: "./splitpane.test",
 };
 
 const suiteName = process.env.LITEMD_SUITE;
@@ -52,6 +56,7 @@ if (suiteName) {
     // titlebar.test.ts 派发 dblclick / resize 需要
     (globalThis as any).MouseEvent = dom.window.MouseEvent;
     (globalThis as any).Event = dom.window.Event;
+    (globalThis as any).KeyboardEvent = dom.window.KeyboardEvent;
     // font-size.test.ts 模拟 localStorage 抛错
     (globalThis as any).localStorage = dom.window.localStorage;
 

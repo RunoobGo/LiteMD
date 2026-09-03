@@ -14,6 +14,7 @@ import { Preview } from "./preview";
 import { SplitPane, type SplitMode } from "./splitpane";
 import { SyncScroll } from "./sync-scroll";
 import { askUnsaved, confirmOverwrite, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
+import { errCode, hasCode, EC } from "./errcode";
 import {
     openFile,
     pickOpenPath,
@@ -68,6 +69,10 @@ const meta = $<HTMLDivElement>("meta");
 const splitRoot = $<HTMLDivElement>("splitpane");
 const fmPanel = $<HTMLDetailsElement>("frontmatterPanel");
 
+// 审计 R2-F14：UX 时长字面量集中常量，便于一处调整。
+/** 状态栏点击复制后，"已复制路径"提示的回滚延迟（ms） */
+const COPY_FEEDBACK_MS = 1200;
+
 // 状态栏路径点击复制（审查 🟢-10）：无独立「复制路径」入口时，
 // 点击路径是最自然的发现路径。
 statusPath.title = "点击复制路径";
@@ -78,7 +83,7 @@ statusPath.addEventListener("click", () => {
     navigator.clipboard.writeText(p).then(() => {
         const old = statusPath.textContent ?? "";
         statusPath.textContent = "已复制路径";
-        setTimeout(() => { statusPath.textContent = old; }, 1200);
+        setTimeout(() => { statusPath.textContent = old; }, COPY_FEEDBACK_MS);
     }).catch(() => { /* 剪贴板拒绝时静默 */ });
 });
 
@@ -89,6 +94,19 @@ statusPath.addEventListener("click", () => {
 
 const THEME_KEY = "litemd:theme";
 type ThemeBase = "dark" | "light";
+
+/** 审计 R2-F12：localStorage 缺值时回退 OS prefers-color-scheme，
+ * 让首启新用户拿到系统级偏好而非开发者默认。 */
+function initialThemeBase(): ThemeBase {
+    try {
+        const stored = localStorage.getItem(THEME_KEY);
+        if (stored === "light" || stored === "dark") return stored;
+    } catch { /* 隐私模式 */ }
+    if (typeof window.matchMedia === "function") {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    return "dark";
+}
 
 function currentThemeBase(): ThemeBase {
     return document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -101,6 +119,12 @@ let themeAnimTimer: number | null = null;
 /** 应用主题：<html data-theme>（驱动全部 CSS 变量）+ CodeMirror + 切换按钮提示 */
 function applyTheme(base: ThemeBase, persist = true, animate = true): void {
     const root = document.documentElement;
+    // 审计 R2-F12：若 <html data-theme> 还没设（index.html 内联脚
+    // 本未及时设），用 initialThemeBase() 兜底（localStorage 优先，
+    // 缺则读 OS prefers-color-scheme），避免首屏主题与用户偏好不符。
+    if (!root.dataset.theme) {
+        root.dataset.theme = initialThemeBase();
+    }
     if (animate) {
         if (themeAnimTimer !== null) window.clearTimeout(themeAnimTimer);
         root.classList.add("theme-anim");
@@ -342,14 +366,13 @@ function initEditorAndPreview() {
         try {
             const a = tm.active;
             // P1-10 generation 守卫：await 期间用户可能切到别的标签。
-            // 记下目标 tab，IO 完成后插回原 tab（必要时重新激活），
-            // 旧版直接 insertAtCursor 会把 markdown 插进切过去的那个文档。
-            const targetTabId = a?.id ?? null;
-            // 审查 🟡-1：桌面端未保存文档没有可落盘的资产目录——旧版硬编码
-            // "/mock/assets/" 是 mock 专用路径，Windows 上非绝对路径会被 Go 侧
-            // safeWritePath 拒绝，插入必然失败。桌面端引导先保存；
-            // 浏览器 mock/E2E 环境（无 window.runtime）保留原行为。
-            if (!a?.path && (window as any).runtime) {
+            // 审计 R2-F17：记下"目标文档的 path"而非 id。id 来自
+            // Date.now()-counter，理论可复用；path 在文档生命周期内稳定。
+            // 插入前再用 path 反查目标 tab 确认未被关闭/换文件。
+            const targetTabPath = a?.path ?? null;
+            // 桌面端未保存文档没有可落盘的资产目录：浏览器 mock/E2E 环境
+            // （无 window.runtime）保留原行为。
+            if (!targetTabPath && (window as any).runtime) {
                 showError("请先保存文档", "图片会保存到文档所在目录的 assets/ 下。\n请先保存文档（Ctrl+S）后再插入图片。");
                 return;
             }
@@ -365,19 +388,19 @@ function initEditorAndPreview() {
             const ts = Date.now().toString(36);
             const safe = file.name.replace(/[^\w.\-]/g, "_");
             // P0-2 新契约：只传「文档路径 + 纯文件名」，assets 目录与路径合法性
-            // 由 Go 侧推导校验（旧版前端拼完整 targetPath 是任意写入原语）。
-            // mock 环境（无 window.runtime）由 mocks.ts 落到 /mock/assets/。
+            // 由 Go 侧推导校验。
             const assetName = `${ts}_${safe}`;
-            const written = await copyImageAsset(a?.path ?? "", assetName, b64);
-            // P1-10：目标 tab 在 IO 期间被关闭 → 图片已落盘但无处插入，明确提示
-            const target = targetTabId ? tm.get(targetTabId) : null;
+            const written = await copyImageAsset(targetTabPath ?? "", assetName, b64);
+            // 审计 R2-F17：用 path 反查而非 id 复用——path 跨 IO 期间
+            // 稳定；同时校验"现活动 tab 仍是该 path"避免被切到另一文档。
+            const target = targetTabPath ? tm.findByPath(targetTabPath) : null;
             if (!target) {
                 showError("图片未插入", "原文档标签已关闭，图片文件已写入 assets/ 但未插入文档。");
                 return;
             }
-            if (tm.activeId !== targetTabId) {
+            if (tm.activeId !== target.id) {
                 // 切回原 tab 再插入（activate 会把编辑器内容换回该 tab）
-                tm.activate(targetTabId!);
+                tm.activate(target.id);
             }
             // #9 修复：路径归一为正斜杠（Windows 反斜杠在 Markdown URL 中是转义前缀）
             const assetPath = normalizeImagePath(written);
@@ -555,14 +578,15 @@ async function openLocalLink(link: ParsedLink): Promise<void> {
     try {
         t = await resolveLocalPath(tm.active?.path ?? "", link.href);
     } catch (e) {
-        const msg = errMsg(e);
-        if (msg.includes("base file path is empty")) {
+        // 审计 R2-F1：用 errCode 切到精确分支，替代 includes 子串匹配。
+        const code = errCode(e);
+        if (code === EC.NoBase) {
             showError("请先保存文档", "相对链接以文档所在目录为基准解析。\n请先保存文档（Ctrl+S）后再点击。");
-        } else if (msg.includes("not a local path")) {
+        } else if (code === EC.NotLocal) {
             // 分类层已排除，理论不可达；兜底交系统浏览器而不是静默失败
             await openExternal(link.href).catch(() => showError("无法打开链接", link.href));
         } else {
-            showError("无法解析链接", `${link.href}\n\n${msg}`);
+            showError("无法解析链接", `${link.href}\n\n${errMsg(e)}`);
         }
         return;
     }
@@ -627,16 +651,19 @@ function errMsg(e: unknown): string {
 function openErrorText(e: unknown, path: string): string {
     const raw = errMsg(e);
     const pick = (zh: string) => `${path}\n\n${zh}\n\n（原始错误：${raw}）`;
-    if (raw.includes("not openable in the editor")) {
+    // 审计 R2-F1：用 errCode 切到精确分支。is_binary 同时覆盖
+    // "invalid UTF-8" 与 "NUL byte" 两种文案，统一收口到同一码。
+    const code = errCode(e);
+    if (code === EC.NotEditable) {
         return pick(
             "LiteMD 是 Markdown 编辑器，只打开 .md/.markdown/.txt 等文本文件；" +
                 "出于安全考虑也不读取密钥与凭据类文件（id_rsa、.env、.pem 等）。"
         );
     }
-    if (raw.includes("invalid UTF-8") || raw.includes("NUL byte")) {
+    if (code === EC.IsBinary) {
         return pick("这个文件不是纯文本（含二进制内容），无法在编辑器中打开。");
     }
-    if (raw.includes("not a regular file")) {
+    if (code === EC.NotRegular) {
         return pick("目标不是普通文件（可能是目录、管道或设备文件）。");
     }
     return pick("无法打开该文件。");
@@ -956,6 +983,9 @@ function openInCurrentIfEmpty(payload: { path: string; content: string; modified
     } else {
         tm.openTab(payload.path, payload.content, payload.modified);
     }
+    // 审计 R2-F15：fire-and-forget 静默失败——最近文件列表影响"快速重
+    // 开"，但单次失败可重试（下次打开会重推），故静默；保留 console.warn
+    // 方便排障。失败不阻塞当前打开流程。
     pushRecent(payload.path).catch(console.warn);
 }
 
@@ -1021,7 +1051,8 @@ async function saveTabNow(a: Tab): Promise<boolean> {
         } catch (e) {
             // P0-5：文件被外部程序改过——旧版直接静默覆盖。弹冲突确认，
             // 用户坚持才以 expectMtime=0 强制写。
-            if (!(e instanceof Error) || !e.message.includes("modified by another program")) {
+            // 审计 R2-F1：用 errCode 切到精确分支，替代 includes 子串匹配。
+            if (!hasCode(e, EC.ExternalModified)) {
                 throw e;
             }
             const overwrite = await confirmOverwrite(a.title || a.path);
@@ -1049,6 +1080,7 @@ async function handleSaveAs(): Promise<boolean> {
         // 首次写入新路径无冲突基线，expectMtime=0；同样取真实 mtime 记账
         const mtime = await saveFile(newPath, content, 0);
         tm.updateContentBaseline(a.id, content, newPath, mtime);
+        // 审计 R2-F15：同 openLocalLink——fire-and-forget 静默。
         pushRecent(newPath).catch(console.warn);
         renderFrontmatterPanel();
         return true;
