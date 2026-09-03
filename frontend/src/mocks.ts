@@ -58,7 +58,7 @@ const mockFs = new InMemoryMockFs();
         App: {
             AppInfo: async () => ({
                 name: "LiteMD",
-                version: "0.2.9-mock",
+                version: "0.2.10-mock",
                 os: "browser-mock",
             }),
             // 契约来源：internal/config/config.go 的 config.Config
@@ -166,7 +166,9 @@ const mockFs = new InMemoryMockFs();
                 }
                 s = s.replace(/\\/g, "/");
                 if (/^[a-zA-Z]:\//.test(s)) {
-                    s = s.replace(/\/\.\.\//g, "/../"); // 盘符路径交给下面的 clean
+                    // 审计 R2-F9：原 `s.replace(/\/\.\.\//g, "/../")` 是
+                    // 自替自身的死代码（regex 与 replacement 形态相同），
+                    // 且与该路径后续 Clean 处理重复，删除。
                 } else if (!s.startsWith("/")) {
                     if (!baseFile) throw new Error("base file path is empty");
                     const dir = baseFile.slice(0, Math.max(baseFile.lastIndexOf("/"), 0)) || "/";

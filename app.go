@@ -21,7 +21,44 @@ import (
 // AppVersion 是 LiteMD 当前版本号,作为全项目唯一版本事实源。
 // 发版时需同步更新:wails.json 的 info.productVersion(NSIS 安装包名/版本
 // 信息由此生成)。注释中的"编译时注入"曾与硬编码实现不符,已修正。
-const AppVersion = "0.2.9"
+const AppVersion = "0.2.10"
+
+// 错误码（审计 R2-F1）：见 fileio.go 顶部约定；主包定义 binding 层的码。
+const (
+	CodeEmptyPath      = "empty_path"
+	CodeAppNotReady    = "app_not_ready"
+	CodeEmptyImageData = "empty_image_data"
+)
+
+// 审计 R2-G15：PushRecent 容量上限提到 const，与 config.PushRecent 默认同源。
+const MaxRecentFiles = 10
+// 审计 R2-G14：资产名长度上限提到 const（与 fileio.AssetWritePath 内部上限对齐）。
+const MaxAssetNameLen = 128
+
+// ErrEmptyPath 当 binding 收到空路径时返回。
+//
+// 审计 R2-G9：原为 `errors.New("path is empty")` 散落两处（OpenFile /
+// SaveFile），前端 main.ts 与 mocks.ts 共两处用 `e.message.includes("empty")`
+// 分支依赖此文案。提为哨兵后 errors.Is 直接判定，契约测试
+// TestErrorTextContractForFrontend 钉死字符串，文案稳定 + 类型判定双保险。
+// 审计 R2-F1：error 文案加 [code] 前缀，前端经 errCode 切到精确分支，
+// 进一步消除文案脆弱耦合。
+var ErrEmptyPath = errors.New("[" + CodeEmptyPath + "] path is empty")
+
+// ErrAppNotReady Wails ctx 尚未注入时 binding 拒绝调用。
+//
+// 审计 R2-G9：散落三处（OpenDialog / SaveDialog / OpenExternal），原
+// `errors.New("app not ready")`。前端 TestAppSaveFileAs_NilCtxSafe 已用
+// strings.Contains 校验其一；其他两处由本哨兵覆盖，文案稳定。
+// 审计 R2-F1：加 [code] 前缀。
+var ErrAppNotReady = errors.New("[" + CodeAppNotReady + "] app not ready")
+
+// ErrEmptyImageData CopyImageAsset 收到空 base64 时返回。
+//
+// 审计 R2-G9：原 `errors.New("base64 data is empty")`。前端可通过
+// errors.Is(err, ErrEmptyImageData) 识别（与 ErrEmptyPath 同套路）。
+// 审计 R2-F1：加 [code] 前缀。
+var ErrEmptyImageData = errors.New("[" + CodeEmptyImageData + "] base64 data is empty")
 
 // App 是 Wails 应用主体，前端可通过自动生成的 wailsjs/go 绑定访问其方法。
 //
@@ -75,9 +112,11 @@ func (a *App) currentCtx() context.Context {
 // shutdown 是 Wails 生命周期钩子。当前无需收尾工作:
 // 配置在每次 SetConfig/PushRecent 时即时落盘,文件保存也是即时原子写,
 // 不存在"内存态需在退出前刷盘"的场景。保留钩子供未来扩展。
-// 审查 P1-11：经 main.go 的 OnShutdown 接入（此前从未注册，属死代码）。
+// 审计 R2-G11：钩子体为空属"占位代码"，先从 main.go 摘除注册，需要
+// 时再加（避免空函数 + 空注册一起增加阅读负担）。
 func (a *App) shutdown(ctx context.Context) {
 	_ = ctx
+	// 占位：未来加资源释放/统计上报时启用 main.go:OnShutdown。
 }
 
 // ============================================================================
@@ -157,7 +196,7 @@ type FilePayload struct {
 // 仅在 stat 失败时退回到 time.Now()，保持向前兼容。
 func (a *App) OpenFile(path string) (FilePayload, error) {
 	if path == "" {
-		return FilePayload{}, errors.New("path is empty")
+		return FilePayload{}, ErrEmptyPath
 	}
 	// 审查 P1-9：只放行 Markdown / 纯文本类型。打开对话框带 "All Files"
 	// 过滤器，缺了这道兜底，ReadText（只校验 UTF-8）会把 ~/.ssh/id_rsa、
@@ -196,13 +235,17 @@ func (a *App) OpenFile(path string) (FilePayload, error) {
 func (a *App) OpenDialog() (string, error) {
 	ctx := a.currentCtx()
 	if ctx == nil {
-		return "", errors.New("app not ready")
+		return "", ErrAppNotReady
 	}
 	return wailsruntime.OpenFileDialog(ctx, wailsruntime.OpenDialogOptions{
 		Title: "打开 Markdown 文件",
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "Markdown (*.md, *.markdown)", Pattern: "*.md;*.markdown;*.mdown;*.mkd;*.mkdn"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+			// 审计 R2-G10：原"All Files (*.*)"让用户可绕过 UI 选
+			// /etc/passwd，依赖 CheckEditable 兜底（已被拒但 affordance
+			// 错误）。直接移除 secondary filter，让用户主动选"非
+			// Markdown"时在 OS 层被弹回（macOS Finder 会自动追加
+			// filter 不命中时的"Other"分类）。
 		},
 	})
 }
@@ -211,14 +254,14 @@ func (a *App) OpenDialog() (string, error) {
 func (a *App) SaveDialog(suggestedName string) (string, error) {
 	ctx := a.currentCtx()
 	if ctx == nil {
-		return "", errors.New("app not ready")
+		return "", ErrAppNotReady
 	}
 	return wailsruntime.SaveFileDialog(ctx, wailsruntime.SaveDialogOptions{
 		Title:           "另存为",
 		DefaultFilename: suggestedName,
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "Markdown", Pattern: "*.md"},
-			{DisplayName: "All Files", Pattern: "*.*"},
+			// 审计 R2-G10：移除 All Files（与 OpenDialog 同理由）。
 		},
 	})
 }
@@ -233,13 +276,24 @@ func (a *App) SaveDialog(suggestedName string) (string, error) {
 // 返回 mtime 而非让前端用本地时钟伪造（旧版 Date.now()/1000 与磁盘真实
 // mtime 存在时钟偏差，会把「外部改过」误判为「没改过」）。
 //
+// 审计 R2-G5：expectMtime 路径下 stat 失败（除 IsNotExist）原实现静默
+// fallthrough 直接写盘 —— 权限/IO 错误场景下"外部修改检测"实际被
+// 旁路，文件被静默覆盖。现改为返回 wrap 后的 statErr，触发前端保存
+// 失败提示。IsNotExist 仍走 fallthrough（首次保存到新文件，expectMtime=0
+// 实际不会进此分支；这里兜住「传非零 expectMtime 但目标不存在」的边缘场景）。
+//
 // 注意：调用方应先通过 SaveDialog 让用户确认目标路径（如果不希望弹窗，可由前端直接调）。
 func (a *App) SaveFile(path, content string, expectMtime int64) (int64, error) {
 	if path == "" {
-		return 0, errors.New("path is empty")
+		return 0, ErrEmptyPath
 	}
 	if expectMtime > 0 {
-		if st, err := os.Stat(path); err == nil && st.ModTime().Unix() != expectMtime {
+		st, statErr := os.Stat(path)
+		if statErr != nil {
+			if !errors.Is(statErr, os.ErrNotExist) {
+				return 0, fmt.Errorf("stat before save: %w", statErr)
+			}
+		} else if st.ModTime().Unix() != expectMtime {
 			return 0, fmt.Errorf("%w: %s (disk %d, expected %d)",
 				fileio.ErrExternalModified, path, st.ModTime().Unix(), expectMtime)
 		}
@@ -407,6 +461,10 @@ func (a *App) ResolveLocalPath(baseFile, href string) (LinkTarget, error) {
 //
 // 只放行 http/https/mailto/tel：被打开的 .md 内容不受信任，未做 scheme 白名单
 // 就丢给系统程序等同于给文档作者一个"打开任意本地文件"的原语。
+//
+// 注：wails v2.14 的 BrowserOpenURL 不返回 error，未注册协议 / 沙箱拒绝时
+// 由系统侧静默失败（OS 会选择 fallback handler 或弹系统级选择框）。当前
+// 无可控的 err 通道可透给前端——保留 ctx 校验即可。
 func (a *App) OpenExternal(rawURL string) error {
 	u, err := links.ValidateExternalURL(rawURL)
 	if err != nil {
@@ -414,7 +472,7 @@ func (a *App) OpenExternal(rawURL string) error {
 	}
 	ctx := a.currentCtx()
 	if ctx == nil {
-		return errors.New("app not ready")
+		return ErrAppNotReady
 	}
 	wailsruntime.BrowserOpenURL(ctx, u)
 	return nil
@@ -460,7 +518,7 @@ func (a *App) SetConfig(cfg config.Config) error {
 // 两个 PushRecent 可能基于同一份旧配置互相覆盖）。
 func (a *App) PushRecent(path string) (config.Config, error) {
 	cfg, err := a.store.Mutate(func(c config.Config) config.Config {
-		return config.PushRecent(c, path, 10)
+		return config.PushRecent(c, path, MaxRecentFiles)
 	})
 	if err != nil {
 		return config.Default(), err
@@ -500,7 +558,7 @@ func (a *App) AppInfo() AppInfo {
 // 返回最终写入的绝对路径（供前端生成 markdown 引用）。
 func (a *App) CopyImageAsset(baseFile, assetName, base64Data string) (string, error) {
 	if base64Data == "" {
-		return "", errors.New("base64 data is empty")
+		return "", ErrEmptyImageData
 	}
 	target, err := fileio.AssetWritePath(baseFile, assetName)
 	if err != nil {
