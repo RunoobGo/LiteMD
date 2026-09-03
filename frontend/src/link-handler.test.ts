@@ -58,6 +58,20 @@ const externalAnchor = classifyHref("https://a.com/p?q=1#frag");
 eq(externalAnchor.kind, "external", "外链带锚点仍是 external");
 eq(externalAnchor.anchor, "frag", "外链锚点被正确切出");
 
+console.log("== classifyHref: 协议归一化（审查 P1-7） ==");
+
+// 浏览器解析 URL 时会剥掉 C0/C1 控制字符（含 \t \n \r），
+// 分类层必须同口径，否则这些串会被漏判成 local 走到 openExternal 兜底。
+eq(classifyHref("\x00javascript:alert(1)").kind, "unsafe", "NUL 前缀的 javascript: 判 unsafe");
+eq(classifyHref("java\tscript:alert(1)").kind, "unsafe", "协议中插 \\t 的 javascript: 判 unsafe");
+eq(classifyHref("java\nscript:alert(1)").kind, "unsafe", "协议中插 \\n 的 javascript: 判 unsafe");
+eq(classifyHref("jAvAsCrIpT:alert(1)").kind, "unsafe", "大小写混合的 javascript: 判 unsafe");
+eq(classifyHref("  \tDATA:text/html,x  ").kind, "unsafe", "首尾空白 + 大写 DATA: 判 unsafe");
+eq(classifyHref("\x7fhttps://a.com").kind, "external", "DEL 前缀的 https: 仍正确判 external");
+eq(classifyHref("ht\ttps://a.com").kind, "external", "协议中插 \\t 的 https: 仍判 external（而非 local）");
+eq(classifyHref("note\t.md").kind, "local", "本地路径中的 \\t 被剥除后仍判 local，target 不含控制字符");
+eq(classifyHref("note\t.md").target, "note.md", "归一化后的 target 不含控制字符");
+
 console.log("== slugifyHeading ==");
 
 eq(slugifyHeading("Hello World"), "hello-world", "英文标题 → 小写连字符");

@@ -55,7 +55,15 @@ function splitHref(href: string): { target: string; anchor: string } {
  * 空串按 unsafe 处理（调用方直接忽略），避免出现"点了个不该点的东西"。
  */
 export function classifyHref(href: string): ParsedLink {
-    const raw = (href ?? "").trim();
+    // 审查 P1-7：协议判定前先归一化。浏览器解析 URL 时会剥掉所有
+    // C0/C1 控制字符（含 \t \n \r —— java\tscript: 在浏览器侧就是
+    // javascript:），因此 \u0000javascript:、java\tscript: 之类若不
+    // 预先剥除，会被下方正则漏判成 local 而非 unsafe。分类层必须
+    // 与浏览器同口径，不能依赖 Go 侧 ValidateExternalURL 兜底。
+    // 判定与返回值均用归一化后的 raw（剥除控制字符对复制/打开同样更安全）。
+    const raw = (href ?? "")
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+        .trim();
     if (!raw) return { kind: "unsafe", href: raw, target: "", anchor: "" };
     if (UNSAFE_RE.test(raw)) return { kind: "unsafe", href: raw, target: raw, anchor: "" };
 

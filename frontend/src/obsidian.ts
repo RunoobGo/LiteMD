@@ -204,7 +204,19 @@ export function findCalloutTransforms(md: string): CalloutTransform[] {
         const contentOffset = m.index + m[1].length;
         for (let i = 0; i < contentOffset; i++) if (md.charCodeAt(i) === 10) line++;
         const rawLines = m[0].split("\n").length;
-        out.push({ startLine: line, rawLines, replacement: preprocessCallouts(m[0]) });
+        // 审查 P1-2：replacement 必须走完整的 preprocessAll（callout + wiki
+        // 双变换），而不是只跑 preprocessCallouts。
+        //
+        // 调用方（preview.ts 的 LineMap）拿它去 preprocessAll 的输出里
+        // indexOf 定位；callout 体内含 [[wiki]] 时，只跑 callout 变换的串
+        // 与最终输出逐字节不同 → indexOf 失配 → span 被丢弃 → 该 callout
+        // 之后所有块的行号永久 +1 漂移（同步滚动错行、大纲跳转错块）。
+        //
+        // 注意：m[1]（块前缀 \n）必须保留在 replacement 里。rawLines 把该
+        // 前缀计入源块行数（split 以 \n 计段），LineMap 的 delta =
+        // rawLines - prepLines 只有在 replacement 同样含前缀时才守恒；
+        // 切掉前缀会让 delta 恒 +1，其后段落反而漂移。
+        out.push({ startLine: line, rawLines, replacement: preprocessAll(m[0]) });
     }
     return out;
 }

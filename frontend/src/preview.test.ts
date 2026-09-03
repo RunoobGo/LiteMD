@@ -114,6 +114,16 @@ console.log("\n预览行号标注（data-line）：");
     assert(/data-line="3"/.test(co), "callout 标注源行 3（> [!note] 所在行）");
     assert(/<p data-line="6">tail/.test(co), "callout 后段落行号无漂移（= 行 6）");
 
+    // 审查 P1-2：callout 体内含 wiki-link 时，replacement 必须是"callout +
+    // wiki"双变换之后的结果，否则在 preprocessAll 输出里 indexOf 失配 →
+    // span 被整个丢弃 → 其后所有块行号永久 +1 漂移（实测 tail 曾得到 7）。
+    const coWiki = ln("# H\n\n> [!note] n\n> see [[A|B]]\n\ntail");
+    assert(/data-line="3"/.test(coWiki), "callout（体内含 wiki-link）仍标注源行 3");
+    assert(
+        /<p data-line="6">tail/.test(coWiki),
+        "callout 含 wiki-link 时其后段落仍为行 6（P1-2 回归）"
+    );
+
     // wiki-link 行内替换不影响行号
     const wl = ln("see [[A]] and\n\nnext");
     assert(/<p data-line="1">/.test(wl), "wiki-link 段落行号 = 1");
