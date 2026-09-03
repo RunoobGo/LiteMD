@@ -1,5 +1,9 @@
 # LiteMD 开发计划（基于《LiteMD 应用开发手册》）
 
+> **归档声明**：本文件为 v0.2.0 历史规划快照，当前代码已迭代至 v0.2.9。
+> 计划中的范围边界已全部落地，最新状态见 [doc/CHANGELOG.md](../CHANGELOG.md) 与
+> [doc/TECHNICAL.md](../TECHNICAL.md)，仅作历史追溯参考。
+
 > 编制时间：2026-08-12 ｜ 最近更新：2026-08-30
 > 编制人：WorkBuddy
 > 目标平台：Windows x64（开发主机当前为 Linux sandbox，需注意交叉编译问题）

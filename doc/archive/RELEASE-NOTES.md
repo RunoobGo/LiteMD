@@ -1,5 +1,8 @@
 # LiteMD v0.2.0 Release Notes
 
+> **归档声明**：本文件为 v0.2.0 发布说明历史快照，当前已迭代至 v0.2.9。
+> 后续版本的发布记录见 [doc/CHANGELOG.md](../CHANGELOG.md)，仅作历史追溯参考。
+
 **LiteMD 0.2.0 正式发布 🎉** — 一款极致轻量的 Markdown 编辑器（Windows x64）。
 
 ![LiteMD 0.2.0 预览](https://img.shields.io/badge/version-0.2.0-3884FF)

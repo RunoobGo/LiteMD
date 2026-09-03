@@ -1,5 +1,9 @@
 # LiteMD — Code Wiki
 
+> **归档声明**：本文件为 v0.2.0 历史快照，当前代码已迭代至 v0.2.9。其精华已提炼至
+> [doc/design/PRINCIPLES.md](../design/PRINCIPLES.md)（§11 设计原则、§13 主题配色）。
+> 架构与目录详情以 [doc/TECHNICAL.md](../TECHNICAL.md) 为准，仅作历史追溯参考。
+
 > 极致轻量 Markdown 编辑器（Windows x64）
 > 版本：v0.2.0 ｜ 文档生成日期：2026-08-12 ｜ 最近更新：2026-08-30
 > 技术栈：Wails v2.14（Go 1.25）+ CodeMirror 6 + TypeScript + Vite + marked + DOMPurify

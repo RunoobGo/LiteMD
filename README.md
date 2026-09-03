@@ -82,9 +82,16 @@ OUT=/path/to/dist ./build-win11-x64.sh
 
 ## 📜 文档
 
-- [doc/TECHNICAL.md](./doc/TECHNICAL.md) — 技术文档（架构 / 渲染管线 / 安全模型 / 构建 / 待办）
-- [doc/CHANGELOG.md](./doc/CHANGELOG.md) — 版本变更日志
-- [doc/archive/](./doc/archive/) — 历史文档归档（开发计划 / 评审 / 测试审计 / 发布说明）
+> 全流程文档地图（按软件生命周期组织）见 **[doc/README.md](./doc/README.md)**。快速索引：
+
+| 文档 | 内容 |
+| --- | --- |
+| [doc/TECHNICAL.md](./doc/TECHNICAL.md) | 技术文档：架构 / 渲染管线 / 安全模型 / 构建 / 待办 |
+| [doc/CHANGELOG.md](./doc/CHANGELOG.md) | 版本变更日志（逐版本） |
+| [doc/design/PRINCIPLES.md](./doc/design/PRINCIPLES.md) | 设计原则与工程约定、主题配色 |
+| [doc/test/TEST-MATRIX.md](./doc/test/TEST-MATRIX.md) | 分级测试矩阵、运行方式、覆盖率统计 |
+| [doc/audit/](./doc/audit/) | 审计与评审报告（AUDIT / CODE-REVIEW） |
+| [doc/archive/](./doc/archive/) | 历史归档（开发计划 / 评审 / 测试审计 / 发布说明） |
 
 ## 📄 许可
 

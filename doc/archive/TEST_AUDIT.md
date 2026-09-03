@@ -1,5 +1,9 @@
 # LiteMD — 测试体系审查报告
 
+> **归档声明**：本文件为 v0.2.0 测试审查历史快照，其风险分级结论（P0/P1/P2-P3）已全部修复。
+> 当前测试矩阵、运行方式与覆盖率见 [doc/test/TEST-MATRIX.md](../test/TEST-MATRIX.md)，
+> 测试统计见 [doc/TECHNICAL.md](../TECHNICAL.md) §7，仅作历史追溯参考。
+
 > 审查日期：2026-08-12 ｜ 最近更新：2026-08-30 ｜ 审查范围：4 个 Go 测试、3 个前端单测、5 个 E2E 脚本（共 12 个测试文件，合计 2890 行测试代码）
 > 配套文档：[TECHNICAL_REVIEW.md](./TECHNICAL_REVIEW.md) ｜ [CODE_WIKI.md](./CODE_WIKI.md)
 

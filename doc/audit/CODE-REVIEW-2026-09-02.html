@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="CKZ1DpwxqAQbBzVKbLsGJ0">
+<head data-page-node-id="3XnBCTtwmPv0A88ipFKqhM">
+<meta charset="UTF-8" data-page-node-id="YClpW8rRWm0nf1FQk7Za2z">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="UcpH5sdEvMTtF5YaToOacE">
+<title>LiteMD 代码审查报告 · 2026-09-02</title>
+<style>
+:root{
+  --bg:#0f1420; --bg-1:#161d2c; --bg-2:#1d2739; --bg-3:#243149;
+  --fg:#e6edf6; --fg-1:#b3c0d4; --fg-2:#7f8fa6;
+  --line:#2b3purple; --line:#2b3648;
+  --red:#ff6b6b; --orange:#ffa94d; --yellow:#ffd43b; --green:#51cf66;
+  --blue:#4dabf7; --purple:#b197fc; --cyan:#66d9e8;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; padding:32px 20px 80px;
+  background:var(--bg); color:var(--fg);
+  font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+.wrap{max-width:1080px;margin:0 auto}
+header{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:32px}
+h1{font-size:28px;margin:0 0 8px;letter-spacing:.5px}
+.sub{color:var(--fg-2);font-size:14px}
+.meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.chip{background:var(--bg-2);border:1px solid var(--line);border-radius:20px;padding:5px 14px;font-size:13px;color:var(--fg-1)}
+.chip b{color:var(--fg)}
+
+h2{font-size:20px;margin:44px 0 16px;padding-left:12px;border-left:4px solid var(--blue)}
+h2.p0{border-color:var(--red)} h2.p1{border-color:var(--orange)} h2.p2{border-color:var(--yellow)}
+h2.ok{border-color:var(--green)} h2.plan{border-color:var(--purple)}
+
+.issue{background:var(--bg-1);border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden}
+.issue>.hd{padding:14px 18px;display:flex;gap:12px;align-items:flex-start;border-bottom:1px solid var(--line)}
+.sev{flex:none;font-size:12px;font-weight:700;padding:3px 9px;border-radius:6px;letter-spacing:.5px}
+.s-p0{background:rgba(255,107,107,.16);color:var(--red);border:1px solid rgba(255,107,107,.35)}
+.s-p1{background:rgba(255,169,77,.16);color:var(--orange);border:1px solid rgba(255,169,77,.35)}
+.s-p2{background:rgba(255,212,59,.14);color:var(--yellow);border:1px solid rgba(255,212,59,.3)}
+.ttl{font-weight:600;font-size:15.5px;line-height:1.5}
+.issue>.bd{padding:6px 18px 16px}
+.row{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(255,255,255,.05);font-size:14px}
+.row:last-child{border-bottom:none}
+.k{flex:none;width:66px;color:var(--fg-2);font-size:13px;padding-top:1px}
+.v{flex:1;color:var(--fg-1)}
+.v strong{color:var(--fg);font-weight:600}
+code{background:var(--bg-3);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font:12.5px/1.6 "SF Mono",Menlo,Consolas,monospace;color:var(--cyan);word-break:break-all}
+pre{background:#0b1017;border:1px solid var(--line);border-radius:9px;padding:14px 16px;overflow-x:auto;margin:10px 0 4px}
+pre code{background:none;border:none;padding:0;color:#c8d6e5;font-size:12.5px;line-height:1.7;white-space:pre}
+.tag{display:inline-block;background:var(--bg-3);border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:12px;color:var(--fg-1);margin-right:6px}
+
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:24px 0 8px}
+.card{background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card .n{font-size:26px;font-weight:700;line-height:1.2}
+.card .l{font-size:12.5px;color:var(--fg-2);margin-top:4px}
+.c-p0 .n{color:var(--red)} .c-p1 .n{color:var(--orange)} .c-p2 .n{color:var(--yellow)} .c-ok .n{color:var(--green)}
+
+ul.good{list-style:none;padding:0;margin:0}
+ul.good li{background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--green);border-radius:8px;padding:11px 16px;margin:9px 0;font-size:14px;color:var(--fg-1)}
+ul.good li b{color:var(--fg)}
+
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--bg-2);color:var(--fg-1);font-weight:600;font-size:12.5px;letter-spacing:.4px}
+td code{font-size:12px}
+
+.note{background:var(--bg-2);border:1px solid var(--line);border-left:3px solid var(--purple);border-radius:8px;padding:13px 16px;margin:16px 0;font-size:13.5px;color:var(--fg-1)}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--fg-2);font-size:13px}
+</style>
+</head>
+<body data-page-node-id="qtZDJEo1f8ArCmRsFljhF6">
+<div class="wrap" data-page-node-id="FHD1kNHV5Lw4BWGhIl67Z2">
+
+<header data-page-node-id="WqwcNcN8itEy133boSj29P">
+  <h1 data-page-node-id="24jRi4E32LLGu5Z4zqkKAJ">LiteMD · 全量代码审查报告</h1>
+  <div class="sub" data-page-node-id="nXyciYEi3eGzGjARuwZbHZ">Wails v2 (Go 1.25) + TypeScript / CodeMirror 6 · 目标平台 Windows 11 x64 · 分支 main @ fbf3aaf</div>
+  <div class="meta" data-page-node-id="j2W59vfRwy2lBEleie7YHG">
+    <span class="chip" data-page-node-id="3ojNPU3GBVPMAfKIEY7yZz">审查日期 <b data-page-node-id="i88GA5VDqBoiSDycSAwx3I">2026-09-02</b></span>
+    <span class="chip" data-page-node-id="MthPZNaTziD8MFVnPzzYgS">范围 <b data-page-node-id="b1zYYDA8AcF1IDlUHoDK4R">后端 / 渲染管线 / 交互层 / 构建打包 / 测试基建</b></span>
+    <span class="chip" data-page-node-id="DY2kaJalZaEfWLnmOMR2mi">方法 <b data-page-node-id="sjE6TrSgCPDLY05yc485Uv">静态审查 + 依赖与产物实测</b></span>
+    <span class="chip" data-page-node-id="pNpAyepa5X9gbJHyfW4Aek">结论 <b style="color:var(--red)" data-page-node-id="J4bVjWbuvTALyPcDClKc70">暂不建议发版</b></span>
+  </div>
+</header>
+
+<p style="color:var(--fg-1);font-size:14.5px" data-page-node-id="gAoCAXsBTI2xB9p5X5auWB">
+本项目工程质量明显高于同规模个人项目：注释里记录了大量"踩过的坑"与上一轮审查的修复痕迹，原子写、路径守卫、KaTeX 占位符防伪、navGuard 兜底等设计都相当扎实。
+但当前存在 <b style="color:var(--red)" data-page-node-id="0LUBra1cRrF5sChWCHvnXK">7 个阻塞级问题</b>，其中 3 个会直接导致用户数据损坏或构建不可复现，建议在下次发版前处理。
+</p>
+
+<div class="sumgrid" data-page-node-id="HPpl3ZAh5892jN8JRKw8Fs">
+  <div class="card c-p0" data-page-node-id="kV7TeFuHSG2N9a3Ky8sSbQ"><div class="n" data-page-node-id="wawMWWMhc6Y6EBPiVVvx9g">7</div><div class="l" data-page-node-id="2yUSL1vdqAJvjXk98Lt943">🔴 阻塞（发版前必须修）</div></div>
+  <div class="card c-p1" data-page-node-id="5VTEYJrHMekqiDyFAIgmYq"><div class="n" data-page-node-id="t9uxDrEd7fEeovSfLaVLB0">13</div><div class="l" data-page-node-id="sZh4LlXoLhe3bHwWUch9Sc">🟡 重要（应尽快修）</div></div>
+  <div class="card c-p2" data-page-node-id="MTRJPoKSiVhKfsXRFxA4wK"><div class="n" data-page-node-id="7JC5keoIidQAdvrBmsog3q">14</div><div class="l" data-page-node-id="9Xq0NYSqBpWZ75zNKfuZpb">🟢 建议（有空再修）</div></div>
+  <div class="card c-ok" data-page-node-id="8S0qySbiwIc3O2sWfLaFDk"><div class="n" data-page-node-id="OoDZOfV4ad3QkHEnnis85D">12</div><div class="l" data-page-node-id="QKBSTsHpppTC6jtNuMF0Zt">🎉 值得肯定的设计</div></div>
+</div>
+
+<!-- ============ P0 ============ -->
+<h2 class="p0" data-page-node-id="REyZGqES4lP5iXzEbyQNHb">🔴 阻塞级问题（P0）</h2>
+
+<div class="issue" data-page-node-id="I89Q3RtSNzScGZsut9ucDy">
+  <div class="hd" data-page-node-id="dS9SDx1HTef3HlODBwzF0g"><span class="sev s-p0" data-page-node-id="FE7wRgLrm66B9NFCUnsQVG">P0-1</span><span class="ttl" data-page-node-id="kSude1k4a0QSKj0JFVQBIL">mermaid 依赖根本没安装，功能 100% 死亡，且向用户谎报"语法错误"</span></div>
+  <div class="bd" data-page-node-id="Jg7QXdzDmjL3JLHQqGLfck">
+    <div class="row" data-page-node-id="1bCycU9zbiJT6v6qZyCd3T"><div class="k" data-page-node-id="4xqKa6I3R1OgtBYgTn8C44">位置</div><div class="v" data-page-node-id="27FeTGpTk3diUYdyq7Ymrl"><code data-page-node-id="aQukildgAyaPDXzrXAXdK0">frontend/package.json:26</code>（声明 <code data-page-node-id="OOk2e1c7J53i72RnCJ1Av5">mermaid ^11.17.2</code>）· <code data-page-node-id="CVP01gHKzNpjsanbyxSK0f">frontend/src/mermaid.ts:65</code> · <code data-page-node-id="KAAvFSC0hlJMp75GGnWkmr">frontend/src/preview.ts:690</code></div></div>
+    <div class="row" data-page-node-id="DqEAA7OdS6p18WRVcXnu0n"><div class="k" data-page-node-id="dFELHlEvBDBpZphG98f9Js">证据</div><div class="v" data-page-node-id="IgbykV7oLd8vEq20h7iLkw"><code data-page-node-id="dQj8hnbelzag2OQyeWFD1e">npm ls --depth=0</code> → <code data-page-node-id="QSE7axA5gbGdiLhjarvIgA">UNMET DEPENDENCY mermaid@^11.17.2</code>；<code data-page-node-id="xHGjtICUeb0uPyXAbPu09O">node_modules/</code> 下无 mermaid 目录；<code data-page-node-id="MLtcarsvaeZprPdoPZ1iJB">frontend/dist/assets</code> 无 mermaid chunk。lockfile 里有，node_modules 里没有 —— <strong data-page-node-id="LLPyOTdl3dcpfZLoc0iEkv">lockfile 与实际安装不一致</strong>。</div></div>
+    <div class="row" data-page-node-id="zJlguVbLwCKgnS5iuHSLit"><div class="k" data-page-node-id="1lAsv4A9YEoCfHH57Lx7I5">影响</div><div class="v" data-page-node-id="UKD6u0daQV2pjHF71To2Dt"><code data-page-node-id="rsAU3hYMtSHjmLfvoO5dxw">mermaid.ts:65</code> 的 <code data-page-node-id="HTLB3fdedLbSLxPMmYiDok">await import("mermaid")</code> 必然抛错 → <code data-page-node-id="X1oeDVxS473MSrbnPFqGtD">.catch(() =&gt; null)</code> → <code data-page-node-id="vsScF4P1PTDTCyPBAOemZo">renderMermaid</code> 返回 <code data-page-node-id="EWIZZTuQck0wx33JeMN90o">null</code> → <code data-page-node-id="Cisscv9HVapdDV3gphXCwL">preview.ts:690</code> 一律渲染"Mermaid 语法错误，已按原码展示"。<strong data-page-node-id="b11nO4XXnRBQpmhhUWugp7">任何打开含 ```mermaid 代码块的用户都会看到误导性报错</strong>，且无法区分"库未加载 / 渲染超时 / 真的语法错误"三种情况。</div></div>
+    <div class="row" data-page-node-id="JgJyX3lCnpfkFbutxNGIZk"><div class="k" data-page-node-id="ZAKZxZSILapgPVXpIKNGnf">连带</div><div class="v" data-page-node-id="XOa4G9aBMfAWp6GyZ1IeHu"><code data-page-node-id="TUoBUsrXkFyEZeH9ZkaCLb">build-win11-x64.sh:92</code> 的判据是 <code data-page-node-id="dOsjv5MCYrKRCwqtGn8xuc">[ ! -d node_modules/.bin ] || [ ! -d frontend/dist ]</code>，两者都存在 → <strong data-page-node-id="O9HEyw1nLueOMDCtHLVi3c">跳过 npm ci</strong> → <code data-page-node-id="DwRg47yxSmccNfoee4agli">:95</code> 直接 build → vite 报"Failed to resolve import"，而非"依赖缺失"，排查成本极高。</div></div>
+    <div class="row" data-page-node-id="J7EhC9uGvfz1L5Dlju6CGl"><div class="k" data-page-node-id="V8FV8gnfXvCQt8YP9kC6GU">修复</div><div class="v" data-page-node-id="CC74DI2diHkRNlYyKxfwDO">
+      <pre data-page-node-id="GTIF3r7slnesxsICDF7mmx"><code data-page-node-id="6IBmkWCCyiGmUh8dWBvHMV"># 1) 装依赖
+cd frontend &amp;&amp; npm i mermaid
+
+# 2) build-win11-x64.sh:92 改成依赖完整性校验，而非目录存在性
+npm ls --depth=0 &gt;/dev/null 2&gt;&amp;1 || (cd frontend &amp;&amp; npm ci)
+
+# 3) mermaid.ts:120 区分失败原因，别再把"加载失败"说成"语法错误"
+if (!mod) return { svg: null, reason: "load-failed" as const };
+
+# 4) preview.ts:690
+holder.textContent = svg ? "" : reason === "load-failed"
+  ? "图表引擎未加载，已按原码展示：\n\n" + code
+  : "Mermaid 语法错误，已按原码展示：\n\n" + code;</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="Cs3Ix00acaYIlvcvxvNgFY">
+  <div class="hd" data-page-node-id="yepDTDIe4mACXGkolJx4Gt"><span class="sev s-p0" data-page-node-id="7OzVGrdrcxvRiI86QCdOOV">P0-2</span><span class="ttl" data-page-node-id="z4lsrbGxjm8fDpslGMHCIb">CopyImageAsset 是一个"任意文件写入"原语</span></div>
+  <div class="bd" data-page-node-id="jrt7ROCtnFkVWEiYSKbXvp">
+    <div class="row" data-page-node-id="xb8pbBYsFRvgUipUIS2tOe"><div class="k" data-page-node-id="qv0a44qt07IWFNZt0u9zqD">位置</div><div class="v" data-page-node-id="5B1yafJN4wVaYtdQZEQlDF"><code data-page-node-id="lj62VpVxlqgEnewFKAM4bv">app.go:363-373</code> → <code data-page-node-id="pEkdwfOu9ebUNffwNQSZmh">internal/fileio/fileio.go:135-181</code> → <code data-page-node-id="AEIbqAPGlVJXfIzFSgf5gu">internal/fileio/safepath.go:50-65</code></div></div>
+    <div class="row" data-page-node-id="8Uy33vFTvXvrCLKvZtYudd"><div class="k" data-page-node-id="qZKxA2dJ10XRm2B8PxcEaC">证据</div><div class="v" data-page-node-id="F0854hBBo5FZJXBpKsWGEO"><code data-page-node-id="CL9hTKxl2VnwdHwl5sQX0m">safepath.go</code> 的 <code data-page-node-id="gLwEkD4akkDKgAa5Ccif3O">safeWritePath</code> <strong data-page-node-id="Hgp9zPaG8QY0wSAlkhGT3g">只校验三件事</strong>：非空、绝对路径、Windows 保留设备名。<strong data-page-node-id="Id16oUDtPXUMva72WUW0D2">没有根目录约束、没有扩展名白名单、没有大小上限</strong>。前端 <code data-page-node-id="bve3BHvCsRPASsoFFHRM7o">file-ops.ts:47</code> 直接透传路径。</div></div>
+    <div class="row" data-page-node-id="GvZ2lSz5AIUxzLbnzmuSBL"><div class="k" data-page-node-id="gffjSJvnGqSpkgUprtFtoK">影响</div><div class="v" data-page-node-id="31tnWnXiRH7KTU1Ynt7Ej7">一旦预览区出现 XSS 绕过，或前端路径拼接出错，即可写入 <code data-page-node-id="nMVxEkR2WKjZhpc52y6h0z">...\Start Menu\Programs\Startup\a.bat</code> 或任意 <code data-page-node-id="hzlvcJuSPloZgXiAUU2Na5">.exe</code>；<code data-page-node-id="NvP38beaDEFDY7T7o6QxKB">MkdirAll(dir, 0o755)</code>（<code data-page-node-id="yFjI1jG0ZUCTjCsFobGuby">fileio.go:156</code>）还会顺手建目录。<strong data-page-node-id="tjgTLL2hA1VYqOmDqflvCD">这是全项目危害等级最高的一条</strong> —— 你在 <code data-page-node-id="ZhClqosVA7xoWoZHgTqcTJ">safepath.go:11-17</code> 的注释里已经意识到"会成为任意写入原语"，但守卫只做了一半。</div></div>
+    <div class="row" data-page-node-id="sEhhtg7rEfSkyTnlEXzu3N"><div class="k" data-page-node-id="FQACEpRTfvjzQtyWSdHoIK">修复</div><div class="v" data-page-node-id="F5VjjdF61pKX8ENxUWggYD">
+      <pre data-page-node-id="3b1SMO7yHTPTqrJQ58mfoz"><code data-page-node-id="CZgFx5zshJAUWAJ13HQiwu">// fileio.go —— 加扩展名白名单 + 流式解码 + 大小上限
+var imageWriteExts = map[string]bool{".png":true,".jpg":true,".jpeg":true,
+  ".gif":true,".webp":true,".bmp":true,".ico":true,".avif":true}
+
+func WriteBase64File(path, base64Data string) error {
+    clean, err := safeWritePath(path)
+    if err != nil { return err }
+    if !imageWriteExts[strings.ToLower(filepath.Ext(clean))] {
+        return fmt.Errorf("%w: not an image ext: %s", ErrUnsafePath, clean)
+    }
+    payload := base64Data
+    if i := strings.LastIndex(payload, ","); i &gt;= 0 &amp;&amp; strings.HasPrefix(payload, "data:") {
+        payload = payload[i+1:]
+    }
+    const maxImageBytes = 20 &lt;&lt; 20
+    src := io.LimitReader(base64.NewDecoder(base64.StdEncoding, strings.NewReader(payload)), maxImageBytes+1)
+    data, err := io.ReadAll(src)          // 不再一次性 DecodeString 全量进内存
+    if err != nil { return fmt.Errorf("decode base64: %w", err) }
+    if len(data) &gt; maxImageBytes { return errors.New("image too large (max 20MB)") }
+    return writeAtomic(clean, data)        // 见 P0-3 的统一实现
+}</code></pre>
+      <div class="note" data-page-node-id="sXEKSqGZmVjkZohjtOpL7t"><b data-page-node-id="KF1pSjLyVxoXLHt9Coz2Gg">更彻底的方案（💡）：</b>Go 1.25 已提供 <code data-page-node-id="c8StsGRugnP4MTrqStELdh">os.Root</code>（<code data-page-node-id="SkAR2c98KUZyJWWMVK0TZm">os.OpenRoot</code>）。给 <code data-page-node-id="hSZvhEDaXHgruMcMOpglDq">CopyImageAsset</code> / <code data-page-node-id="QzBNI8mjTJck7Cr9d1TNNK">SaveFile</code> / <code data-page-node-id="5s7F789HNRv1Bb4ZBHen35">ResolveLocalPath</code> / <code data-page-node-id="vHObnBJTeubULGFjvfTAJf">ReadLocalAsset</code> 都加上"笔记库根目录"参数，用 <code data-page-node-id="n7kfUxEPElNWPfuSpDESVS">os.Root</code> 打开，可一次性消灭目录穿越、8.3 短名、UNC、符号链接与任意读写五类问题，比逐项打补丁更稳。</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="yQBXiDATf8iPbCRakoKF3c">
+  <div class="hd" data-page-node-id="u29J7u80QhEHbLjmvh9zHp"><span class="sev s-p0" data-page-node-id="rMv8NV5hTluyGPteOGQy9R">P0-3</span><span class="ttl" data-page-node-id="brPFAIoBWRmATEvUnIMSLF">原子写不完整：每次保存把文件权限改成 0600，且 rename 后未 fsync 目录</span></div>
+  <div class="bd" data-page-node-id="vOpULpGiD2bOV6wBj5vVzO">
+    <div class="row" data-page-node-id="w4FQYhYfNmwaXYkRui5f0l"><div class="k" data-page-node-id="TpZ93HykLe6YGbuzKjsowu">位置</div><div class="v" data-page-node-id="XiOeXOBRczYJGDdvL9FhRK"><code data-page-node-id="yTPeEGxxxBXHKcx7YjN4y5">internal/fileio/fileio.go:103</code>（<code data-page-node-id="AJQoIaVOFbaB7NgPxOvOZ3">CreateTemp</code>）、<code data-page-node-id="xNS74RvamKFbMk13IJ1OuF">:118-127</code>（Sync + Rename）· <code data-page-node-id="rpKfoJEvUOyKMgDqOHCKPy">internal/config/config.go:115-143</code>（三份重复实现）</div></div>
+    <div class="row" data-page-node-id="9mQEVeGSjK3rYzGIAeMAni"><div class="k" data-page-node-id="HkUILLPcF1lCzfoAlSZEdg">问题 A</div><div class="v" data-page-node-id="TGIyoRHn0ErDA80bcSBJA9"><code data-page-node-id="cMvmL37L9HmyDlhN0fwgez">os.CreateTemp</code> 固定 <strong data-page-node-id="Yz05QJj3Sc8DQo1U7MfGPk">0600</strong>，rename 后目标文件继承该模式。<strong data-page-node-id="Ah1HNe6L4byDASpHtBmPZ0">覆盖已有文件时原权限 / ACL 永久丢失</strong>：Windows 上备份与同步工具、同机其他用户会读不到笔记；Unix 上组权限被吞。用户会认为"LiteMD 把我的文件权限改坏了"。</div></div>
+    <div class="row" data-page-node-id="snBsmpFkMHA6Gjx01jGhZN"><div class="k" data-page-node-id="2gtHDdZGfJllRKA2NS645I">问题 B</div><div class="v" data-page-node-id="ZntvalBYbSR0hEP6Ur5N5n">只 sync 了临时文件数据，<strong data-page-node-id="EMOTd5XfIpFMhgDsC7RDkg">没有 sync 父目录</strong>。掉电后 rename 的目录项可能未落盘，出现"旧文件已消失、新文件不存在"—— 恰好违背 <code data-page-node-id="JCzee2wUsmmbjiEpHj8XWw">fileio.go:88</code> 注释里"防止崩溃导致原文件损坏"的设计目标。</div></div>
+    <div class="row" data-page-node-id="eGHeG6QsuLnbJbyEj9FNC1"><div class="k" data-page-node-id="Nzs5SjDPsx0rn2DvC8GCMW">修复</div><div class="v" data-page-node-id="VmAHIdlKGPlogFXyN3Nr9U">
+      <pre data-page-node-id="5KXjjfxnIJZ0jxjhZj7E8d"><code data-page-node-id="8DtaltkZa8qAj8cK3muJQe">mode := fs.FileMode(0o644)
+if st, err := os.Stat(path); err == nil { mode = st.Mode().Perm() }   // 保留原权限
+
+tmp, _ := os.CreateTemp(dir, ".litemd-*.tmp")
+...
+if err := os.Chmod(tmp.Name(), mode); err != nil { _ = os.Remove(tmp.Name()); return err }
+if err := os.Rename(tmpPath, path); err != nil {
+    // Windows：目标被杀软/索引句柄占用时 Rename 会 ERROR_ACCESS_DENIED，加一次短退避重试
+    return err
+}
+if d, err := os.Open(dir); err == nil {                                // 补目录 fsync
+    if err := d.Sync(); err != nil { _ = d.Close(); return fmt.Errorf("dir sync: %w", err) }
+    _ = d.Close()
+}</code></pre>
+      <b data-page-node-id="L7Vzaw52zrtOzhatm5ivMl">另建议抽取 <code data-page-node-id="SGk08ZQItm9q10DCG597Is">writeAtomic(dir, path string, mode fs.FileMode, r io.Reader) error</code> 单一实现。</b>现在 <code data-page-node-id="f2Ivb2z5UN5A7MBz3kAUBe">fileio.go:90</code>、<code data-page-node-id="s6o4GBU360h2OzVXVesIiI">fileio.go:135</code>、<code data-page-node-id="wUovGLQBQAojN6wiX3wN5w">config.go:115</code> 是三份几乎相同的临时文件逻辑，权限 / 目录 fsync / 重试三处 bug 各修一遍极易漏掉一处。
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="dg7ITlvpAl31Em95gmlvhk">
+  <div class="hd" data-page-node-id="GtcnH4ZBBtE2KcaidVbm2d"><span class="sev s-p0" data-page-node-id="8ws7Gl2Z1wpPmKPAC5XCTo">P0-4</span><span class="ttl" data-page-node-id="9oixguB4vpMtyHBXzOPscI">切换标签后按 Ctrl+Z，会把 A 文件的内容撤销进 B 文件</span></div>
+  <div class="bd" data-page-node-id="FOO4RHkbaZDGehVd3JBHx4">
+    <div class="row" data-page-node-id="zTFPmrgxxoWuJuRchtCbmN"><div class="k" data-page-node-id="U454jFr9DjAbetaRo2b6Bf">位置</div><div class="v" data-page-node-id="rTNYfY1xJbwcdtNdzauaL1"><code data-page-node-id="1LM7mjelGmzdhIJtoiEV1K">frontend/src/editor.ts:150-158</code>（<code data-page-node-id="hYMa0CvXkEoTrbtqMwkQoB">setContent</code>）· 注释在 <code data-page-node-id="cv6y7yIDXV6atNVwyClWt3">:142-149</code></div></div>
+    <div class="row" data-page-node-id="KLfuOuy0Bafs4eZeVY9cEW"><div class="k" data-page-node-id="FNJQQeRAigEDOSqogpeCdL">证据</div><div class="v" data-page-node-id="4z4anw1c4ma7CVPeIQSwHU"><code data-page-node-id="tqKv4zs3cjiOJszuLC19ed">setContent</code> 只加了 <code data-page-node-id="Q00ECC8Cdp6pxZA1AO448h">Transaction.addToHistory.of(false)</code> 标注，<strong data-page-node-id="mlyj4yFOSzYsVdFVUQvBJW">没有隔离 history 栈本身</strong>。该标注只让"本次切换"不进历史，A 文件此前的编辑记录仍留在栈里。</div></div>
+    <div class="row" data-page-node-id="AbwEcnNGqFqOTCwkNU2EP6"><div class="k" data-page-node-id="CqBJgczJ4uIiAMS9HaG7PQ">影响</div><div class="v" data-page-node-id="TVPJYHcXDKGFNkHvZmBhtQ">切到 B 后用户按 Ctrl+Z（本意是撤销自己刚才在 B 里的输入），CM6 取栈顶 —— 那是 <strong data-page-node-id="7adSl7WG12q6xOE97HU386">A 文件的最后一个变更</strong> —— 对当前文档 B 做 invert 并应用 → <strong data-page-node-id="JsQ7xdFFk3roZmgES4Kgvo">B 的内容被 A 的片段污染</strong> → 触发 <code data-page-node-id="wPY5CRrWX3ZFAL0CyONl6J">syncLiveContent</code> 标记 B 脏 → 用户一保存就把 A 的内容写进 B 文件。<code data-page-node-id="G0P9v9dp6HzkG2vZvZxCCQ">editor.ts:148</code> 的注释声称已防住"跨文件数据污染"，<strong data-page-node-id="etkD9sCobZS08Fi5qXnTsL">实际只防住了一半</strong>。</div></div>
+    <div class="row" data-page-node-id="cwaK4GPmFcWmgEqj7bgCXa"><div class="k" data-page-node-id="5sHHc1CASe26iiu6UbIhZA">修复</div><div class="v" data-page-node-id="AIy7ljHsbnE4J2LbIIPG1f">
+      <pre data-page-node-id="OWjlMDGOKCBTJglDz38q5f"><code data-page-node-id="EtKDqRUsLGMVoGko3snFNE">// editor.ts：按 tabId 缓存独立 EditorState，history 随状态一并隔离
+private states = new Map&lt;string, EditorState&gt;();
+
+private buildState(doc: string): EditorState {
+  return EditorState.create({ doc, extensions: this.extensions });
+}
+
+setDoc(tabId: string, content: string) {
+  let st = this.states.get(tabId);
+  if (!st) { st = this.buildState(content); this.states.set(tabId, st); }
+  this.view.setState(st);      // 切回时 view.setState(this.states.get(id)) 即可
+}</code></pre>
+      注意：改完后需配套实现 <code data-page-node-id="CQfCLKyOXkt5ZYPnb79J6W">destroy()</code>，关标签时清掉对应 State。
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="MGhEmA1k7TMt78RE0v0LXg">
+  <div class="hd" data-page-node-id="voGXiVGakeCUb4Z0LRrukW"><span class="sev s-p0" data-page-node-id="pINzn3DkUns9aZNuZwmDbH">P0-5</span><span class="ttl" data-page-node-id="JdcmWmVFDq5O3tXvDp25F8">保存无并发守卫；文件被外部程序改了会静默覆盖（diskMtime 只写不读）</span></div>
+  <div class="bd" data-page-node-id="MlvtJM6AIscZjwmNZj4H84">
+    <div class="row" data-page-node-id="3iPnOVMViTwJIkfTrA8VRR"><div class="k" data-page-node-id="mj1PHVmmsZT2lqGkgE2CwC">位置</div><div class="v" data-page-node-id="KzLhp9TRSoDxsluUcVfgRk"><code data-page-node-id="IkdHySLiKVGMNBhjME3AUH">frontend/src/main.ts:884-900</code>（<code data-page-node-id="tvjc26DLtunGoqDOv4Hvu9">handleSave</code>）、<code data-page-node-id="cLtTh1bWCvmnXLDTJ9E1Rc">:902-917</code>（<code data-page-node-id="ZaVLpNrq5SGpAOgBnPsylV">handleSaveAs</code>）、<code data-page-node-id="E0zANwefpGhDFO8qvEnpIq">frontend/src/tabs.ts:17/94/158</code></div></div>
+    <div class="row" data-page-node-id="oGfW8QGRruz0PSWFqeuLo7"><div class="k" data-page-node-id="EqBwOUhkVPykOuPkg04uPT">证据 A</div><div class="v" data-page-node-id="0q60oBEhS3WzwiKJV3tNCf"><code data-page-node-id="EPGgJHc6xZ4asSBEClaca2">grep -rn diskMtime frontend/src/</code> 只有 3 处命中：<code data-page-node-id="l7gTxHBDRuSnTFEcuH9XHx">tabs.ts:17</code> 声明、<code data-page-node-id="J71PiJPddigGjjr6mdh6C0">:94</code> 写入、<code data-page-node-id="nLxIovxfXYoVd7bYKRJhIy">:158</code> 写入 —— <strong data-page-node-id="4iYqhaeitPBuPDRQoFru3V">全项目没有任何读取点</strong>。Go 侧 <code data-page-node-id="OCTxLa7JJpvD129Fwkp9HG">OpenFile</code> 返回的 <code data-page-node-id="zMtSDpj0lEv0oa1emClTtu">FilePayload.Modified</code>（<code data-page-node-id="Bgz48PloSGKIXdEMDGS4f1">app.go:113</code>）前端也从未消费。</div></div>
+    <div class="row" data-page-node-id="4sSdCAJi6sjrrPLo76fVka"><div class="k" data-page-node-id="OLvYSDNdGwcTL41T8JbM1q">证据 B</div><div class="v" data-page-node-id="PcuwyRWPCJfS57nCrheMlq"><code data-page-node-id="SGxE0N2eZGfpOeTPXbdixl">main.ts:893</code> 与 <code data-page-node-id="0UgXMg2BUGqHaE2cXXvNQo">:909</code> 写入的是 <code data-page-node-id="PY5lHiaidFsEH7sE0SexpS">Date.now() / 1000</code>（<strong data-page-node-id="DZaY889fwkPpIDiMzakUoh">本地时钟</strong>），不是磁盘真实 mtime。</div></div>
+    <div class="row" data-page-node-id="G4kZTvkRmtRlICaNiq5U3o"><div class="k" data-page-node-id="LJsyQD1gfND6hDapMapmfA">影响</div><div class="v" data-page-node-id="bskiu9mUxLYkCDeAqZDsmC">
+      <b data-page-node-id="gAmI3lWGeyEDFm3OBoYzUA">① 并发保存错序：</b>无 in-flight 锁。快速连按两次 Ctrl+S，两次 <code data-page-node-id="e3supue6DinqFrFAQu2FkF">saveFile</code> 并发，落盘顺序不保证。若旧内容的那次后落盘，界面显示"✓ 已保存"但<strong data-page-node-id="krSmKEnA03kLlWcYwkERld">磁盘上是旧内容，用户关窗口即丢稿</strong>。
+      <b data-page-node-id="eRZucauoAW01XwUZJN681W">② 外部修改静默覆盖：</b>用户用别的编辑器 / 同步盘改了文件，LiteMD 下次保存直接盖掉，无任何冲突提示。
+    </div></div>
+    <div class="row" data-page-node-id="JAj96cmRjQkF1NCp1wF7Hx"><div class="k" data-page-node-id="5XPB1XVTz9ZJgsfaUc5BsJ">核实</div><div class="v" data-page-node-id="Lf79shQDtMl1G0wH5rc6is">关于 git 历史里 <code data-page-node-id="FhrilBNJrEFyRQr3hsUhS8">f170978</code>"修复保存误报失败"：<strong data-page-node-id="BLkVuvs8nkZw5sWNfcxVW6">该修复只改了 <code data-page-node-id="2N8KvZNzpTHpWIEEIMCZ3x">mocks.ts</code></strong>（无头环境 <code data-page-node-id="dALKMylTBeRw6tUqVmpCbF">window.prompt</code> 抛异常冒泡成"另存为失败"）。真实桌面路径当时就是对的 —— <code data-page-node-id="KzRddibs9ijZ7yLyBFKs9W">saveFile</code> 失败会 reject 进 catch，不会误标已保存。<b data-page-node-id="3YMvuCusyeBrH4ffMYYmeE">所以这条没坏，但也从没在真机上坏过；真正缺的是上面两条。</b></div></div>
+    <div class="row" data-page-node-id="LNVZEDYCY0q3L7GdEcIWoH"><div class="k" data-page-node-id="y6k8Y5yczQoKCkjYakeSJM">修复</div><div class="v" data-page-node-id="NIgbmAEw9Qo5Qbx42h5Bjg">
+      <pre data-page-node-id="w94ofAG6yGkXJFZdlGB3yI"><code data-page-node-id="yBCmUHUoc23kvgACIOmySU">const saving = new Set&lt;string&gt;();          // 保存串行化
+
+async function handleSave(): Promise&lt;boolean&gt; {
+  const a = tm.active;
+  if (!a || saving.has(a.id)) return false;
+  saving.add(a.id);
+  try {
+    if (!a.path) return await handleSaveAs();
+    // 保存前比对磁盘 mtime，变了就提示
+    const disk = await window.go.main.App.FileMtime(a.path);
+    if (a.diskMtime &amp;&amp; disk &gt; a.diskMtime + 1) {
+      if (!await confirmConflict(a.path)) return false;
+    }
+    const content = editor ? editor.getContent() : a.liveContent;
+    await saveFile(a.path, content);
+    tm.updateContentBaseline(a.id, content, a.path, await window.go.main.App.FileMtime(a.path));
+    return true;
+  } finally { saving.delete(a.id); }
+}</code></pre>
+      Go 侧补一个 <code data-page-node-id="KBNXgTLmtgZxnTaEVIFh9C">func (a *App) FileMtime(path string) (int64, error)</code>；窗口重新获得焦点时也做一次全标签比对。
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="8TnYDzjlBZlKyRqRwOJMUc">
+  <div class="hd" data-page-node-id="qEdF3HAJ7Azk8fRUuloLY9"><span class="sev s-p0" data-page-node-id="Mw2V1TNHYC0oK2ohzcwCWw">P0-6</span><span class="ttl" data-page-node-id="Whs1jeUeuFTdxEJ8wWxdF4">构建脚本在两个平台上都会失败，且 nsis-src/ 整个目录未入库</span></div>
+  <div class="bd" data-page-node-id="GFR1YuTJQSwpwIJEFxyykk">
+    <div class="row" data-page-node-id="iZBLo3eqgZLlVU48UWOlPS"><div class="k" data-page-node-id="6HSqG82pE4NkvP4u7WfEcG">位置 A</div><div class="v" data-page-node-id="a2kWbGCmJhx3KZsR3HhJOC"><code data-page-node-id="AP33AB4VvyJPyr16On8hlD">build-win11-x64.sh:83</code> → <code data-page-node-id="GK1yyIIqYMiHFKgHJ30C5R">cp -f nsis-src/installer/project.nsi ...</code>。但 <code data-page-node-id="ABnbVIsR3qJ9CJRYBfUXGZ">git ls-files nsis-src/</code> <strong data-page-node-id="T7S5Apxxtcc0sPpTMpBES7">返回空</strong> —— 整个目录未纳入版本控制。<code data-page-node-id="Deq2mcKMU46zGCuEVlwnD6">:27</code> 又开了 <code data-page-node-id="dvBKheoCgJ9yQYJX6ZFSiP">set -euo pipefail</code>，新克隆仓库跑脚本会在此直接退出。</div></div>
+    <div class="row" data-page-node-id="qDY5vLqjPyueF3DDsuVkRj"><div class="k" data-page-node-id="rSRn8r2XpUcRLKBLDSXDgT">位置 B</div><div class="v" data-page-node-id="LyaEtWG3bYAsfZYc1ipOBn"><code data-page-node-id="yCzBoMseAsXKhkcpig8lM9">build-win11-x64.sh:126</code> → <code data-page-node-id="FHQJpGZd1vAIxywjH6aVsF">size=$(stat -c%s "$f" ...)</code>。<code data-page-node-id="COC5Xl3YstWiibsVr3C936">-c</code> 是 <strong data-page-node-id="x1mX9pUcQS7rBZ29murVah">GNU coreutils 专用</strong>，macOS 上报 <code data-page-node-id="58Qybb04DHIuVOGzFFE54c">stat: illegal option -- c</code> → <code data-page-node-id="2J6vOZv8BEt9CNUAPTBHlL">|| echo 0</code> → size=0 → <code data-page-node-id="vGTeIswDW1R6MWxnSAxwGp">verify_zip</code> 判"&lt;1MB" → <code data-page-node-id="DlVG74CqX1hsevq3cpZC9y">:137 || exit 1</code> 在<strong data-page-node-id="KOt1isgYoBqIDVrnXduI8z">最后一步杀死整个构建</strong>，前面前端编译 + 交叉编译全部白跑。</div></div>
+    <div class="row" data-page-node-id="BArtwMmnBB4vES4ka8a1pH"><div class="k" data-page-node-id="vONmuYVU3xoTBdbpUxZg9o">修复</div><div class="v" data-page-node-id="k64i3tWeWns9Z68av4H6B2">
+      <pre data-page-node-id="CjElglvVmOA7KVuIwoJB6e"><code data-page-node-id="0Xcvo7v6Y6IXddDErIVC6m">git add nsis-src/ &amp;&amp; git commit -m "build: 补入 NSIS 源模板"
+
+# build-win11-x64.sh:126 —— 用 POSIX 可移植写法
+local size; size=$(wc -c &lt; "$f" 2&gt;/dev/null | tr -d ' ' || echo 0)</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="1oJ3tCIczSJegXBCquUIRG">
+  <div class="hd" data-page-node-id="KV80XgxVjY7t7rjFvxfSKG"><span class="sev s-p0" data-page-node-id="AUaiqaNfwOLA37Uxd5H1Wn">P0-7</span><span class="ttl" data-page-node-id="Kh7MXuBJfPAzByBO9P0yRj">测试基建形同虚设：无 CI、无 npm test、默认只跑 1/10 套件、跑全量会崩</span></div>
+  <div class="bd" data-page-node-id="Pih4fp8ZZXCDFXIZ4uEBSR">
+    <div class="row" data-page-node-id="gaCKmq4vwBtGgqUhMHSfrI"><div class="k" data-page-node-id="SsyFKrrAONmFpahVzS1czQ">位置</div><div class="v" data-page-node-id="Ca6hhnB7aFzgxxSvlts4YR"><code data-page-node-id="biDPThwjbfAieDBPxiF3MW">frontend/package.json:5-10</code> · <code data-page-node-id="nkzg0sYJ9S5hBbCNMZf8ml">frontend/src/preview.test-bootstrap.ts:33-37</code> · 仓库无 <code data-page-node-id="ehfTmatB21ExpY9pW8aeB4">.github/</code></div></div>
+    <div class="row" data-page-node-id="gUn6iYzqUdkLTS4S43njle"><div class="k" data-page-node-id="Li1a1h1eH2Te2tiA7COYWO">证据</div><div class="v" data-page-node-id="xZkeknkC48jBIFBCUg8jlJ">
+      ① <code data-page-node-id="TGQcxUMVOwGR07d8v6eaXM">package.json</code> 只有 <code data-page-node-id="KjkLK0042pYaKZoiacsC3k">test:unit</code>，<strong data-page-node-id="5gj84mHYrTKB770attUFAb">没有 <code data-page-node-id="QUwaRmpsxU9u0xdxpSGzYv">test</code> 脚本</strong>，<code data-page-node-id="2VE0tNiudEG6HSl3tXV0IO">npm test</code> 直接报 Missing script。<br data-page-node-id="NJKJf8N6flMQMcrNZFIVx8">
+      ② <code data-page-node-id="npK1fYi1l3LoD0WtdgjTDC">preview.test-bootstrap.ts:33</code> 是 <code data-page-node-id="eMxhjfVYj48IZZVCEwboRY">process.env.LITEMD_TEST || "preview"</code> → <strong data-page-node-id="ghubGE6VbDgY1SHXO8wNHU">默认只跑 10 个套件里的 1 个</strong>。<br data-page-node-id="A0Lf7MZUuWOjICVyXUd1vQ">
+      ③ 改 <code data-page-node-id="AGcx9PAOZTkweDXohbpCGH">LITEMD_TEST=all</code> 后<strong data-page-node-id="GW8JHGKCIcwRDVG4B3EjjN">实测崩溃</strong>：10 套共用一个 jsdom <code data-page-node-id="tF5tBAobhSCcIEjAhG8JJG">document.body</code>，<code data-page-node-id="jxNjgN9hkJ8ICxANmprhCs">titlebar.test.ts:64</code> 的 <code data-page-node-id="DGLqUz7h5adxqGvFFaT65S">document.body.innerHTML = TOPBAR_HTML</code> 把 preview 套件 append 的 host 抹掉 → <code data-page-node-id="1gJDLvK3QKvxQL7FanGMvW">preview.test.ts:285</code> 的 <code data-page-node-id="b4HLHB9ZPyhICNz2b4kkQu">removeChild</code> 抛 <code data-page-node-id="jwsabowGgK9X4mMc6cBCKs">NotFoundError</code>；<code data-page-node-id="h7wOgf1DvO9bRLArqskHy9">preview.test.ts:240</code> 与 <code data-page-node-id="G3CukxZ2vfOxt8rTEcMTM0">mermaid.test.ts:76</code> 还并发争抢 <code data-page-node-id="eF8WzmWRPGQScNz7xA3VSc">setMermaidLoader</code> 全局单例。<br data-page-node-id="eqvhTlbu2tk99HEkKy3ziw">
+      ④ 无 CI，所以上述三点<strong data-page-node-id="B39S1kQ3UbpBBMbS9yNigw">从未被人发现</strong>。
+    </div></div>
+    <div class="row" data-page-node-id="4E0bUO1OmGodCi5SJD6W0g"><div class="k" data-page-node-id="fGmj3N5W9m1E00tOl4UWB1">影响</div><div class="v" data-page-node-id="DQzqHKCnKs8dftJE012TLe">写了很多测试，但<strong data-page-node-id="4RwhSrgSSWl830d7DAdZ2Q">没有一条在 CI 里真正跑过</strong>。所有回归风险（包括本报告里的 P0-4、P0-5）都无守卫。</div></div>
+    <div class="row" data-page-node-id="vbbqob2lwCJK15MODfF3kG"><div class="k" data-page-node-id="1ANuJS1WplmdPL0kgs0N8B">修复</div><div class="v" data-page-node-id="qWmfDz2z17AVjZFR6Uexn4">
+      <pre data-page-node-id="yn4AAIFjLFo2cAgLBsdhg9"><code data-page-node-id="VDXLJuoq8o6zXmgjkv9EZO">// package.json
+"scripts": {
+  "test": "LITEMD_TEST=all tsx src/preview.test-bootstrap.ts",
+  "test:unit": "tsx src/preview.test-bootstrap.ts"
+}
+
+// preview.test-bootstrap.ts —— 改成串行 + 每套独立 DOM
+for (const [name, mod] of Object.entries(suites)) {
+  document.body.innerHTML = "";          // 每套前重置
+  await import(mod);
+}</code></pre>
+      再加一个 <code data-page-node-id="x7XIlQuegVUwJGUiK5xb1R">Makefile</code>：<code data-page-node-id="RQaPGBasbfxdfI1WmbCJei">test: (cd frontend &amp;&amp; npm run build) &amp;&amp; go test ./... -race -count=1</code>，解决"新克隆无 frontend/dist → go:embed 编译失败"的问题。<br data-page-node-id="BXYGqPO1y5538KrPyyqPrY">
+      最后补 <code data-page-node-id="A3gWqITgNdMZMTGobwCpyA">.github/workflows/ci.yml</code>，至少跑 <code data-page-node-id="nECG6ud6NxNBOeS3oMkAV9">npm ci &amp;&amp; npm test</code> 与 <code data-page-node-id="2UcCGBGEcoY2l6tXPCAxeH">go test -race ./...</code>。
+    </div></div>
+  </div>
+</div>
+
+<!-- ============ P1 ============ -->
+<h2 class="p1" data-page-node-id="1b1Yo8HQyVPQJeudxqn6Wk">🟡 重要问题（P1）</h2>
+
+<div class="issue" data-page-node-id="cLZP18VgD7i80CUfeT7NYk">
+  <div class="hd" data-page-node-id="UlzqEpHNSbNYvWJ1z363aA"><span class="sev s-p1" data-page-node-id="PKywRNZ3MbukleVHZhXNgt">P1-1</span><span class="ttl" data-page-node-id="DaN3hhCdpUacsBS0VpKu2X">Ctrl+F 搜索面板永远打不开 —— search() 扩展漏注册</span></div>
+  <div class="bd" data-page-node-id="OppNWe2gMCYs5x6OHQ2x2g">
+    <div class="row" data-page-node-id="gVAU7T66CNt3hBqoA79Zxg"><div class="k" data-page-node-id="oTuZkTfFCUboFCvs9qtmui">位置</div><div class="v" data-page-node-id="LkE7E1DnUmFMUvyF5Bppf8"><code data-page-node-id="9U27zW0jZdTjDgoJgpX4oN">frontend/src/editor.ts:12</code> 只导入了 <code data-page-node-id="vHZDECMhvGlQ7xJFk3xOt9">searchKeymap</code>，<code data-page-node-id="JJXQBGHOU3YfoFyl1eje5C">:59-125</code> 的 extensions 数组里<strong data-page-node-id="AFvsWoRwEWccw17UkcPven">没有 <code data-page-node-id="8BGi1lB2BQXkDmD8M7YQ2i">search()</code></strong></div></div>
+    <div class="row" data-page-node-id="eNvmISFaFt5TCNidUYGHbn"><div class="k" data-page-node-id="H6ZK39VcYIUrMh2jmtrp5M">证据</div><div class="v" data-page-node-id="xrHXn59FJZDtzlilJA1sa6"><code data-page-node-id="ysQsmoPZIBHRTEOmHvUGNA">@codemirror/search</code> 的 <code data-page-node-id="lYNGNlCL8rgqTBRT148GRl">openSearchPanel</code>（dist/index.js:1001）第一行就是 <code data-page-node-id="PULCf9HecbS2MNSPwavJ9o">view.state.field(searchState, false)</code>；拿不到 field 时走的 else 分支会 dispatch <code data-page-node-id="p3J6UKdkhtcwGYGiHDKPxC">togglePanel</code> effect，而该 effect 的 handler 由 <code data-page-node-id="sCXnBfysbf5G54wDEWOwWE">search()</code> 提供的 StateField 注册 —— <strong data-page-node-id="5URHqYLPv4YkcluuEOE0Rn">field 不存在时 dispatch 是空操作</strong>。README 里列的 <code data-page-node-id="I9cGPUri0GGizd6TC3Gles">Ctrl+F</code>/<code data-page-node-id="HYzHc7BnxJ2MXTtxvfmnd1">Ctrl+Shift+F</code> 快捷键因此完全失效。</div></div>
+    <div class="row" data-page-node-id="MYdAgorEBGkJfXIRKq2BHI"><div class="k" data-page-node-id="A39J422m9ptC3kgAi9hN0F">修复</div><div class="v" data-page-node-id="hWFmg0pFJxKN7i72DBgxqH"><code data-page-node-id="tXSR8xWAKjFbDDK3bXKAFU">import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";</code>，并在 extensions 里加一行 <code data-page-node-id="9fiqKckXHuCUAOYjtIHhV3">search(),</code>。（改完记得更新 README 的快捷键表说明。）</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="W7p4ZBbBuk72ijcoVvF5VP">
+  <div class="hd" data-page-node-id="No1ET5mp5sHK8ns13RyCpl"><span class="sev s-p1" data-page-node-id="MirjlojSI3v7c0UA6W6BgY">P1-2</span><span class="ttl" data-page-node-id="WFlTXjM5FeS01ByPV2M5DI">callout 内含 wiki-link 时，其后所有块的行号永久 +1 漂移</span></div>
+  <div class="bd" data-page-node-id="AGQ0kveoZBwp2dVPtDZWLL">
+    <div class="row" data-page-node-id="uO6SqR8RS8X6n5UuJDlzhK"><div class="k" data-page-node-id="5q1HELEwDfAm8JEiLbHizk">位置</div><div class="v" data-page-node-id="0oAthM8hcFdO52awQYRIra"><code data-page-node-id="XpQlKQz5A5WVZ6JhDDYkwY">frontend/src/preview.ts:75-76</code>、<code data-page-node-id="jNRo8QbAiZ8rzjryZh3eox">frontend/src/obsidian.ts:207</code></div></div>
+    <div class="row" data-page-node-id="NfncuP76OtPTDdN1MelUVl"><div class="k" data-page-node-id="mObgY7s59tJ0T66HQcabIC">根因</div><div class="v" data-page-node-id="x8Zww9VcLzPfK96DO97C03"><code data-page-node-id="an5cxEC0ICjGEhPQhQKBLf">LineMap</code> 用 <code data-page-node-id="Gr2tef1OChA1pJgSDb7hP8">findCalloutTransforms</code> 产出的 <code data-page-node-id="hceS4pg6niJzwNb8w1YZNK">replacement</code>（<strong data-page-node-id="aRaA8xGyxrdxUyZgn5YKgj">只跑了 callout 变换</strong>）去 <code data-page-node-id="85qKSBGePZxn5UjDX6dgqd">preprocessed</code>（<strong data-page-node-id="B1cH6ydbFdepjEjzHtB99M">callout + wiki 双变换</strong>）里 <code data-page-node-id="sNLmA4MrXC9EZisRt5RpCd">indexOf</code>，含 <code data-page-node-id="y6zNljt9ORKmiIOzKZUZvi">[[wiki]]</code> 时必然失配 → <code data-page-node-id="fHADpoS8SnSvaa7cgM79Hn">continue</code> 丢弃 span，行号永久偏移。</div></div>
+    <div class="row" data-page-node-id="jCj9wA6ZrchEC2WwTJdrHo"><div class="k" data-page-node-id="CKuKCxHdYGuktxDgfBPBN5">实测</div><div class="v" data-page-node-id="qYHWGPMPYHP6qzJK18lXsB"><code data-page-node-id="R1DxjDx11prjZn2U5RRk5y"># H / &gt; [!note] n / &gt; see [[A|B]] / tail</code> 中 tail 应为第 6 行，<strong data-page-node-id="d1NUwjQNg6nv4AGHxsoTD4">实得 7</strong>。影响同步滚动错行、大纲点击跳错块。</div></div>
+    <div class="row" data-page-node-id="FW9FNOeMrsMOpxDtuOOFy7"><div class="k" data-page-node-id="U8sEPr66tcinnLdF3YBNEo">修复</div><div class="v" data-page-node-id="BqgK1EzqflNYZH4y0a1kyc"><code data-page-node-id="BAGTh90zOLtMrtnQVz6Mrz">replacement: preprocessAll(m[0]).slice(m[1].length)</code> —— 让 callout 变换复用完整的 wiki 变换结果。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="qSadFiXwWI5lwjtGPl6C5O">
+  <div class="hd" data-page-node-id="hW0pyFC9IIMm51gLWXep78"><span class="sev s-p1" data-page-node-id="v7ens4pR8CP96URcDE40UM">P1-3</span><span class="ttl" data-page-node-id="BT2Ly9JG0kcXsUPl3TvJmI">大文档每敲一个键就全量重渲染预览</span></div>
+  <div class="bd" data-page-node-id="wWf5CS2o8mXT65IHOKNStt">
+    <div class="row" data-page-node-id="CZgjoQ6FKddbfy9bHdmEBA"><div class="k" data-page-node-id="hIwtBRjRjTkWvzyMOhIjRH">位置</div><div class="v" data-page-node-id="LwCW50Yoo9hQJWF47hw1l0"><code data-page-node-id="tALvQl1QMJbfNVvC6yABkh">frontend/src/main.ts:247-258</code>（防抖仅 16ms）、<code data-page-node-id="WKoLKwJq0LCgYP4XzClbsM">frontend/src/preview.ts:134</code>（缓存 key = 整篇文档）</div></div>
+    <div class="row" data-page-node-id="dIqucfn1YQ66I0tcwk0rN3"><div class="k" data-page-node-id="J9fNuOLOFUJQoJAa5uZVqh">实测</div><div class="v" data-page-node-id="fSnWsxewDrHwROE36gAwGS">改 1 个字符即全量失效，重跑 marked + DOMPurify + KaTeX + DOMParser：<strong data-page-node-id="rCOlQnv36w77rDoGDmiIrf">30KB → 149ms/次，100KB → 563ms/次，200KB → 1594ms/次</strong>。100KB 文档连续打字 = 主线程持续 0.5 秒级卡顿。</div></div>
+    <div class="row" data-page-node-id="r2IKYTyIFFlclcRhlG8lgU"><div class="k" data-page-node-id="KOSKGOKxcVTe3iRFp2gksC">修复</div><div class="v" data-page-node-id="SsGsBA2MpSASSJwCwPtCCG">
+      <pre data-page-node-id="iKM552bY5hBUfEA8gH9l8N"><code data-page-node-id="an23Pe6y3F8Hzne45SgxlP">// 按顶层 token 分块缓存（marked.lexer 已切好块），只重渲脏块
+for (const tk of tokens) {
+  const key = blockCacheKey(tk.raw);
+  out += blockCache.get(key) ?? renderBlock(tk);
+}</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="lZt1S0m5XZjxP8ENCEWGfQ">
+  <div class="hd" data-page-node-id="Bu69z2461BL00LsdFFYFp7"><span class="sev s-p1" data-page-node-id="qv6Zwmp9tFEe50FCRCklaE">P1-4</span><span class="ttl" data-page-node-id="PSpqW9UBlsYEFpGpDVCVIJ">OpenWithSystem 未校验"常规文件"，交系统打开 = 直接执行</span></div>
+  <div class="bd" data-page-node-id="FZLXfWvdrTUuXAr9FcrlnL">
+    <div class="row" data-page-node-id="6S26kipxznqfqaMeg4CeCW"><div class="k" data-page-node-id="bDoKpqM2TE7ue4StVOpVQz">位置</div><div class="v" data-page-node-id="gklTp5IgXAejDuGCqvIZYb"><code data-page-node-id="vg1JJPQTpsAUn3mVmX5Xtb">internal/links/open.go:46-63</code></div></div>
+    <div class="row" data-page-node-id="HQIcrrdBM5sImfa9zTSl0o"><div class="k" data-page-node-id="Y05HmmaiegPVKPUMAbZHHC">证据</div><div class="v" data-page-node-id="chDy46jJdMVnDGNgwfVDj9">只判 <code data-page-node-id="eWD2CV78IbtK8wf5teXDkG">st.IsDir()</code>。<code data-page-node-id="dYWFw2UqGO5sxXo7BoEqM3">/dev/zero</code>、FIFO 都能通过并被交给 <code data-page-node-id="dIFvYi3Q1Lpmig3nMOIez7">xdg-open</code>；且对 <code data-page-node-id="iE5ZDFNNYlBRhjrQj8GxYF">.exe/.bat/.cmd/.ps1/.scr/.lnk</code> 无拦截 —— "用系统默认程序打开"对这些类型<strong data-page-node-id="kIXsQNEvzoHwwCnw4VGycV">等同于直接执行</strong>。<code data-page-node-id="xYQvfbqdHMbVpMPdmoObqy">app.go:290</code> 的注释把二次确认推给前端，Go 侧无兜底。</div></div>
+    <div class="row" data-page-node-id="yel49FZ87F4n2mdYKZEX0L"><div class="k" data-page-node-id="8EGD4prToIRadAQlmdFpG7">修复</div><div class="v" data-page-node-id="hOgqc047S6a2roblvjCD91">补 <code data-page-node-id="AjfCv77hyNEvY17QuIQeAg">if !st.Mode().IsRegular() { return fmt.Errorf("%w: %s", ErrNotFile, clean) }</code>，并加可执行扩展名黑名单。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="stCxFXjTF3kohEuW9CHcFU">
+  <div class="hd" data-page-node-id="imM7DPZpLE3l0QcuPMCdBg"><span class="sev s-p1" data-page-node-id="OL9CFJEPeP1pQiBUwWTqG4">P1-5</span><span class="ttl" data-page-node-id="iOyTHP6OF14GAEs80qApsE">ReadAssetDataURL 缺 IsRegular 校验 + SVG 白名单风险</span></div>
+  <div class="bd" data-page-node-id="bTbR7yfEgpeIg2GFfzivoD">
+    <div class="row" data-page-node-id="tQmM6Guuy5EdWjRbq0BsmB"><div class="k" data-page-node-id="M8fDelm8647l7Ep1psAlkq">位置</div><div class="v" data-page-node-id="9ItPqJh8DUdvLFduhd3smZ"><code data-page-node-id="Km1qpB49bL4HEDIaAuoBbr">internal/links/asset.go:45-54</code></div></div>
+    <div class="row" data-page-node-id="LxyFYys1OI6trjZcMW8SKR"><div class="k" data-page-node-id="vLN3p63C6mQNsVB2AbDbsq">问题</div><div class="v" data-page-node-id="4GCXHAWxEYHqHy1lauIt4j">先 <code data-page-node-id="rZVulPHdrcOAsJnzWwN7H7">Stat</code> 判大小再 <code data-page-node-id="1PBQLaqw3TVJe9Vguf1kOo">ReadFile</code>，<strong data-page-node-id="T4aDF69KBAebLFGiJ2ofcd">存在 TOCTOU</strong>；命名为 <code data-page-node-id="abpJuU91maKpPPRcsXd0Ld">x.png</code> 的 FIFO 或指向 <code data-page-node-id="T3ijSXKeotYRxzYtGAFtt8">/dev/zero</code> 的软链会永久阻塞或打爆内存。另 <code data-page-node-id="nkipAioSHPRj0j37YG19ET">.svg</code> 在白名单内（<code data-page-node-id="o7fHXXkzVuV8KWxmQ0yVDB">asset.go:26</code>），前提是前端<strong data-page-node-id="ot3Pky1ZDzTfs31VzS5vq1">只用 <code data-page-node-id="elakw9qWuZSpWYEZpCDFFe">&lt;img src&gt;</code></strong>，一旦被塞进 <code data-page-node-id="2KMGsuixDKoqohQ9quuLK3">&lt;iframe&gt;/&lt;object&gt;</code> 即脚本执行。</div></div>
+    <div class="row" data-page-node-id="H1uTIq33Fm56lROGVoOUdd"><div class="k" data-page-node-id="K7f4kIMsXvXoGK1ZFpfx8d">修复</div><div class="v" data-page-node-id="dkz4g1ckZA1CMTT1lnG1P2"><code data-page-node-id="d4F1jKO5QEVoWeTEqkMQ4a">Stat</code> 后加 <code data-page-node-id="bRbfFrdhp6x2lapQCfKw6f">st.Mode().IsRegular()</code>；读数改 <code data-page-node-id="VROoYv7Zfp7IymFikAhs69">io.LimitReader</code>；<code data-page-node-id="joKmjh8X8RyQVMOVOJgM4m">.svg</code> 默认关闭或加显式开关。（对比之下 <code data-page-node-id="DlhVkExeGn07P1wCkp0EG5">fileio.ReadText:57</code> 的 <code data-page-node-id="u4tZdn7M3BlhoavI9VCNjJ">ErrNotRegular</code> 前置做得很对，这里漏了。）</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="SN0bu0Vn1bODfRbDcnjS0A">
+  <div class="hd" data-page-node-id="QxHMrVx6oEsYHDXKpHBiUh"><span class="sev s-p1" data-page-node-id="dBIW0PfIs7xvzgQXIDuJD9">P1-6</span><span class="ttl" data-page-node-id="LGqHgEV5y2NfZnEOg9fCtn">mermaid 渲染无超时、无并发上限；htmlLabels 未显式关闭</span></div>
+  <div class="bd" data-page-node-id="PLhidFqVxuzqq8pAJWHimU">
+    <div class="row" data-page-node-id="7Fo60o1DiatpY5BbpRyBC3"><div class="k" data-page-node-id="COL8CkZ6PBpCm63HfatY8c">位置</div><div class="v" data-page-node-id="CY6ri6nUbRTk9Ba6MjrdVZ"><code data-page-node-id="zNAu3hrkBj4Q56wZwZ3Nqk">frontend/src/preview.ts:651</code>（<code data-page-node-id="0GvLhUccBrDRDrcLpbXxEd">Promise.all</code>）、<code data-page-node-id="I4sr6y8EoNz5rm60cDdIkq">frontend/src/mermaid.ts:85-90</code>、<code data-page-node-id="jTUZcLdDuSPqkPv1ReoWMP">:98-99</code>、<code data-page-node-id="HGATvB4Ln2LlfnPCr9TZcq">:131</code></div></div>
+    <div class="row" data-page-node-id="eEZYcLUWvvQKhDKrc77f3k"><div class="k" data-page-node-id="cIjwadlZmK8NK9tvlWWQJC">问题</div><div class="v" data-page-node-id="cLqkG1N1GCG4HRgGud7CeW">
+      ① <code data-page-node-id="nlilg0E2wYbsPIqGsewEHc">await mod.render(...)</code> 裸调用无超时、无取消手段；N 张图并发可长时间占满主线程。<br data-page-node-id="jBI5EcyegGXkraV9z3ebD0">
+      ② 只设 <code data-page-node-id="MP4kU3ozXUwWHrmvdOs3a1">securityLevel: "strict"</code>，<strong data-page-node-id="eTyAyog00hgNysJduiwSw3">未显式 <code data-page-node-id="OEgQgQTsB5nC1Kgan0w1dP">htmlLabels: false</code></strong>；<code data-page-node-id="3SlQKki66k4e0hXJ2sx6oS">preview.ts:688</code> 的 <code data-page-node-id="uexf0GgQ29T9gGdGFECN9p">holder.innerHTML = svg</code> 也无二次净化。mermaid 文档只在 strict 下承诺"标签被编码"，并未承诺关闭 htmlLabels —— 依赖隐含行为不保险。<br data-page-node-id="3oveyH62KJSFxHubSThZzK">
+      ③ <code data-page-node-id="JWIFK4HYWcIeMk6LcQCMGE">svgCache</code> 固定 64 条但<strong data-page-node-id="20p9Px9T3MWtBiRhXjrb1Q">不限制单条体积</strong>，可能吃下数十 MB。
+    </div></div>
+    <div class="row" data-page-node-id="KqsqA5dfRYFaTbo3oxKs0A"><div class="k" data-page-node-id="ATGcfc17O2BLpXB4UXHLY0">修复</div><div class="v" data-page-node-id="Dty45xM2Bdl4z0ZTMcJcpH">
+      <pre data-page-node-id="edZsBvmKe0DNfNLq9TOliN"><code data-page-node-id="8g0NBBZXoq3ANL7rqBgDcn">mod.initialize({ startOnLoad:false, securityLevel:"strict", htmlLabels:false,
+                  suppressErrorRendering:true, maxTextSize:20000, maxEdges:300 });
+
+const SVG_TIMEOUT = 5000;
+svg = await Promise.race([mod.render(id, code, tmp),
+  new Promise((_, rej) =&gt; setTimeout(() =&gt; rej(new Error("timeout")), SVG_TIMEOUT))]);
+
+// preview.ts:688 —— innerHTML 前二次净化
+holder.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="ue3PE3bjt5vfm5fHs0Av6Z">
+  <div class="hd" data-page-node-id="YoZoZ0iTa0eCoxkzfYu0Jo"><span class="sev s-p1" data-page-node-id="einycQd7VDx1HWNOBJ4jas">P1-7</span><span class="ttl" data-page-node-id="q2IuyRiQygJ9VFG4314E1M">classifyHref 协议判定未归一化，靠 Go 侧兜底才没出事</span></div>
+  <div class="bd" data-page-node-id="tFzKFLnXoFQWuoL32jlZAV">
+    <div class="row" data-page-node-id="oIuRa8tZioMPuDXjjBwkn1"><div class="k" data-page-node-id="vUQsvavSIUH62HnsUPKTrK">位置</div><div class="v" data-page-node-id="5ANBRGBSrdnjHptPHfKrEO"><code data-page-node-id="vcarDMk1EyfzjXOUM42mCY">frontend/src/link-handler.ts:58-60</code></div></div>
+    <div class="row" data-page-node-id="Psas0SGaaCWidTYymOhb6h"><div class="k" data-page-node-id="eFhGHYi0UEUNBemHjaOBn5">实测</div><div class="v" data-page-node-id="gr59qrTTochEaOoOZeDymc"><code data-page-node-id="TWpynl6ZX5zKUsjGaF35aq">\u0000javascript:</code>、<code data-page-node-id="b60biOZPJWocoTsZUCHqeI">java\tscript:</code>、<code data-page-node-id="3TP6dQuA2SmObJyIlMvlag">&amp;#106;avascript:</code> 均被判为 <strong data-page-node-id="TOYLZMeHZwxBwfHLJfuswG">local</strong> 而非 unsafe，会走到 <code data-page-node-id="NlUkIBMIEMtL3CI3bW79AF">main.ts:494</code> 的 <code data-page-node-id="Thko7d4fZGvGUnEe6NEyK4">openExternal(link.href)</code> 兜底分支。</div></div>
+    <div class="row" data-page-node-id="JYfGlrJOLz26bOcvQ32xYN"><div class="k" data-page-node-id="S4DfzS0IRyUZeNtemOrPLb">现状</div><div class="v" data-page-node-id="4VdIaLkpQDEpSAAIpmM9Gi">Go 侧 <code data-page-node-id="71OW3RkKLIpjla2BHjFZzL">ValidateExternalURL</code>（<code data-page-node-id="LyHPcdMWiGqQuuwJbfHUJn">internal/links/open.go:30-39</code>）的 scheme 白名单 + <code data-page-node-id="3bN2ue46VnFzofc33j6ina">url.Parse</code> 拒控制字符是最后一道闸，<strong data-page-node-id="ujjp4Wmn7KZjdO3feGiSe9">当前不可利用</strong>。但分类层不应依赖下游兜底 —— 纵深防御意味着每一层都要自己成立。</div></div>
+    <div class="row" data-page-node-id="7iLTpbUa8iKU9nHN6i9Z9M"><div class="k" data-page-node-id="lDMvdDrTXt1ZfVJJJpj2qB">修复</div><div class="v" data-page-node-id="E9qQiJg9VORtrGMI29LF75"><code data-page-node-id="XyiI9TI7wXHWrbYG28jvcM">const raw = (href ?? "").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();</code> 再做协议判定。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="vGft4AAdtfu5Xr4CU4bJGs">
+  <div class="hd" data-page-node-id="cv4Szhh33wp5l3DxHXiLFy"><span class="sev s-p1" data-page-node-id="eEtlf6WMPijhKv52YVjsp3">P1-8</span><span class="ttl" data-page-node-id="DhQyHKn9TGGySDF6LmVh3f">pendingNotify 存在丢通知窗口（ctx 与 flag 未在同一把锁下判定）</span></div>
+  <div class="bd" data-page-node-id="TAOu9Mr5n4HJ9tzYq108LJ">
+    <div class="row" data-page-node-id="Hck6NEd2M68Q3FG7fJlzki"><div class="k" data-page-node-id="eBtJXFbNaN0EH6OEQk4pJT">位置</div><div class="v" data-page-node-id="nuLEV0y0mAGMIuwoLMnwP0"><code data-page-node-id="iuDMPYnBScYMKICk822Bmp">app.go:218-235</code>、<code data-page-node-id="btHIIhYkYW1A6hglLOK29n">startup</code> 在 <code data-page-node-id="8C5376rvLZAiWlWXvYClV1">:51-56</code></div></div>
+    <div class="row" data-page-node-id="6OYYXRyrRcdR5c13KbkmCD"><div class="k" data-page-node-id="obXnotZO1cuzEFDrqeEDFw">时序</div><div class="v" data-page-node-id="IXbImzQUGlmTxPtHnULdMn">回调 goroutine 在 <code data-page-node-id="BH311uoIHVvyu8ZfxuwhLy">currentCtx()</code> 读到 <strong data-page-node-id="Ve6BPf70g13qyWyi92hhx3">nil</strong> 之后、执行 <code data-page-node-id="kfzsRtr6bfE0ZpudfwxN6C">pendingNotify.Store(true)</code>（<code data-page-node-id="c8bhUQq8qO7wfmaT1t2HgX">:223</code>）之前，startup 可能已完成 <code data-page-node-id="tRjcCz9F4TzSJelrcUilXC">a.ctx = ctx</code>（<code data-page-node-id="kG6FjR1jUo83AFRf6CVjxj">:53</code>）+ <code data-page-node-id="IjS1xXNzwHhwTVg9wbuMVx">flushPendingNotify</code> 的 CAS（此时仍为 false，直接 return）。标记随后被置 true 且<strong data-page-node-id="565omEf3KdLBCwc6Is4L6e">再无补发时机</strong> —— 用户双击了 .md 文件，第二个实例把路径塞进队列，但主界面永远收不到事件。</div></div>
+    <div class="row" data-page-node-id="VoHZB2ZZejHplbXxAKSBZZ"><div class="k" data-page-node-id="wCNk4jDkhxZGNFVpbqGL9k">修复</div><div class="v" data-page-node-id="09Hbqa6GBdsgQWul5kJv6J">
+      <pre data-page-node-id="3CJ17WWG67bXuEnfKizykC"><code data-page-node-id="GwKKMv6YWWLGj00ZF5cB3e">func (a *App) notifyExternalOpen() {
+    a.ctxMu.Lock()
+    if a.ctx != nil {
+        ctx := a.ctx; a.ctxMu.Unlock()
+        wailsruntime.EventsEmit(ctx, "litemd:openExternalFile"); return
+    }
+    a.pendingNotify.Store(true)   // 持锁期间置位，消除与 startup 的交叉窗口
+    a.ctxMu.Unlock()
+}</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="4wnF8H5jsSBcokSe0WFfRf">
+  <div class="hd" data-page-node-id="7SMjgT9kd83BwEAVnpZDFK"><span class="sev s-p1" data-page-node-id="io7zBssQxHdSneyxncgNev">P1-9</span><span class="ttl" data-page-node-id="WiJDyg8xUqzcXYSG8hDFIC">ReadText 未检测 NUL（与文档注释不符）；OpenFile 无扩展名限制</span></div>
+  <div class="bd" data-page-node-id="y8B8KQirHEzTXP3QsJP4MI">
+    <div class="row" data-page-node-id="Iur2lRkGEOwyMhD6EJfg8L"><div class="k" data-page-node-id="fkpU3ZabTwKWeMveXECCS0">位置</div><div class="v" data-page-node-id="ITp2iAKOPC38oaE0eW6QHB"><code data-page-node-id="cgl90MAzy1TOjSP1ThvJaZ">internal/fileio/fileio.go:42</code>（注释）vs <code data-page-node-id="grIVUAkdoye10JRem936GG">:78</code>（实现）· <code data-page-node-id="WlBgMWSFU7jtV5V1MxdptF">app.go:91</code></div></div>
+    <div class="row" data-page-node-id="u7phE9ML5lGrPs7ZeGWpcE"><div class="k" data-page-node-id="PqlZxcsgCqMqzDlW3oujPY">问题 A</div><div class="v" data-page-node-id="kziWbSPyCRQ4guEMB5apDK"><code data-page-node-id="uacaxDSqcpu3a67MrNCS9F">:42</code> 承诺"包含 NUL 字节 → ErrIsBinary"，但 <code data-page-node-id="kbcuBVOseCJx9riSfzY2q9">:78</code> 只做 <code data-page-node-id="Y9dmUgwcD3LZFpEFDgoqPP">utf8.Valid</code>，<strong data-page-node-id="P3pe8yhUAFIInffP8k3As4">NUL 是合法 UTF-8</strong>，注释与实现不符。</div></div>
+    <div class="row" data-page-node-id="BCryYoiS30ga4wolmkQSoT"><div class="k" data-page-node-id="yn5WPDUSAPIbIABR4HBEXr">问题 B</div><div class="v" data-page-node-id="eHLCvTkQ9nAjDQuGlZqZ8j"><code data-page-node-id="TRhqSeUw1OTQWYKeEtOZLw">OpenFile</code> 对路径无扩展名限制，<code data-page-node-id="w6g0ay6XZ5YIWsRKXgnjXN">~/.ssh/id_rsa</code>、<code data-page-node-id="OZesthA0OoSqmoCYv1JsCO">.env</code> 等 UTF-8 文本可被前端直接读出（只要能诱导用户打开）。</div></div>
+    <div class="row" data-page-node-id="oXdGaGqy3MTrtspiFJ2zTZ"><div class="k" data-page-node-id="2gZHj4GdzHJGGZWZTCkfco">修复</div><div class="v" data-page-node-id="G6lpjEvb7eBPp13NYKseQi">补 <code data-page-node-id="hO181kiVDDNgt8XwrFzMxo">if bytes.IndexByte(data, 0) &gt;= 0 { return "", fmt.Errorf("%w: %s", ErrIsBinary, path) }</code>；<code data-page-node-id="ICGzJKvCsPtBNFb5gBq6js">OpenFile</code> 至少限制 <code data-page-node-id="S2Th1oLmULqApDuW9vmB8U">.md/.markdown/.txt</code> 等文本扩展名。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="e8DpufeEFAwvnUDBYCOVsf">
+  <div class="hd" data-page-node-id="j8xKbxhAHJkOtDntyxWYBy"><span class="sev s-p1" data-page-node-id="Cvu9XBo2HP0wEw3ZrQL5mP">P1-10</span><span class="ttl" data-page-node-id="WhvKJKtANn3v9WPYxgQP5M">图片插入 await 期间切换标签 → 文件写进 A，Markdown 插进 B</span></div>
+  <div class="bd" data-page-node-id="PAG1bZHrlukOp6CEYVgLnD">
+    <div class="row" data-page-node-id="BtulCAKSndHhW6RB4TBbLk"><div class="k" data-page-node-id="BRWZJHLEyF7DW3BLmNUVNn">位置</div><div class="v" data-page-node-id="BZFYyQQSQBPhCG4ybiLEj4"><code data-page-node-id="L2fnGCPmknTq0tGaDImF8A">frontend/src/main.ts:287-326</code></div></div>
+    <div class="row" data-page-node-id="3XEC1xwFN0T0GJLM3lgwfn"><div class="k" data-page-node-id="IjLzGpfEZP6JPiAaJk1aV3">问题</div><div class="v" data-page-node-id="41Ww61B1lMp1RHvXB18jAo"><code data-page-node-id="tbPMkfPJMGDBOIDTF3Lt9n">a</code> 在 await 前捕获（<code data-page-node-id="6ILMaui7a2viHIEJGsM8zj">:289</code>），<code data-page-node-id="Hc7SFoDCgi75qVXFOWa0eZ">await copyImageAsset(...)</code>（<code data-page-node-id="tcjfoBGCgwnRfmaEfOYgTQ">:317</code>）之后直接 <code data-page-node-id="ITg6Acd63U8IyWZZoGj0Id">editor.insertAtCursor(md)</code>（<code data-page-node-id="g3A7tCUdAVGjYx6xFaQHuZ">:321</code>）。IO 期间切标签，图片文件写进 A 的 <code data-page-node-id="Z7exVLJqFIHIZg2bBJYUWo">assets/</code>，Markdown 却插进 B。<strong data-page-node-id="7Ii5ojxIXllZH1csbIENa8">全文件无任何 generation / tabId 守卫</strong>（与 P0-4、P0-5 同源）。</div></div>
+    <div class="row" data-page-node-id="VK0SFXki550hxrLSFzOCMl"><div class="k" data-page-node-id="HOT4nWG0zSbyptMpPAFCbn">修复</div><div class="v" data-page-node-id="hmBEEwuarzxrnOxpjcOHLu">
+      <pre data-page-node-id="J3VQyD1fHdNjbG1DG8Aemq"><code data-page-node-id="wJkUqLcOg8z2iF3wAJ6uSC">const tabId = a!.id;
+await copyImageAsset(assetPath, b64);
+if (tm.activeId !== tabId) {
+  showError("图片已保存", `已写入 ${assetPath}，请回到原标签手动插入。`); return;
+}
+editor!.insertAtCursor(md);</code></pre>
+    </div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="fFBsFnkMoQqoT9dEXQvTjA">
+  <div class="hd" data-page-node-id="ED6WdPox5nEUuG2LIFpCl1"><span class="sev s-p1" data-page-node-id="8VgfokDegzhlxC17PtlOaZ">P1-11</span><span class="ttl" data-page-node-id="KZEJqay2GwQWp2kQ1EMAlv">关闭窗口保护不完整：未配置 OnBeforeClose，shutdown() 是死代码</span></div>
+  <div class="bd" data-page-node-id="BuzgIFOXobMED9jN84oPg5">
+    <div class="row" data-page-node-id="LoNyWUfarPPl0r758gONA5"><div class="k" data-page-node-id="wqwFvkVRTxvzQwmKaWbUDF">位置</div><div class="v" data-page-node-id="PRdHfTGwoGbz2jOoqrZwjH"><code data-page-node-id="Bz1IA7p1aXE0etT4jB5SAr">main.go:78-109</code>（wails.Run options）· <code data-page-node-id="ZCVHejLam2YDF3gsZkKXF4">app.go:68-70</code>（<code data-page-node-id="BAfeJ89AYV9jj3NUuBQZNx">shutdown</code>）</div></div>
+    <div class="row" data-page-node-id="nJ2MscPQlLXSWgN80HNapq"><div class="k" data-page-node-id="6xPOzAZMkwG2FnCHp17b5a">证据</div><div class="v" data-page-node-id="FbpvU0b0OSvIOpb87ibKGg"><code data-page-node-id="IQSBTErISg90B2xtwKCuHo">main.go</code> 的 options 里只注册了 <code data-page-node-id="SIjMUCvMk1xpsM8KVcfEvV">OnStartup</code>，<strong data-page-node-id="WyP56tiA7YpA2HIZldPXk4">没有 <code data-page-node-id="xfWAelcWDhJIMjCT5yv8yp">OnBeforeClose</code> 也没有 <code data-page-node-id="stEMzuX3iUbebElhUDcod8">OnShutdown</code></strong> —— <code data-page-node-id="xVRDFheqdKv6uhQPaNHkUs">app.go</code> 里的 <code data-page-node-id="Gr1AZrBhfAlRUp94DXMKwo">shutdown()</code> 方法永远不会被调用。OS 任务栏关闭 / Alt+F4 路径只有前端 <code data-page-node-id="Ky27IXTjU51PppOgtsnqVh">beforeunload</code> 兜底。另 <code data-page-node-id="fjbVHD95C4K5B38iZSrCD2">main.ts:981</code> 的 <code data-page-node-id="ZYEmjI4r6cM3QLl244W42t">Quit()</code> 会绕过 <code data-page-node-id="x334TBRcYLGfTku1cRP4SW">beforeunload</code>（代码里已自认）。</div></div>
+    <div class="row" data-page-node-id="Og5X2OJc9luAgfBIrpwduN"><div class="k" data-page-node-id="Mu85paaG8EqS0ZKbOyRLHV">修复</div><div class="v" data-page-node-id="V7KzOSVYtO4hASHLe23FtL">在 <code data-page-node-id="qvYc5h70KqXGfb25XazFUz">main.go</code> 补 <code data-page-node-id="Kb1MbQEH0aP7csOU794ngO">OnBeforeClose: func(ctx context.Context) bool { return app.beforeClose(ctx) }</code>，Go 侧遍历未保存标签并弹原生确认；同时把 <code data-page-node-id="cb0OmFmU2lgFNLxaDfWa2L">shutdown()</code> 接上或删掉（死代码会误导后来人）。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="J9ow5uDkaQWh0utiYHeMeO">
+  <div class="hd" data-page-node-id="Pjg0Vdvg6PI3EJlLxHT5GI"><span class="sev s-p1" data-page-node-id="tpyirSCBGCaFXubyeSmz4w">P1-12</span><span class="ttl" data-page-node-id="kVRqqBlB8UQwPZZpXmV6iV">VERSION= 分支导致文件名与二进制内部版本不一致；README / CHANGELOG 是漏网的第六、七处事实源</span></div>
+  <div class="bd" data-page-node-id="17r7AX5PRkEMpBbOIMwugC">
+    <div class="row" data-page-node-id="TW4TCMTMnvpwvwXHgZIkTk"><div class="k" data-page-node-id="1h3HIQ7eMR8OHhgWuJwzET">位置</div><div class="v" data-page-node-id="C5Vd8KdM2vBrtAYptTi4BV"><code data-page-node-id="dNcxL16oLCJixakC7dttxc">build-win11-x64.sh:50/76/117</code> · <code data-page-node-id="9qHrQ1j3wZ1dggoei5n8JD">README.md:21</code> · <code data-page-node-id="oJClUbmJiDUsG4lSCVxxfX">doc/CHANGELOG.md:9</code></div></div>
+    <div class="row" data-page-node-id="5Vi8bHqIjOB67Cu7w31GD6"><div class="k" data-page-node-id="CrWFnsErdMp2srRFk37euA">核实</div><div class="v" data-page-node-id="TneMTAN2tYr7iArbFazRbi">脚本 <code data-page-node-id="nIEEixEkRd8pSUocKP8aFi">:64-71</code> 的"五处版本事实源"（wails.json / app.go / index.html / dev.html / mocks.ts）<strong data-page-node-id="ICApTEEAdMg5zKPJI3pWXQ">经核对确实全部同步为 0.2.8</strong> ✅。但超出这五处：<code data-page-node-id="HGY2ADGBdl9P7NAOX43xrK">README.md:21</code> 仍写"下载 LiteMD-<strong data-page-node-id="wKC091994sUDkFWeXQkW5v">0.2.1</strong>-Setup-x64.exe"，<code data-page-node-id="p1esQA20mPdxNBKdA7Qbv7">CHANGELOG.md</code> 的最新条目也不会随 bump 更新。</div></div>
+    <div class="row" data-page-node-id="FeL8aKyy8haMtSDSAKK7Mg"><div class="k" data-page-node-id="rl6VhkHgC3d7zub8HLDoVS">问题</div><div class="v" data-page-node-id="rERInWEjP8k6ASRUNZvWuC">传 <code data-page-node-id="SxbwFMpmtApC4i2dWgzOnk">VERSION=1.0.0</code> 时 NSIS 的 <code data-page-node-id="OhEqXPHtJqDzC8a8uEBmnI">OutFile</code> 与 <code data-page-node-id="ajUq3HQ97hCDPqjFkUxCpX">VIProductVersion</code> 都取自 wails.json（仍是 0.2.8），exe 却被重命名为 <code data-page-node-id="SDc1utk5BzDX21NP3itU4q">LiteMD-1.0.0-Setup-x64.exe</code> —— <strong data-page-node-id="luAmMtGwp1OUHrbebTUzF1">文件名与内部版本对不上</strong>。</div></div>
+    <div class="row" data-page-node-id="McLczyE7vTbdyDBsrFO6YY"><div class="k" data-page-node-id="40nNpThIyWN4QgUfM3DDdj">修复</div><div class="v" data-page-node-id="agm4lprFDFGISDPVRLZhGB">VERSION 分支也应回写 wails.json / app.go（只跳过"自增"步骤）；把 README 的下载文件名与 CHANGELOG 标题也纳入 bump 脚本，或加一条 <code data-page-node-id="KyuL1lQiZsGv2lecAHyiGG">grep -q "$VERSION" README.md</code> 的校验。</div></div>
+  </div>
+</div>
+
+<div class="issue" data-page-node-id="zsaaQ9W0WrT6wMGLiZ8wJD">
+  <div class="hd" data-page-node-id="sCnpKQlAYHrxCKrIZux2GJ"><span class="sev s-p1" data-page-node-id="0dioRsI3cQswkQijoCPxBc">P1-13</span><span class="ttl" data-page-node-id="noPFhYkEsjdNpmnkk3uMDU">build_windows/ 是已入库的僵尸目录（.gitignore 写的是 build/windows/，斜杠对不上）</span></div>
+  <div class="bd" data-page-node-id="LwjSgMdeZMIC8gruBTkYFG">
+    <div class="row" data-page-node-id="s4zShUgRhHRUrG9hclHB5T"><div class="k" data-page-node-id="bHF41WayL2ijohQAImD2Fq">位置</div><div class="v" data-page-node-id="jYIXhemALgaH7K6jJohEfP"><code data-page-node-id="D8FjIQzO7RjxZfxDiqMvrR">.gitignore:66</code>（<code data-page-node-id="UHnx577W6l8g7guCAP8G5A">build/windows/</code>）vs <code data-page-node-id="ggiT82UOyFV7Tc2kkhMx2k">git ls-files build_windows/</code>（<strong data-page-node-id="jzzozbQbMDHwZbdqlfHEbh">6 个文件已入库</strong>）</div></div>
+    <div class="row" data-page-node-id="QUV1oQSAFhEa3hcdHCP6so"><div class="k" data-page-node-id="VIqcPBZklOGWcDDAe30eKv">证据</div><div class="v" data-page-node-id="60ADGJG83RW1Wk3JVkWFxX">入库内容包括 132KB 的 <code data-page-node-id="gRAd5af3yQibAZXNye5Aoc">appicon.png</code>、<code data-page-node-id="p5C80n3j05USQZINJ8C4G2">installer/project.nsi</code> 与 <code data-page-node-id="fibWDr7tsUYctlcSHZeQu1">installer/wails_tools.nsh</code>。而脚本 <code data-page-node-id="crlIT1vtnx1zxeNjJQ6PzF">:82-83</code> 实际用的是 <code data-page-node-id="6GCvEODKSPGaorztiaNZ85">build/windows/</code>（Wails 自动生成的），<code data-page-node-id="TqE83XN5dVu1DB5vHnF596">build_windows/</code> 是旧流程残留 —— 其中 <code data-page-node-id="yK1dpP6SER2Hv8VRoeRhFj">wails_tools.nsh</code> 恰好是 <code data-page-node-id="Hj3HC7MeFgQO3PlIJqObHc">:88</code> 想主动删掉的陈旧文件类型，容易被误拷回去。</div></div>
+    <div class="row" data-page-node-id="Z04nUarBOfbLZXqZHFSzdv"><div class="k" data-page-node-id="12wOMuR6HfeEivNAiM8kRD">修复</div><div class="v" data-page-node-id="3zpq4nXg0408P4Z0G2S1rB"><code data-page-node-id="FTXbyenRx8woog0RGdAQ5R">git rm -r --cached build_windows/</code> 并在 .gitignore 补 <code data-page-node-id="SbC3RvQWYGd5coSNrrEod6">build_windows/</code>。<br data-page-node-id="cf871QJ6q6LnTWpYE26wbJ"><span class="tag" data-page-node-id="7DlsRoH7o0psYimvbnhf7Q">另核实</span>仓库里确有 <code data-page-node-id="U4sFqeBDeUSTHkRP6Btp7P">.DS_Store</code>，但 <code data-page-node-id="6B40Lb9aGGWyF2VAwki1Pp">git ls-files | grep -i DS_Store</code> 为空 —— <strong data-page-node-id="rXRH4NIJoFB2jMUuexZSV1">已被正确忽略，未入库，无需处理</strong>。</div></div>
+  </div>
+</div>
+
+<!-- ============ P2 ============ -->
+<h2 class="p2" data-page-node-id="BTintfNtFC74x0GAOcqMFK">🟢 建议改进（P2）</h2>
+
+<table data-page-node-id="8EkcqdtyLNaTr1MY1Qvz4c">
+<thead data-page-node-id="dqPj9W0DQJtTdv45j1GXbw"><tr data-page-node-id="CuouTLiYOdh5UwHmDiHwEF"><th style="width:32%" data-page-node-id="Ax1YkpnTOycRfGMmk4Hcbx">问题</th><th style="width:22%" data-page-node-id="2FWh3k98a4v2xJKBNOXip7">位置</th><th data-page-node-id="MxZ3MzG2A3SEiRWgZl28hr">说明与建议</th></tr></thead>
+<tbody data-page-node-id="MzU8ww3wpt4ewfmIEWrlUb">
+<tr data-page-node-id="0tmCdGYAGJ2c0OE6Nu0EMw"><td data-page-node-id="vYShacWOB7i1roI3vAGfUx">同步滚动每次 scroll 全量测量 DOM</td><td data-page-node-id="WcvihuvjObz3wUIEqj3UvU"><code data-page-node-id="UsIhB1auELsDPlJc7ygkVY">sync-scroll.ts:35-44,102-116</code></td><td data-page-node-id="Io3maGfzXotz61RypCvLXK">无 rAF 节流，每次事件 <code data-page-node-id="jBAuaGYtEIn7DErMOpzfEp">querySelectorAll("[data-line]")</code> + N 次 <code data-page-node-id="4NgIuK4khp2PRNv4yXTcYt">getBoundingClientRect()</code>。2000 块文档 = 每秒上万次强制重排。加 rAF 节流 + 锚点缓存。</td></tr>
+<tr data-page-node-id="nL4Ouy8GbeLCc41lR6G9qm"><td data-page-node-id="2T2TsZS7s6RgbyZC1LGGhH">大纲高亮每次光标移动遍历全部行</td><td data-page-node-id="6qiKuvqJfRGi7ZyOqsltBo"><code data-page-node-id="nfCY5w7xgUk7zRqv9BoeYm">toc.ts:442-461</code></td><td data-page-node-id="9yTq0ii9rdJneu0oYSEnvc">扫描侧是早退的（<code data-page-node-id="hCdAxzB6u25Z3JU6cEGKOH">:251-254</code> 有 <code data-page-node-id="JE9aETkS42DyAgds8yvJDk">break</code>，没问题），问题在 apply 侧全量切 class + 两次 reflow。改为只 diff 新旧两个节点，reflow 判断移入 rAF。另 <code data-page-node-id="B82KT5JU1uWMvhtcvNpINB">main.ts:272</code> 每次按键全量 <code data-page-node-id="92Ia0C5qYPXZDEz5kP65go">parseToc</code>，应与预览一样加 16ms 防抖。</td></tr>
+<tr data-page-node-id="ouaWqTyMCn1N0lVbbnWOKO"><td data-page-node-id="j0fOFByhgut7gKvNgnBmBw">图片插入无大小校验</td><td data-page-node-id="oe59AZq3MeRO3dUMbA42K5"><code data-page-node-id="QxK63MF1k3pGS1htiBUoJh">main.ts:299-304</code></td><td data-page-node-id="6QB2rVKgfu9HQu9Ba24pe7"><code data-page-node-id="hwn9HwiESm7NDRlZs7sd6T">readAsDataURL</code> 前未查 <code data-page-node-id="70CTEvm8koynRyK62NheU5">file.size</code>，Go 侧 <code data-page-node-id="7BKe6qUA3oayZJvCyAsnAm">WriteBase64File</code> 也无上限 → 500MB 图变 667MB base64 过 IPC 桥。加 10MB 前置检查。</td></tr>
+<tr data-page-node-id="epljZSoVUC2XtrtguxIuVb"><td data-page-node-id="u9FOFzT8mCXtgAcyR4Ha9V">文件名 sanitize 把 CJK 全变下划线</td><td data-page-node-id="gVmRIqXsgIuPyzHWLG2phE"><code data-page-node-id="pYiRLHPwrjTq1PuoD4GYqu">main.ts:308</code></td><td data-page-node-id="BIzCbYjrvhKbRWCWp5cFF2"><code data-page-node-id="EMQU75BO4Ed9ZVzj9b9ZES">replace(/[^\w.\-]/g, "_")</code> 使 <code data-page-node-id="iXbe8LH7EnG2qmckaXHrgu">图片A.png</code> 与 <code data-page-node-id="n29B51CYHjaXVQfk46EAJ7">图片B.png</code> 都变 <code data-page-node-id="uH47J57wMqN1nB7F18EHSN">__.png</code> 冲突。改用 <code data-page-node-id="LriuJrC2gv4RjG6dc7pLCV">encodeURIComponent</code> 或加随机后缀。</td></tr>
+<tr data-page-node-id="0DfTNIJ3uJsexpPn1sZPuT"><td data-page-node-id="08BJUqgrQ3SqIC7waU7968">assets 目录可能得到相对路径</td><td data-page-node-id="yWS6UU8CIq3Wgsxx7HI8nA"><code data-page-node-id="doCVBJjoNDMnpp2MGBWvUD">main.ts:313</code></td><td data-page-node-id="S7fHfs0kNGUa5oW3x1h4np">路径无分隔符时 <code data-page-node-id="WvfyhaibEPDGjVqxvBEAFz">assetDir = "assets/"</code> 非绝对，Go <code data-page-node-id="IfBicQxnPkaVXyppoPgc4l">safeWritePath</code> 必拒。应回退到文档所在目录或提示"请先保存"。</td></tr>
+<tr data-page-node-id="TEPXpAOJRcnmYo5WM5k0Jg"><td data-page-node-id="t2rE9ZvmySedp5tM2zBhGf">键盘关闭标签后焦点丢失</td><td data-page-node-id="9O3RvnAci8QjzgDL05qWdH"><code data-page-node-id="3alzPTcP0n21pLWC4nq0Ol">main.ts:790-795 → tabs.ts:687</code></td><td data-page-node-id="ZwWvx1XMNBwfghn7FTuisf"><code data-page-node-id="jC6z1VZeow9XquI3ivbQpE">renderTabs()</code> 用 <code data-page-node-id="RQevbtTwdxUgMW4FfzvzCB">innerHTML = ""</code> 重建 DOM，焦点回落 body，方向键导航中断。关闭后 <code data-page-node-id="NyhfnLEu5aGyMGuwf3Z2Tx">focusTab(相邻 id)</code>。</td></tr>
+<tr data-page-node-id="1jsad8n6S0pVqcYwVT6Qsm"><td data-page-node-id="xG0jCjTE57RLPGg8xjbvIV">窗口控制 Promise 未 catch</td><td data-page-node-id="czchdGFW9spHAfFikUGYme"><code data-page-node-id="4RrE1pIYGc89LHJULotNLa">main.ts:978-984</code></td><td data-page-node-id="nHXANFwnGkAeUOkUyDusjB"><code data-page-node-id="fgz73i4Lig10DpVm6LSKPf">WindowMinimise</code> / <code data-page-node-id="HmzvWgn2CIJ552iiu1VZcK">WindowToggleMaximise</code> / <code data-page-node-id="iyBhUJ6NG07R6MF4IogyBW">Quit</code> 无 try/catch，窗口销毁竞态会抛未处理拒绝。</td></tr>
+<tr data-page-node-id="aUYQTXatDnpY3x8NhPBvcC"><td data-page-node-id="bSNmDrS0pBEa1aSNS6gKLW"><code data-page-node-id="nrZUlziArWtBAq5zKhqWZN">askUnsaved</code> 缺判空与重入守卫</td><td data-page-node-id="eYkObqnKgkBxTSzPS0Iban"><code data-page-node-id="l3DCuZSvXD6T5TirXylfTO">unsaved-guard.ts:15-23</code></td><td data-page-node-id="vjK7jq6wpjRjNllpDHWYEH"><code data-page-node-id="BmkQUCtOVDWgq3UZuEZGbJ">dlg</code> 直接解引用无判空；并发调用时第二个 <code data-page-node-id="UkMYDg8SggSVjUqMpdeq6h">showModal</code> 被跳过（<code data-page-node-id="DYznpWDm7F1U91Nm9PTHNw">:23</code>）却仍注册监听，两次关闭共用一次选择。加 <code data-page-node-id="W3QBkkLqTpHRRuXbxx1nzh">if (!dlg) return "cancel"</code> 与模块级 <code data-page-node-id="Y3LbHckGdRQtQgDRWy2ca9">pending</code> 标志。</td></tr>
+<tr data-page-node-id="8vNgJnti3zZw3qadgJzMPe"><td data-page-node-id="y3PfEniVk9oX975ObyHRo9">外链媒体打开文档即自动加载</td><td data-page-node-id="BhubgxUQcpgcrOpbpcU8N3"><code data-page-node-id="0tcrLa9toPoFTvZoYUPSLT">preview.ts:210/216/223</code></td><td data-page-node-id="GAUpaZoWFCbOfhitiSV3jx"><code data-page-node-id="h5tC4gqPPlstrPBC2eG2y6">&lt;video&gt;&lt;source src="https://..."&gt;</code> 原样保留，<strong data-page-node-id="TBNHwW6iGbM2nJVfzkmqDv">打开文档即发请求</strong>（追踪信标 / 内网探测），与 <code data-page-node-id="gUZbVH00v47ABNhzZjX1Ay">user-css.ts:75-84</code> 禁止一切外部 <code data-page-node-id="ngEoXOLXnMOj2f0JLYCoPa">url()</code> 的威胁模型自相矛盾。建议改点击占位加载。</td></tr>
+<tr data-page-node-id="6pAx299pYaLFFx4EpexhfL"><td data-page-node-id="ZXRE21Tdi33evdgKNwFnAB"><code data-page-node-id="AYzFtZiV87y7PvzHpxrY51">scrub()</code> 兜底不全</td><td data-page-node-id="bLtgGDNoDuNZB9SBBAIjbw"><code data-page-node-id="MoueTgYdTeQlDo30qIHhl8">preview.ts:568</code></td><td data-page-node-id="Us3WPNrkWfX2bZRiCJUtGG">只查 <code data-page-node-id="BAvWme4qmMi7Hc24LHn4IK">javascript:</code>，漏 <code data-page-node-id="xFEISCescYbFn4ES8s0KbN">data:</code> / <code data-page-node-id="afTyGT5qqj2F12BHKwAvTq">vbscript:</code> / 控制字符。改为复用 <code data-page-node-id="5JnlYczP0HwSwwMJ4wLz15">classifyHref(href).kind === "unsafe"</code> 判定删属性。</td></tr>
+<tr data-page-node-id="vsKUdDUPGoAVSb1S3XlHI0"><td data-page-node-id="UxE0BSkm3Excn6vN1X3Kum">CSS 组合符选择器可越界</td><td data-page-node-id="C8GRodtBAuo9ZU1TG6Vg7B"><code data-page-node-id="RwZ3Vs6gsIDqX90Vx0JN74">user-css.ts:292</code></td><td data-page-node-id="MOsqFyCB42puLk9ZvTDogB"><code data-page-node-id="naE7WLMBsUY8ikGw82M4nw">~ .sidebar {}</code> → <code data-page-node-id="bt2fnFDELcqqBlWFGecoZQ">.preview-content ~ .sidebar</code>，主体跑到包裹层之外。当前 wrap 无兄弟节点故不可利用，但布局一变即失守 → <code data-page-node-id="uLPQ7BCxhx3P11OhQWv3GD">if (/^[~+&gt;]/.test(s)) return "";</code></td></tr>
+<tr data-page-node-id="LcQVz1gp61JoE7oOIgo3qH"><td data-page-node-id="iABwlPuZ6dYViQ0rbrGPxj">navGuard 全量缓冲响应体</td><td data-page-node-id="xMZxrFxFDp2p0hkIBK6mkG"><code data-page-node-id="wLojQez2VXhopqx9M5zzMw">main.go:38-57</code></td><td data-page-node-id="ZkiHYixB5hKyoAJROhXWXi">每个 GET 都 <code data-page-node-id="HtEsxqE8mlLZZ1B25adVjp">httptest.NewRecorder()</code> 缓存到内存再回写，大资源请求内存翻倍且失去流式。改为包装 ResponseWriter 延迟 WriteHeader（只需缓冲状态码）。</td></tr>
+<tr data-page-node-id="n6yA8P7wY8a6BBwEnHlcgl"><td data-page-node-id="eUNIpGoCFXQksYKcWRkdkW"><code data-page-node-id="CXO3A8dNQZQEgm9RrNktll">splitAnchor</code> 无条件截断 <code data-page-node-id="m9SrAwmqVecv8pRE7AsrKr">?</code>；scheme 判定在解码之前</td><td data-page-node-id="gJyQWAndcBxbq5KuUkTVge"><code data-page-node-id="vC9DBigyxqnIHfEqCljTAG">links.go:178</code>、<code data-page-node-id="EI2hGs2xCV58sWSasC0U4l">:88</code> vs <code data-page-node-id="UgUKWmxcii5IRuJHdCGYyH">:93</code></td><td data-page-node-id="4YIfkMN2HKzezefyFeKEZ6">① <code data-page-node-id="7m1hdcXK4oZUqvRBil8EKC">?</code>/<code data-page-node-id="YaPr5Cisik1gQ6tzgKVXy5">#</code> 在 macOS/Linux 文件名中合法，<code data-page-node-id="WSEmTNrUwJIU6OmTDbD9Ec">a?b.md</code> 被截成 <code data-page-node-id="FD94mG1B8hfFet5qOz9tYG">a</code>；应仅在 <code data-page-node-id="vbGL3A2gEEn38EBGkAln84">runtime.GOOS == "windows"</code> 时截断。② 先判 scheme 再解码，<code data-page-node-id="FrkzPwnVyneMG0XkGTAJoa">javascript%3Aalert(1)</code> 可绕过 → 改为"解码后再判 scheme"。</td></tr>
+<tr data-page-node-id="yCoUUYTylY0wOSfdvaxvfO"><td data-page-node-id="Cws9jCEStLIcvc7F6D90on">测试质量若干</td><td data-page-node-id="P9EhEjmMTzwbgPKeENXH4y"><code data-page-node-id="mSFJcWGube0hRrst7labm1">app_test.go:123</code> 等</td><td data-page-node-id="oQ2XZjH4ei6wINe7Cv1mnh">① <code data-page-node-id="TE44GfDhnFeCdhrl62GlNi">TestAppSaveFileAs_NilCtxSafe</code> 里 <code data-page-node-id="kxXWDjsUmtI2MoYEXlMdVR">err != nil</code> 时直接 <code data-page-node-id="OsXN8wpabSRS3JwGXWTQg4">return</code>，<strong data-page-node-id="5oLtdTNNIBBplVGXSIDpJJ">任何错误都算通过</strong>（恒过测试）。② <code data-page-node-id="vKMDdgNiaLlL1YIOh3Uyav">app_test.go:191</code> 的 <code data-page-node-id="FB6qj5qrjEVmcdJVX9xknG">string(rune('0'+i))</code> 在 i≥10 时产出 <code data-page-node-id="vQBmIdoAD4UJ3CCmXUUt8n">:;&lt;</code>，路径构造本身有 bug（该文件 :200 的注释也困惑于此）。③ <strong data-page-node-id="FHeVUwOJ2uCumZZuc9asoF">P0-2 涉及的 <code data-page-node-id="QEZHDZrulKwTT6NNiMEhFm">CopyImageAsset</code> 与 P1-8 的 <code data-page-node-id="FODfVYKfaDFbZjrNEzITHC">notifyExternalOpen</code> 零测试</strong>。④ <code data-page-node-id="dvEPZhizHEA5na0Mvg1fnm">fileio_test.go:92,130</code> 硬编码 <code data-page-node-id="aJrk7fCbkhnnifZeim9sov">/tmp/x.png</code>，Windows 不可移植。</td></tr>
+</tbody>
+</table>
+
+<!-- ============ 亮点 ============ -->
+<h2 class="ok" data-page-node-id="eW6ckJ2w62fFUUDIYhujL0">🎉 值得肯定的设计</h2>
+
+<ul class="good" data-page-node-id="nVSzLs8NmBYRmt40Fpbt6z">
+<li data-page-node-id="1ajbRznujx0WQqkjXKqt9z"><b data-page-node-id="XUYTbXOLkGuPsPRKM1JaOt">KaTeX 占位符三重防伪</b>（<code data-page-node-id="55wK8sFdCwYKbb0BHrMj4v">latex.ts:46/51/215/249</code>）—— 随机盐 + 提取前剥离一切占位符形态 + 只在 <code data-page-node-id="FUR6xYrPhH9RPavTAXGAc4">&gt;text&lt;</code> 文本节点还原。实测实体编码 <code data-page-node-id="0SVLIHkARnHXtS7wEToZQU">&amp;#76;TMDPHLX0ZX</code> 也无法伪造，<code data-page-node-id="VhsC33ZzIyCpaSMgE6FWAd">data-wikilink</code> 属性上下文零污染。这个防御层次设计得很专业。</li>
+<li data-page-node-id="865PFSehxrVHgI7NKHsu8i"><b data-page-node-id="Qftc08qVMwnwwb7y3DUjsV">无 marked 自定义 renderer / tokenizer / extension</b> —— 全仓 <code data-page-node-id="IJwyzreSKtTkuQMu2Xrlaj">marked.use</code> / <code data-page-node-id="kwQIr1nX3g28tNF6bVXlTJ">renderer.</code> 零命中，所有 HTML 只有一个出口，无旁路注入。这是预览类应用最该守住的一条，你们守住了。</li>
+<li data-page-node-id="4LZjsi5q762YGEVe8pdyAX"><b data-page-node-id="Gu5rATMAROPRp2DqbIV4CH">CSS 层实测零逃逸</b>（<code data-page-node-id="lcjh2uH6HmYB63uR7IDbrI">user-css.ts</code>）—— <code data-page-node-id="pmAj0EAt8trGXewl0G2JnN">position:fixed</code> / <code data-page-node-id="FWHWiueSaZRqnzaULnBGtI">z-index</code> / <code data-page-node-id="mDORrdy6edFwzuuO1WFO8o">@import</code> / 远程 <code data-page-node-id="4trvAZneFqqqTnKVny84r7">url()</code> / 协议相对 <code data-page-node-id="p66v5G42o30UEe1M1g1Atp">//</code> / <code data-page-node-id="KyGi0iVWgezYQ3XyY8XkE4">expression()</code>，以及三种 <code data-page-node-id="UiyrcYQGwDpnMOzRIBhZDd">&lt;/style&gt;</code> 逃逸（选择器内、声明值内、@media 头内）全部拦下或转义。<code data-page-node-id="xVychEOriDhH8rom8B9Us2">&lt;/style</code> → <code data-page-node-id="lXUV8DFLLT5IJoBgOzhzkf">&lt;\/style</code> 的 CSS 等价转义（<code data-page-node-id="yDUQRHPW8SHiZ1DQTOMEBA">:151</code>）写法老练。</li>
+<li data-page-node-id="itVUDRQjSS6U5hpkX1yHRR"><b data-page-node-id="Q06mGhxsaEPSLBJVIuKYAn">DOMPurify 二次收窄 <code data-page-node-id="B0IWgzULGNTMDeBHnOGiqR">data:</code> URI</b>（<code data-page-node-id="bSTXxHpaBN1SFhjs3xwWSN">preview.ts:247-251</code>）—— <code data-page-node-id="0GGJ5YfNGB6EecqESIY12V">svg+xml</code> / <code data-page-node-id="t7jRuQalWm6ExZB27Y9gFE">text/html</code> 明确拒绝，比库默认更严。</li>
+<li data-page-node-id="8CZLqb0YaXdpySR57t8DyB"><b data-page-node-id="DUl4HDyh9m6tH2hTrSe0Ee">竞态双重守卫</b>（<code data-page-node-id="0HoFPC7NBLCoP0tRAfCdSr">preview.ts:475/655</code> 的 <code data-page-node-id="vV4xsCuNn4K6z27uYAZKBI">renderGen</code> + <code data-page-node-id="uht5nNASsLGC5KGo35gFqs">isConnected</code>）—— 切 tab / 快速输入的异步回填不会贴错内容。</li>
+<li data-page-node-id="B8qY2f0HPDWvR74tSSq6fe"><b data-page-node-id="CxdaCzXF1n2eV1R3HDvCG8">零监听器泄漏</b>（<code data-page-node-id="w1TdMhnsodJhEBGj4Cxz7e">preview.ts:345/372/379</code>）—— 三个委托监听全在构造函数绑定，host 永不被 innerHTML 清空，注释里还记录了 R1 修复的来龙去脉。</li>
+<li data-page-node-id="QEhogLGTVZ4JFzMWyliVyH"><b data-page-node-id="vcuEDtDUBU7zDtGlLSBSMN">ESC 残留 <code data-page-node-id="uMIs7K0FMatLeq6pZ6F2Iz">returnValue</code> 清零</b>（<code data-page-node-id="DdT8EJxcNUNUiBpN0yHMff">unsaved-guard.ts:22/81</code> + <code data-page-node-id="2u0T6BPBdcDbj15vx2yh0F">main.ts:537</code>）—— 这是真实踩过的"静默丢数据"坑，三处同源处理且写了原因注释，质量很高。</li>
+<li data-page-node-id="HdACTvZWMTAZ7suEhH9q5d"><b data-page-node-id="C7GUUWtAEUrguuYyrjEJB8">分侧锁设计</b>（<code data-page-node-id="RoXNZpYja3xa8Wpxs8JnEh">sync-scroll.ts:27-29</code>）—— 只锁被写入侧、源侧永不屏蔽，正确规避了乒乓与"12 步只同步 4 步"。</li>
+<li data-page-node-id="BGOGc39t7PCLrimDdBEMIU"><b data-page-node-id="gxNNM7lfsqLttd468ij9G4"><code data-page-node-id="GEqKE9S0hJYkopqrlQl6Ew">updateContentBaseline</code> 不回写 <code data-page-node-id="hikN0Y8XyFcMImCE0CMZ8q">liveContent</code></b>（<code data-page-node-id="aSG8ibbaUrE5In1AptDkFI">tabs.ts:145-151</code>）—— IO 窗口期的新输入不丢，且 <code data-page-node-id="EBDLbCAbUvR5aCreYaus7F">tabs.test.ts:49-71</code> 有针对性回归守卫。</li>
+<li data-page-node-id="Ken2A1dMWx5ERxuGxhFiHN"><b data-page-node-id="HmTxOMs9Hr1DDZRJE5QS5c">ReadText 的 <code data-page-node-id="PrJ9T2Zkf7uQKTCjIkrTts">ErrNotRegular</code> 前置 + <code data-page-node-id="gCx2LjB5YIaZNNTGSGAczg">io.LimitReader</code> 兜底</b>（<code data-page-node-id="UE8GpWNxVhPn0U6Cmc8tyx">fileio.go:57/68-75</code>）—— 把 <code data-page-node-id="ZpEZ7ZfG46zFvREbV8tcx8">/dev/zero</code> / FIFO 挂起风险挡在 Stat 阶段，考虑得比大多数同规模项目细。</li>
+<li data-page-node-id="xXUTPKLGz1AOopQ3DekmbA"><b data-page-node-id="TWpWtjgGWWWE3JPPuMolPF">config.Mutate 的锁内读-改-写 + 损坏配置自愈</b>（<code data-page-node-id="Rj4B7MgfUMRwih5EcWfHeN">config.go:160-172</code>）—— 且 <code data-page-node-id="otf5QyIcKkGHNUaJCw1mhG">config_test.go:124/171</code> 有并发与自愈双回归测试，这是本项目测试密度最高的部分。</li>
+<li data-page-node-id="AkIAEU8BkDQtDZx43tODXG"><b data-page-node-id="pwJHyfRGZ2SEKuPpAaULHg">navGuard</b>（<code data-page-node-id="DitCtikcVpL28cYPl9xAgH">main.go:31-46</code>）—— 直击"WebView 404 → SPA 卸载 → 白屏丢稿"的真实痛点，注释把失效链路讲得清清楚楚。<code data-page-node-id="HcMRlSS10FvsYZcCEIASVQ">nsis-src/project.nsi:122-134</code> 的文件关联也做得很克制：用 <code data-page-node-id="bciimk87agHuWe8JsIlcPS">OpenWithProgids</code> 条件接管，卸载只回收自己写的键，不抢用户既有的 Typora / VSCode 关联。</li>
+</ul>
+
+<!-- ============ 修复计划 ============ -->
+<h2 class="plan" data-page-node-id="v1PX0hypWIrIxxLsHn92JC">📋 建议的修复顺序</h2>
+
+<table data-page-node-id="CCOeKGgSsrijiXp4pupsZz">
+<thead data-page-node-id="p5ay7R4JxH0YtMTdbxqRT9"><tr data-page-node-id="2nmIJdC48EERNOvdJbLNTX"><th style="width:14%" data-page-node-id="9CrZf3k9fMCYUA3jcozTpO">批次</th><th style="width:40%" data-page-node-id="ngP4jIS1FaeSJkZZWrWd9G">内容</th><th data-page-node-id="7CKCl3dbpM8KS9ViYN2bQ3">理由</th></tr></thead>
+<tbody data-page-node-id="eSa4MlGFBVnCL15z74xaes">
+<tr data-page-node-id="6qVgXXiorQmzIrTHC2KRg3"><td data-page-node-id="q4Xc8BHN0CCg9BNr8ngnNX"><b data-page-node-id="zX9WJUYA6yztfDBXbaF0EW">第 1 批<br data-page-node-id="bfxwK2GNRLGgG5IIp4ZvGK">（当天）</b></td><td data-page-node-id="E6DoMuTDGE2fvS6JC066WF">P0-1 装 mermaid 并区分失败原因 · P0-6 提交 nsis-src + 修 <code data-page-node-id="LiqV1Wxl5anDBPdP9Gdugd">stat -c%s</code> · P1-1 补 <code data-page-node-id="J66B1jvpKuqxG4rKOcwlXO">search()</code> · P0-7 加 <code data-page-node-id="BvA0zIx42Q7zpBAUPMsvgn">npm test</code> 脚本</td><td data-page-node-id="lg27eIejz4CX2wzOIbkXxr">都是 10 分钟内的改动，直接决定"功能是否可用 / 构建是否可复现 / 测试是否真跑"。性价比最高，先做。</td></tr>
+<tr data-page-node-id="ifMk11mT143OtkRdaHUxfR"><td data-page-node-id="tfHc1mm3c835OSgTw5dA0J"><b data-page-node-id="cbwHZLwzFWepVUPErcrZob">第 2 批<br data-page-node-id="45kI4Ipvb8Q7GQKoRaAwrf">（本周）</b></td><td data-page-node-id="ivMd3RJuEWaXB7m4jhSxMZ">P0-2 任意写入 · P0-3 权限与目录 fsync · P0-4 undo 隔离 · P0-5 保存并发与冲突检测 · P1-4/P1-5 文件校验</td><td data-page-node-id="xyDUsrGwnezCIYcshkrqy1">全部涉及"用户数据损坏"或"安全边界"，是本报告的核心风险。P0-4 与 P0-5 与 P1-10 同源（缺 tabId / generation 守卫），建议一次性统一设计。</td></tr>
+<tr data-page-node-id="z2BqQoTelEEXWsUCAIL9PW"><td data-page-node-id="xj5bLDeJ8aVoEZBNHU9NFQ"><b data-page-node-id="4L0ww4zXDhZKX3F9ztJAol">第 3 批<br data-page-node-id="chQTxISIyJPYpanjfVShnP">（下个迭代）</b></td><td data-page-node-id="zdEdlhZnON6AihUYj1FMIY">P1-2 行号漂移 · P1-3 分块缓存 · P1-6 mermaid 水合 · P1-8 竞态 · P1-11 OnBeforeClose · P1-12/13 构建与仓库卫生</td><td data-page-node-id="LzSHqpcGi4RLJHTBTdXURe">正确性 + 性能 + 工程卫生。其中 P1-3 对大文档体验提升最明显。</td></tr>
+<tr data-page-node-id="fJs2xEGDbYUCffIUgITh7k"><td data-page-node-id="zWLIZZH0DB7MMUqIGXhxDn"><b data-page-node-id="AXq1Ir2JMhdvrArApqVtbB">持续</b></td><td data-page-node-id="cLbgEZaFEYslwNPEescDKD">补 P0-2 / P1-8 的契约测试矩阵；接 CI（<code data-page-node-id="0fIo6xfCLL2mxm7A73iROH">npm ci &amp;&amp; npm test</code> + <code data-page-node-id="CaCUy6fzBCow8kcSKRfXhW">go test -race ./...</code>）；清理恒过测试</td><td data-page-node-id="DjS2754dGPdLlck0xubr1Y">没有 CI，所有修复都不会被守住 —— 这是 P0-7 反复出现的原因。</td></tr>
+</tbody>
+</table>
+
+<div class="note" data-page-node-id="nfMPLDqIhinESXxrfeHglN">
+<b data-page-node-id="Dce7yigioaOMRWSxZSkSlT">关于验证范围的说明：</b>本报告基于静态代码审查 + 依赖与产物实测（<code data-page-node-id="WjjNwEsita00eB9kDrJv8S">npm ls</code>、<code data-page-node-id="XBBeXrmBULkAgLRj8tSNNb">git ls-files</code>、<code data-page-node-id="C7iiyBHa7erFyRSfaYOwJo">grep</code>、jsdom 单测实跑）。<strong data-page-node-id="uq5LJmMCA9obRnwiYAoVOc">环境未安装 Go toolchain</strong>，Go 侧结论均来自源码阅读，建议在有 Go 1.25 的机器上跑一次 <code data-page-node-id="5wYUmd7tpvExllV21YjEPC">go test -race ./...</code> 复核 P1-8 与"测试质量"两条。前端的 mermaid 缺失、行号漂移、渲染耗时三条已由实测确认。
+</div>
+
+<footer data-page-node-id="gxFN2gGCFELwDcdB0GmwbP">
+LiteMD 代码审查报告 · 2026-09-02 · 由 WorkBuddy 生成（静态审查 + 依赖/产物实测）<br data-page-node-id="m4ArUYcktgpaddr5NzlU1f">
+审查覆盖：Go 后端 11 文件 · 前端 TS 25 文件 · 构建/E2E 脚本 20 文件
+</footer>
+
+</div>
+</body>
+</html>
