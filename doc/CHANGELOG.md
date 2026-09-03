@@ -7,8 +7,8 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ## [未发布]
 
-全景审计（`doc/AUDIT-2026-09-03.md`）后的收尾修复。审计结论：无新增 P0/P1
-代码缺陷，问题集中在文档失真与小型工程卫生项。
+执行 [ROADMAP-2026-09-03.md](./design/ROADMAP-2026-09-03.md) P1/P2 批次
+（基于 2026-09-03 全面测试 + 文档审计）。
 
 ### 🐛 修复
 
@@ -19,11 +19,50 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 - **E2E 断言接缝补齐**：`window.__litemd__bindings` 补 `SetUnsavedCount` /
   `SaveDialog` 两个缺失导出。
 
+### ✨ 功能
+
+- **macOS Finder 双击打开**：`main.go` 注册 `mac.Options.OnFileOpen`，复用
+  `startupFiles` 队列 + `notifyExternalOpen` 兜底（startup 前的回调会置
+  `pendingNotify` 等 startup 后补发）。`app_test.go:TestOnFileOpen_PushAndNotify`
+  覆盖合法 .md 入队 + 补发、非 Markdown 拒、空路径拒。
+- **`.mkdn` 扩展名关联**：`wails.json:fileAssociations` 补 `.mkdn`（Go 侧
+  `internal/links/links.go:markdownExts` 与 `app.go:OpenDialog` 早已含，本次仅
+  补齐 OS 层注册）。
+- **编辑区字号可调 + 持久化**：新增 `frontend/src/font-size.ts`，`localStorage`
+  存 `litemd:fontSize`（10–24px），CSS 变量 `--md-fontsize` 驱动 `editor.ts`。
+  标题栏加「放大/缩小/重置」三按钮 + 快捷键 `Ctrl+` `Ctrl+-` `Ctrl+0`。
+
+### 🛡 健壮性
+
+- **LaTeX 逃逸 maxSize 闸门**：`latex.ts:isTooHeavy` 检测 8KB+ / `\raisebox`
+  / `\scalebox` / `\resizebox` / `\fbox` / `\colorbox` / 嵌套 `\phantom` /
+  99999em 等异常长度单位，命中即降级为 `latex-error` 不送进 KaTeX。
+  `latex.test.ts` 新增 8 闸门 + 1 反向用例。
+
 ### 🧹 清理
 
 - 删除死代码 `links.normalizePath` 与 `links.requireExistingFile`（均仅
   测试引用；FIFO 拒绝行为仍由 `ReadAssetDataURL`/`OpenWithSystem` 生产
   入口覆盖）；`app.go` 重复注释去重。
+
+### ⚡ 性能
+
+- **main bundle 拆包**：`frontend/vite.config.mjs` 加 `output.manualChunks`，
+  按 vendor 拆 `codemirror` / `katex` / `marked+dompurify` 三个独立分块。
+  主 chunk 969KB（gzip 318KB）→ 61KB（gzip 22KB），消除 Vite 500KB 告警；
+  兜底 vendor 3MB 主要是按需 mermaid，不阻塞首屏。
+- **大文档渲染分档防抖**（勘误：原 ROADMAP R2 待办早已随审查 P1-3 落地，
+  `main.ts:previewDelay` 16K/64K/256K/256K+ 分档 16/120/250/400ms，无需新增）
+
+### 🔧 工程
+
+- **CI 接入**：`.github/workflows/ci.yml` 三 job（go-test 三平台 race + 覆盖率
+  / frontend-test tsc + 单测 / npm-audit ≥high）+ tag 触发跨平台 build。
+- **E2E 失效脚本降级**：`e2e/SPRINT-LEGACY-README.md` 记录 sprint1/2/3/5
+  失效原因（pre-`__litemd__bindings` 注入体系 + 已删的自动更新项）与覆盖
+  范围；保留脚本以备 sprint12 迁移，恢复时只需本表说明 + 文件名约定即可。
+- **测试运行器增强**：`preview.test-bootstrap.ts` JSDOM 加 `url: http://localhost/`
+  + `localStorage` 挂载；font-size 套件加入 suites 登记表（11 套件）。
 
 ### 📦 依赖
 
@@ -36,6 +75,8 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 - TECHNICAL.md 对齐 v0.2.9：修正 §8.1「Mermaid 未实现」矛盾、§8.2 待办
   表（三项已修移除）、测试统计（10 套件 + Go 69 Test）、e2e 有效集口径、
   补测试运行器与跨语言错误契约说明、navGuard 缓冲记入已知限制。
+- 本轮 8/12 路线图项落地，**ROADMAP-2026-09-03.md** 升级为追踪表（状态/落地位置/预期效果），
+  4 项待办已下放到 TECHNICAL §8.2。
 
 ---
 

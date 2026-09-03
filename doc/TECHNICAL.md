@@ -436,11 +436,9 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 ### 8.1 已知限制
 
-- macOS「双击打开 .md」链路失效（未配置 `mac.Options.OnFileOpen`）
+- E2E 失效脚本 sprint1/2/3/5 已降级归档到 `e2e/SPRINT-LEGACY-README.md`（**有效集 sprint4~11**），sprint12 迁回再恢复
 
-- `.mkdn` 扩展名未注册文件关联（仅 md/markdown/mdown/mkd）
-
-- 前端不消费 `GetConfig`/`SetConfig`（主题在 localStorage，字号不持久化）
+- 前端 GetConfig/SetConfig 仍主要给主题持久化用，**字号/侧栏宽/同步滚动偏好** 用 localStorage（频繁读写不值得跨 IPC 边界；如未来字段增多再统一到 Config，R7 备注）
 
 - 无外部文件变更检测（用户决策取消目录监控）
 
@@ -460,12 +458,7 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 | 优先级 | 项                                                   | 位置                   |
 | --- | --------------------------------------------------- | -------------------- |
-| P1  | `mac.Options.OnFileOpen`（macOS Finder 双击打开）+ 更正过时注释 | `main.go`            |
-| P1  | CI 接 `npm audit`                                    | `.github/`（暂无 CI 配置） |
-| P1  | 修 E2E 失效断言（sprint1/2/3/5 历史脚本）                      | `e2e/`               |
-| P2  | 图片插入的 markdown 转义（alt/URL）                          | `md-escape.ts`       |
-| P2  | `\raisebox` 等逃逸 maxSize 的命令加闸门                      | `latex.ts`           |
-| P3  | 测试框架迁移 vitest；`npm run test:unit` 默认跑全量             | `package.json`       |
+| P1  | E2E sprint12：把 sprint1/2/3/5 迁到 `__litemd__bindings` 注入 + 移除自动更新项 | `e2e/`              |
 
 ***
 

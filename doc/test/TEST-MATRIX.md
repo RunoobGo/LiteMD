@@ -17,8 +17,9 @@ cd .. && go test ./... -race -count=1
 cd frontend && npm test
 cd frontend && LITEMD_TEST=latex npx tsx src/preview.test-bootstrap.ts
 
-# E2E（真实 Chromium，需 agent-browser CLI；sprint4-11 为有效集）
+# E2E（真实 Chromium，需 agent-browser CLI；有效集 sprint4~11）
 cd e2e && ./sprint6.sh && ./sprint7.sh
+# 失败脚本：sprint1/2/3/5 历史断言失效，见 §5 缺口与 §8 待办（E2E 修复 P1）
 ```
 
 ## 2. 覆盖统计（2026-09-03，v0.2.9）
