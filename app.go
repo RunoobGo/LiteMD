@@ -339,8 +339,6 @@ var defaultEmitEvent = emitEvent
 
 // takeCtxForNotify 在 ctxMu 保护下取 ctx:取到则直接可发事件;
 // 取不到(ctx 尚未就绪)则置挂起标记,返回 nil。
-// takeCtxForNotify 在 ctxMu 保护下取 ctx:取到则直接可发事件;
-// 取不到(ctx 尚未就绪)则置挂起标记,返回 nil。
 //
 // 关键在于"读 ctx"与"置标记"必须在同一临界区内:startup 的"写 ctx +
 // flushPendingNotify"若插在两者之间,标记会被置位在补发之后,再无补发时机

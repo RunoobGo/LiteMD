@@ -1,17 +1,21 @@
 # LiteMD 技术文档
 
-> 最后更新：2026-09-01（对齐当前代码快照 v0.2.2）
+> 最后更新：2026-09-03（对齐当前代码快照 v0.2.9，全景审计见 `doc/audit/AUDIT-2026-09-03.md`）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
+> 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)。
 
----
+***
 
 ## 1. 架构总览
 
 LiteMD 是一个桌面 Markdown 编辑器，技术栈：
 
 - **桌面壳**：Wails v2（Go + WebView2，Windows / macOS / Linux）
+
 - **后端**：Go（文件 IO、配置持久化、文件关联冷启动、单实例锁、图片资产复制）
+
 - **前端**：原生 TypeScript（无框架），CodeMirror 6 编辑器，marked + DOMPurify 渲染管线
+
 - **构建**：`build-win11-x64.sh` 一键交叉编译 Windows 产物（NSIS 安装包 + 便携版）
 
 ```
@@ -69,25 +73,25 @@ mousemove（按键仍按住）→ WailsInvoke("drag")
 
 两条铁律（对应此前两个失效问题的根因）：
 
-1. **必须用 CSS 变量 `--wails-draggable: drag`**。`-webkit-app-region` 是
+1. **必须用 CSS 变量** **`--wails-draggable: drag`**。`-webkit-app-region` 是
    Electron 专有属性，WebView2/Wails 完全不识别——此前拖不动即源于此。
-2. **可交互元素必须显式 `--wails-draggable: no-drag`**。CSS 变量可继承，
+2. **可交互元素必须显式** **`--wails-draggable: no-drag`**。CSS 变量可继承，
    若按钮从顶栏继承了 `drag`，点击时手抖 1px 就会触发 mousemove → 进入
    系统模态拖动循环，`click` 被吞（表现即"按钮失效"）。故 `.actions` 与
    `.window-controls` 均显式覆盖为 `no-drag`。
 
 **窗口操作 API**（`frontend/src/titlebar.ts`，经依赖注入便于单测）：
 
-| 操作 | API | 说明 |
-|---|---|---|
-| 最小化 | `WindowMinimise()` | |
-| 最大化/还原 | `WindowToggleMaximise()` | 双击标题栏空白同样触发（Wails 不内建，`titlebar.ts` 补齐） |
-| 关闭 | `Quit()` | **Wails v2 无 `WindowClose`**，`Quit` 与系统关闭行为一致（均不触发 beforeunload） |
-| 状态同步 | `WindowIsMaximised()` | Wails v2.14 Windows 不广播 `wails:maximise` 事件，改在 `resize` 上防抖 150ms 查询，切换 `.is-maximised` 图标 |
+| 操作     | API                      | 说明                                                                                         |
+| ------ | ------------------------ | ------------------------------------------------------------------------------------------ |
+| 最小化    | `WindowMinimise()`       | <br />                                                                                     |
+| 最大化/还原 | `WindowToggleMaximise()` | 双击标题栏空白同样触发（Wails 不内建，`titlebar.ts` 补齐）                                                    |
+| 关闭     | `Quit()`                 | **Wails v2 无** **`WindowClose`**，`Quit` 与系统关闭行为一致（均不触发 beforeunload）                       |
+| 状态同步   | `WindowIsMaximised()`    | Wails v2.14 Windows 不广播 `wails:maximise` 事件，改在 `resize` 上防抖 150ms 查询，切换 `.is-maximised` 图标 |
 
 浏览器 mock 端（dev.html）无 `window.runtime`，`initTitlebar(null)` 自动隐藏控制按钮组。
 
----
+***
 
 ## 2. 目录结构
 
@@ -121,12 +125,12 @@ LiteMD/
 │   ├── dev.html            # 浏览器开发入口（含 mock）
 │   └── vite.config.js      # 构建配置（含 KaTeX 字体裁剪插件）
 ├── nsis-src/              # NSIS 安装脚本（安装脚本事实源）
-├── e2e/                    # E2E 脚本（sprint4/6/7/8/9 为有效回归集；1/2/3/5 历史脚本 bug 未修）
+├── e2e/                    # E2E 脚本（sprint4~11 为有效回归集；1/2/3/5 历史脚本 bug 未修）
 ├── doc/                    # 技术文档（本文件 + CHANGELOG + archive/）
 └── build-win11-x64.sh      # 一键构建脚本
 ```
 
----
+***
 
 ## 3. 渲染管线（重要：顺序约束）
 
@@ -150,15 +154,21 @@ Markdown 源文本
 **公式占位符的安全设计（2026-08-31 加固）：**
 
 - 每次 `extractLatex` 生成**随机盐**（`Math.random + Date.now`），占位符形如 `LTMDPHLX<salt><n>ZX`，不可预测
+
 - 提取阶段先把用户文本中所有「占位符形态」（`LTMDPHLX[A-Za-z0-9]*\d+ZX`）剥成空串
+
 - `restoreLatex` 只在 `>...<` 之间的文本节点替换，**绝不触碰属性上下文**
+
 - 双保险的意义：即使攻击者在文档里伪造占位符形态（旧版可借此把 KaTeX HTML 注入 `data-wikilink`、`title` 等属性，突破 DOMPurify 属性白名单），本实现也不构成注入面
 
 **代码块豁免：**
 
-- ``` 围栏块、`行内代码`、`\$` 转义先被标记为豁免区间（`findExemptRanges`）
+- \`\`\` 围栏块、`行内代码`、`\$` 转义先被标记为豁免区间（`findExemptRanges`）
+
 - 豁免区间**只标记位置、不替换内容** —— marked 必须还能看到反引号，否则代码块会降级成普通段落
+
 - 未闭合围栏视作「开栏到文末为代码区」（与 marked 行为一致）
+
 - 豁免区间查找为线性实现（按行状态机 + 二分），避免旧版 O(n²) ReDoS
 
 ### 3.1 DOMPurify 配置
@@ -186,10 +196,12 @@ HTML 逃逸 / 旧 IE 向量 / data URI 收窄）：
 
 - `extractStyleBlocks(html)`：`<style>` 块非贪婪摘取（与浏览器 raw-text
   解析语义一致——CSS 字符串内的 `</style>` 同样会提前终止）；
+
 - `scopeUserCss(css)`：手写 CSS 重写器——`@media/@supports/@container`
   递归前缀化、`@keyframes` 内部不前缀、`@font-face` 等声明型 at-rule 仅
   过滤声明、`html/body/:root` 映射为 `.preview-content` 本体、`@import`
   等无块 at-rule 与嵌套规则（Nesting）整块丢弃；
+
 - `filterInlineStyle(css)`：声明级黑名单——`position` 仅 relative/static、
   `z-index`/`top/right/bottom/left/inset` 丢弃、`expression/behavior/
   -moz-binding` 丢弃、含 `//` 的值丢弃（覆盖 url()/image-set()/src() 全部
@@ -209,52 +221,68 @@ flowchart LR
 - **动态 import**：`import("mermaid")` 由 vite 自动分到独立 chunk（按图种
   分包，cynefin 等典型图 690KB/155KB gzip），主 JS 不内联——文档无
   mermaid 时启动零开销。
+
 - **图级缓存（LRU 64）**：缓存键 `theme + \0 + code`，切 tab / 撤销重做 /
   主题切换前同图零开销。
+
 - **`securityLevel: 'strict'`**：禁用 click 回调与危险 HTML，href 协议白名单；
   输出 SVG 通过 innerHTML 注入（依赖 strict 净化）。
+
 - **`startOnLoad: false`**：杜绝 mermaid 自动扫文档渲染（仅在用户主动
-  Preview.render 后由 hydrateMermaidBlocks 显式调用 render）。
+  Preview\.render 后由 hydrateMermaidBlocks 显式调用 render）。
+
 - **竞态防护**：与图片解析同款——`renderGen` + `holder.isConnected` 双
   守卫，快速切 tab 时过期渲染直接丢弃。
+
 - **主题切换**：`applyTheme` 末尾 `preview.onThemeChange(theme)`；onThemeChange
   不重 render 整文档，仅对已有 `.mermaid-block` 重新水合（缓存按 theme
   隔离）。
+
 - **失败降级**：`renderMermaid` 返回 `null` → `.is-error` 容器保留原码 +
   错误文案，便于校对修改。
-- **测试接缝 `setMermaidLoader`**：node/jsdom 注入 fake 模块，避开 939KB
+
+- **测试接缝** **`setMermaidLoader`**：node/jsdom 注入 fake 模块，避开 939KB
   真 chunk 下载；浏览器/E2E 走真实 dynamic import。
 
 ### 3.4 LaTeX 公式语法
 
 - 行内：`$...$`（紧邻定界符不得为空白，避免货币误判）
+
 - 块级：`$$...$$`
+
 - 代码块/行内代码/`\$` 内不渲染
 
 KaTeX 配置：`trust:false`（禁 `\href`/`\url`/`\htmlClass`/`\htmlStyle`/`\htmlData`/`\includegraphics`）、`maxSize:50`、`maxExpand:1000`、`throwOnError:false`。
 
 > ⚠️ KaTeX 版本约束：**不得低于 0.16.21**（CVE-2025-23207 修复版本，漏洞点正是本方案依赖的属性校验路径）。
 
----
+***
 
 ## 4. 安全模型
 
-| 层 | 职责 | 位置 |
-|---|---|---|
-| 1 | 公式占位符防伪（随机盐 + 剥除） | `latex.ts` |
-| 2 | Obsidian 预处理转义（双链属性过滤） | `obsidian.ts` |
-| 3 | marked 解析 | `marked` |
-| 4 | DOMPurify 严格白名单 | `preview.ts` |
-| 5 | 外链加固（target/rel） | `preview.ts` |
-| 6 | 公式还原（仅文本节点） | `latex.ts` |
-| 7 | DOM 兜底 scrub（移除 on* / javascript:） | `preview.ts` |
-| 8 | 写路径守卫（绝对路径/Clean/Windows 保留设备名） | `fileio/safepath.go` |
-| 9 | 链接点击全量拦截（杜绝 WebView 导航到 wails.localhost 未知路径） | `preview.ts` |
-| 10 | 外部打开 scheme 白名单（http/https/mailto/tel）+ 本地路径解析守卫 | `internal/links` |
-| 11 | 内嵌 CSS 作用域隔离（声明黑名单 + url 白名单 + `.preview-content` 前缀 + `</style` 转义） | `user-css.ts` |
-| 12 | Mermaid securityLevel strict + startOnLoad false + LRU 缓存 + 竞态防护 + 错误降级 | `mermaid.ts` |
+| 层  | 职责                                                                      | 位置                   |
+| -- | ----------------------------------------------------------------------- | -------------------- |
+| 1  | 公式占位符防伪（随机盐 + 剥除）                                                       | `latex.ts`           |
+| 2  | Obsidian 预处理转义（双链属性过滤）                                                  | `obsidian.ts`        |
+| 3  | marked 解析                                                               | `marked`             |
+| 4  | DOMPurify 严格白名单                                                         | `preview.ts`         |
+| 5  | 外链加固（target/rel）                                                        | `preview.ts`         |
+| 6  | 公式还原（仅文本节点）                                                             | `latex.ts`           |
+| 7  | DOM 兜底 scrub（移除 on\* / javascript:）                                     | `preview.ts`         |
+| 8  | 写路径守卫（绝对路径/Clean/Windows 保留设备名）                                         | `fileio/safepath.go` |
+| 9  | 链接点击全量拦截（杜绝 WebView 导航到 wails.localhost 未知路径）                           | `preview.ts`         |
+| 10 | 外部打开 scheme 白名单（http/https/mailto/tel）+ 本地路径解析守卫                        | `internal/links`     |
+| 11 | 内嵌 CSS 作用域隔离（声明黑名单 + url 白名单 + `.preview-content` 前缀 + `</style` 转义）    | `user-css.ts`        |
+| 12 | Mermaid securityLevel strict + startOnLoad false + LRU 缓存 + 竞态防护 + 错误降级 | `mermaid.ts`         |
 
 **原则**：DOMPurify 是唯一且充分的 HTML 清洗层；KaTeX 输出注入是设计上的例外，依赖 `trust:false` + 占位符防伪双重保护。
+
+**跨语言错误契约**：Wails v2 把 binding error 序列化为字符串，前端无法
+`errors.Is`，只能对 message 做子串匹配。前端 `main.ts` 依赖三个 Go sentinel
+的精确文案：`fileio.ErrExternalModified`（保存冲突检测）、`links.ErrNoBase`
+（未保存引导）、`links.ErrNotLocal`（外链兜底）。文案由
+`app_test.go` 的 `TestErrorTextContractForFrontend` 钉死——修改任一 sentinel
+文本会让该测试失败，防止前端分支静默失效。
 
 ### 4.1 预览链接与本地资源（v0.2.6）
 
@@ -283,21 +311,26 @@ KaTeX 配置：`trust:false`（禁 `\href`/`\url`/`\htmlClass`/`\htmlStyle`/`\ht
 Markdown。相对路径图片经 `ResolveLocalPath` + `ReadLocalAsset`（≤10MB、
 图片扩展名白名单）异步回填 data URL，`renderGen` 防串版。
 
----
+***
 
 ## 5. 后端模块
 
 ### 5.1 fileio（文件读写）
 
 - `ReadText`：IsRegular 校验（拒绝 FIFO/设备/伪文件）→ 50MB 上限 → LimitReader 兜底 → BOM 剥除 → UTF-8 校验
+
 - `WriteText` / `WriteBase64File`：临时文件 → `Sync()` → `Rename` 原子写
+
 - `safeWritePath`：绝对路径 + Clean + Windows 保留设备名（CON/NUL/AUX/COM1-9/LPT1-9）拒绝
 
 ### 5.2 config（配置持久化）
 
 - 路径：`~/.litemd/config.json`
+
 - 字段：`theme` / `fontFamily` / `fontSize` / `recentFiles`（**最小集**，无窗口尺寸/KeyMap 等预留字段）
+
 - 原子写 + Sync；损坏时降级默认值
+
 - 线程安全：`Store.mu` 保护读写
 
 > 注意：前端当前**不消费** `GetConfig`/`SetConfig`（主题存于 localStorage）。`recentFiles` 由 `PushRecent` 写入。
@@ -305,10 +338,12 @@ Markdown。相对路径图片经 `ResolveLocalPath` + `ReadLocalAsset`（≤10MB
 ### 5.3 启动文件与单实例
 
 - 冷启动：argv 中非程序路径入队 → 前端 `ConsumeStartupFile()` 逐个消费
+
 - 单实例：`SingleInstanceLock` 三平台生效，二次启动转发参数 → `litemd:openExternalFile` 事件
+
 - macOS 注意：`mac.Options.OnFileOpen` 未配置（2026-08-31 待办 P1-F），Finder 双击打开链路失效
 
----
+***
 
 ## 6. 构建与打包
 
@@ -322,27 +357,27 @@ OUT=/path/to/dist ./build-win11-x64.sh
 
 产物：
 
-| 产物 | 说明 |
-|---|---|
-| `LiteMD-0.2.1-Setup-x64.exe` | NSIS 安装版（LZMA 固实压缩） |
-| `LiteMD-0.2.1-Portable-x64.zip` | 便携版（解压即用） |
-| `LiteMD-0.2.1-Portable-x64-upx.zip` | UPX 压缩便携版（可选产物） |
+| 产物                                 | 说明                  |
+| ---------------------------------- | ------------------- |
+| `LiteMD-<版本>-Setup-x64.exe`        | NSIS 安装版（LZMA 固实压缩） |
+| `LiteMD-<版本>-Portable-x64.zip`     | 便携版（解压即用）           |
+| `LiteMD-<版本>-Portable-x64-upx.zip` | UPX 压缩便携版（可选产物）     |
 
 ### 6.2 体积优化策略（已落地）
 
-| 优化 | 效果 |
-|---|---|
-| `-webview2 browser` + 自定义 NSIS 宏（检测注册表，不内嵌引导器） | 安装包 -43%（6.01MB → 3.43MB） |
-| LZMA 固实压缩（`/SOLID lzma` + `DictSize 32`） | 进一步压缩 |
-| `-ldflags "-s -w"` + `-trimpath` | 剥离符号 + 可复现构建（跨构建 exe SHA256 一致） |
-| Vite 插件剥离 woff/ttf 字体引用（KaTeX） | dist 2.2MB → 1.3MB |
-| 不用 UPX 压缩安装包（杀软误报风险 > 3% 收益） | 仅便携版可选 |
+| 优化                                             | 效果                              |
+| ---------------------------------------------- | ------------------------------- |
+| `-webview2 browser` + 自定义 NSIS 宏（检测注册表，不内嵌引导器） | 安装包 -43%（6.01MB → 3.43MB）       |
+| LZMA 固实压缩（`/SOLID lzma` + `DictSize 32`）       | 进一步压缩                           |
+| `-ldflags "-s -w"` + `-trimpath`               | 剥离符号 + 可复现构建（跨构建 exe SHA256 一致） |
+| Vite 插件剥离 woff/ttf 字体引用（KaTeX）                 | dist 2.2MB → 1.3MB              |
+| 不用 UPX 压缩安装包（杀软误报风险 > 3% 收益）                   | 仅便携版可选                          |
 
 ### 6.3 WebView2 策略
 
 安装包**不内嵌** WebView2 运行时。安装时检测注册表（HKLM/HKCU），缺失则提示下载地址但**不阻断安装**。Win11 通常已自带。
 
----
+***
 
 ## 7. 测试
 
@@ -352,7 +387,8 @@ OUT=/path/to/dist ./build-win11-x64.sh
 # Go（含 race 检测）
 go test ./... -race -count=1
 
-# 前端全部（preview + obsidian + latex + titlebar）
+# 前端全部（父/子进程隔离运行器：LITEMD_TEST=all 时每个套件在独立子进程执行，
+# 环境变量 LITEMD_SUITE 选择单套件；npm test 为等价入口）
 cd frontend && LITEMD_TEST=all npx tsx src/preview.test-bootstrap.ts
 
 # 前端单套
@@ -360,63 +396,88 @@ cd frontend && LITEMD_TEST=latex npx tsx src/preview.test-bootstrap.ts
 cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 ```
 
-### 7.2 当前统计（2026-09-01，v0.2.7）
+### 7.2 当前统计（2026-09-03，v0.2.9）
 
-| 套件 | 断言数 |
-|---|---|
-| Go（app + config + fileio + links） | 约 60 Test 函数（links 含路径解析 12 组/kind 判定/白名单） |
-| preview.test.ts | 75（v0.2.7 增内嵌 HTML/CSS 正反向 26 项） |
-| user-css.test.ts | 64（前缀化/at-rule 分支/声明黑名单/逃逸转义，v0.2.7） |
-| obsidian.test.ts | 45（含 ReDoS 防护 9 项） |
-| latex.test.ts | 55（含占位符防伪 5 项 + ReDoS 守卫 2 项） |
-| titlebar.test.ts | 11（按钮/手势/状态同步/降级） |
-| link-handler.test.ts | 33（链接分类/锚点切分/slug 生成） |
-| E2E sprint4 / 6 / 7 / 8 / 9 / 10 | 16 / 29 / 30 / 14 / 26 / 新增，全绿 |
+| 套件                                 | 断言/用例数                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------- |
+| Go（main + config + fileio + links） | 69 个 Test 函数（含关闭守卫 app\_close\_test.go、二实例通知 app\_notify\_test.go、navguard） |
+| preview\.test.ts                   | 84（含分块增量渲染）                                                                 |
+| user-css.test.ts                   | 64（前缀化/at-rule 分支/声明黑名单/逃逸转义）                                               |
+| obsidian.test.ts                   | 45（含 ReDoS 防护 9 项）                                                          |
+| latex.test.ts                      | 55（含占位符防伪 + ReDoS 守卫）                                                       |
+| titlebar.test.ts                   | 21（按钮/手势/状态同步/降级）                                                           |
+| tabs.test.ts                       | 22                                                                          |
+| link-handler.test.ts               | 33（链接分类/锚点切分/slug 生成）                                                       |
+| toc.test.ts                        | 33                                                                          |
+| md-escape.test.ts                  | 30                                                                          |
+| mermaid.test.ts                    | 26（缓存/主题隔离/失败三分/超时/串行/LRU）                                                  |
+| E2E sprint4\~11                    | 全绿（16 / 29 / 30 / 14 / 26 / 新增）                                             |
+
+E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
+`window.__litemd__unsavedCount` 记录 mock 侧最近一次 `SetUnsavedCount` 上报值。
 
 ### 7.3 安全专项测试
 
 - 占位符伪造：wiki-link / img title 属性内占位符形态被剥除
+
 - 占位符盐每次不同
+
 - 还原不触碰属性上下文
+
 - `WIKI_RE` / `FENCE_RE` ReDoS 回归守卫（大输入 < 500ms 断言）
-- KaTeX `trust:false` 注入（\href/\htmlClass/\<script\>）
+
+- KaTeX `trust:false` 注入（\href/\htmlClass/\<script>）
+
 - 宏展开炸弹（maxExpand 限制）
 
----
+***
 
 ## 8. 已知限制与待办
 
 ### 8.1 已知限制
 
 - macOS「双击打开 .md」链路失效（未配置 `mac.Options.OnFileOpen`）
+
 - `.mkdn` 扩展名未注册文件关联（仅 md/markdown/mdown/mkd）
+
 - 前端不消费 `GetConfig`/`SetConfig`（主题在 localStorage，字号不持久化）
+
 - 无外部文件变更检测（用户决策取消目录监控）
+
 - 内嵌 CSS 不支持 CSS Nesting（嵌套规则块整块丢弃）与 `@import`/
   `@layer`；远程字体 `url()` 不可用（仅 `data:` 内联），v0.2.7 设计取舍
-- Mermaid 图表渲染未实现（评估见 v0.2.6 期报告，P1 候选）
 
-### 8.2 待办（P0 已修，P1+ 待做）
+- navGuard 中间件经 `httptest.Recorder` 全量缓冲响应再拷贝（主 chunk
+  \~1MB 双份内存）；本地 assetserver 无实测瓶颈，按「无瓶颈不重构」保留
 
-| 优先级 | 项 | 位置 |
-|---|---|---|
-| P1 | Wails `OnBeforeClose` 异步协商（关窗提示未保存） | `main.go` + `unsaved-guard.ts` |
-| P1 | 保存重构：保存期间新输入保持 dirty（`markSaved` 不覆盖 liveContent） | `main.ts` + `tabs.ts` |
-| P1 | `mac.Options.OnFileOpen` + 更正过时注释 | `main.go` |
-| P1 | `PushRecent` 读-改-写事务化 | `app.go` + `config.go` |
-| P1 | DOMPurify 升 3.4.14 + CI 接 `npm audit` | `package.json` |
-| P1 | 修 E2E 失效断言（sprint1/2/4/5） | `e2e/` |
-| P2 | 图片插入的 markdown 转义（alt/URL） | `obsidian.ts` |
-| P2 | `\raisebox` 等逃逸 maxSize 的命令加闸门 | `latex.ts` |
-| P3 | 测试框架迁移 vitest；`npm run test:unit` 默认跑全量 | `package.json` |
+- 自动更新模块已移除（v0.2.0 曾有，2026-08-31 e64af52 删除，见 CHANGELOG 勘误）
 
----
+### 8.2 待办（v0.2.9 审计后更新）
+
+> 2026-09-03 审计：原 P1 待办中 `OnBeforeClose` 协商、保存重构
+> （`updateContentBaseline` 不覆盖 liveContent）、`PushRecent` 事务化
+> （`store.Mutate`）三项已随 v0.2.9 落地，从表中移除。
+
+| 优先级 | 项                                                   | 位置                   |
+| --- | --------------------------------------------------- | -------------------- |
+| P1  | `mac.Options.OnFileOpen`（macOS Finder 双击打开）+ 更正过时注释 | `main.go`            |
+| P1  | CI 接 `npm audit`                                    | `.github/`（暂无 CI 配置） |
+| P1  | 修 E2E 失效断言（sprint1/2/3/5 历史脚本）                      | `e2e/`               |
+| P2  | 图片插入的 markdown 转义（alt/URL）                          | `md-escape.ts`       |
+| P2  | `\raisebox` 等逃逸 maxSize 的命令加闸门                      | `latex.ts`           |
+| P3  | 测试框架迁移 vitest；`npm run test:unit` 默认跑全量             | `package.json`       |
+
+***
 
 ## 9. 变更记录
 
 完整变更历史见 `doc/CHANGELOG.md`。近期关键变更：
 
 - **2026-08-31（无边框标题栏 v2）**：`Frameless: true` + 自绘窗口控制按钮；修复拖动失效（`-webkit-app-region` → `--wails-draggable`）与按钮失效（no-drag 显式覆盖）；双击标题栏最大化、resize 防抖状态同步；titlebar.test.ts 11 项
+
 - **2026-08-31（P0 修复版）**：ReadText 伪文件防护、原子写 Sync、写路径守卫、setContent 不入 undo 历史；占位符加盐防伪造、FENCE/inRanges 线性化（ReDoS）
+
 - **2026-08-31（回退版）**：撤销无边框自定义标题栏，恢复系统原生
+
 - **2026-08-30**：新增 LaTeX 公式渲染（KaTeX）；体积优化；文件关联冷启动 + 单实例锁
+

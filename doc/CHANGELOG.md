@@ -5,9 +5,44 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ---
 
+## [未发布]
+
+全景审计（`doc/AUDIT-2026-09-03.md`）后的收尾修复。审计结论：无新增 P0/P1
+代码缺陷，问题集中在文档失真与小型工程卫生项。
+
+### 🐛 修复
+
+- **跨语言错误文案契约**：新增 `TestErrorTextContractForFrontend`（app_test.go）
+  钉死前端 `main.ts` 子串匹配依赖的三个 Go sentinel 文案
+  （`ErrExternalModified` / `ErrNoBase` / `ErrNotLocal`），防止后续改动
+  sentinel 导致保存冲突检测等前端分支静默失效。
+- **E2E 断言接缝补齐**：`window.__litemd__bindings` 补 `SetUnsavedCount` /
+  `SaveDialog` 两个缺失导出。
+
+### 🧹 清理
+
+- 删除死代码 `links.normalizePath` 与 `links.requireExistingFile`（均仅
+  测试引用；FIFO 拒绝行为仍由 `ReadAssetDataURL`/`OpenWithSystem` 生产
+  入口覆盖）；`app.go` 重复注释去重。
+
+### 📦 依赖
+
+- DOMPurify `^3.4.13` → `^3.4.14`（原 TECHNICAL.md P1 待办项）。
+
+### 📝 文档
+
+- CHANGELOG 0.2.9 段补记此前遗漏的 P0-2/P0-5/P1-6/P1-8/P1-10/P1-12 等
+  修复；勘误：updater 模块已于 2026-08-31 移除（0.2.0 条目失实）。
+- TECHNICAL.md 对齐 v0.2.9：修正 §8.1「Mermaid 未实现」矛盾、§8.2 待办
+  表（三项已修移除）、测试统计（10 套件 + Go 69 Test）、e2e 有效集口径、
+  补测试运行器与跨语言错误契约说明、navGuard 缓冲记入已知限制。
+
+---
+
 ## [0.2.9] — 2026-09-03
 
 基于代码审查（`doc/CODE-REVIEW-2026-09-02.html`）的 patch 收口。
+全景审计报告见 `doc/AUDIT-2026-09-03.md`（含本段补记说明）。
 
 ### 🔒 安全
 
@@ -18,6 +53,18 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   凭据黑名单（`id_rsa` / `.env` / `.pem`）。
 - **链接分类**：`classifyHref` 判定协议前剥离控制字符
   （U+0000–U+001F / U+007F–U+009F），防控制字符绕过。
+- **图片资产写入收敛（审查 P0-2，本段补记）**：`CopyImageAsset` 旧签名
+  `(targetPath, base64Data)` 允许前端指定任意绝对路径，等价「任意文件写入
+  原语」；改为 `(baseFile, assetName, base64Data)`，写入位置由后端从文档
+  目录推导（`<文档目录>/assets/`），assetName 校验纯文件名 + 图片扩展名
+  白名单 + 128 字符上限，解码内容限 20MB。新增 `internal/fileio/asset.go`。
+- **保存冲突检测与串行化（审查 P0-5/P1-10，本段补记）**：`SaveFile` 增加
+  `expectMtime` 参数，mtime 不符返回 `ErrExternalModified` 拒绝写入（旧版
+  静默覆盖外部修改）；前端 per-tab `enqueueSave` 串行链消除「旧内容覆盖新
+  内容」竞态，保存后以 Go 返回的真实 mtime 记账（旧版用 `Date.now()` 伪造）。
+- **二实例通知并发修复（审查 P1-8，本段补记）**：`pendingNotify` 与 `ctx`
+  收进同一把 `ctxMu` 写锁，消除「读 ctx 为 nil 后被 startup 插队、标记再无
+  补发时机」的丢通知窗口（回归测试 `app_notify_test.go`）。
 
 ### 🐛 修复
 
@@ -25,12 +72,43 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   `rawLines == prepLines`、行号记账守恒（审查 P1-2）。
 - **OS 级关闭守卫**：新增 `SetUnsavedCount` 绑定，`OnBeforeClose` 检查未保存计数
   弹原生确认框（审查 P1-11）。
+- **mermaid 失败原因三分（审查 P0-1/P1-6，本段补记）**：渲染结果由
+  `string|null` 改为 `{ok,svg}|{ok:false,reason:"empty"|"load"|"syntax"|"timeout"}`；
+  病态输入卡死 render 走超时接缝（`setRenderTimeout`），并发请求经
+  `enqueueRender` 串行化（峰值 in-flight = 1）。
+- **编辑器搜索与 undo 隔离（本段补记）**：补装 CodeMirror `search()` 扩展
+  （此前 searchKeymap 缺依赖 field，Ctrl+F 是空操作）；切标签时经
+  `historyCompartment` 换新 history 实例清空 undo 栈，杜绝「切到 B 后
+  Ctrl+Z 把 A 的变更逆放回 B」的跨文件数据污染。
+- **图片插入竞态（审查 P1-10，本段补记）**：await 期间用户切走标签时，
+  图片 markdown 插回原标签（必要时重新激活）；目标标签已关闭则明确提示
+  而非静默丢失。
 
 ### ⚡ 性能
 
 - **大文档增量渲染**：按顶层 token 分块走完整安全管线并缓存
  （`BLOCK_CACHE_MAX=4096`），共享单个 `DOMParser` 实例，防抖按文档大小分档
   （审查 P1-3）。
+- **共享 DOMParser**（本段补记）：`hardenLinks` 等环节复用单个 `DOMParser`
+  （jsdom 下每次 new 会随调用次数二次劣化），无 `<a>` 块跳过 DOM 解析；
+  latex 占位符盐改为会话级，含公式文档的分块缓存得以命中。
+
+### 🧰 工程（本段补记）
+
+- **测试套件隔离运行器**：`preview.test-bootstrap.ts` 改父/子进程模型
+  （`LITEMD_SUITE`），10 套件真实并发隔离运行；补 `npm test` 入口。
+- **构建脚本版本语义拆分（审查 P1-12）**：`SKIP_BUMP=1`（完全不动）/
+  `VERSION=x.y.z`（回写六处事实源）/ 无参（自增 patch）三种语义独立处理，
+  矛盾组合给出明确警告；版本事实源从 5 处扩到 6 处（新增 README 下载名）。
+- **三个恒过/撞名测试修复**：`TestAppSaveFileAs_NilCtxSafe` 改三段契约
+  断言；`TestAppPushRecent_Limit10` 路径构造改 `fmt.Sprintf`；fileio 测试
+  `/tmp` 硬编码改 `t.TempDir()`。
+
+### ⚠️ 勘误
+
+- **自动更新模块移除**：v0.2.0 曾记录「自动更新检查（GitHub Releases API）」，
+  该功能已于 2026-08-31（e64af52，早于 0.2.4 发版）随构建目录重组整体移除，
+  此前各版本均未记录。当前版本无自动更新能力，README 与代码一致。
 
 ## [0.2.8] — 2026-09-01
 

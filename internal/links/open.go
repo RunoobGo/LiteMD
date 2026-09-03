@@ -61,16 +61,7 @@ var execExts = map[string]bool{
 	".sh": true, ".bash": true, ".zsh": true, ".run": true, ".desktop": true,
 }
 
-// requireExistingFile 校验路径是绝对路径且指向存在的常规文件。
-//
-// 用本包的 isAbsolute 而非 filepath.IsAbs：后者在跨平台构建下会把
-// Windows 盘符路径判成相对路径，导致真机上的绝对路径被误拒。
-func requireExistingFile(path string) (string, error) {
-	clean, _, err := statExistingFile(path)
-	return clean, err
-}
-
-// statExistingFile 是 requireExistingFile 的带 FileInfo 版本。
+// statExistingFile 校验路径是绝对路径且指向存在的常规文件。
 //
 // 返回 Stat 当时的 FileInfo 而非让调用方二次 Stat：先判大小再 ReadFile 会
 // 留下 TOCTOU 窗口（审查 P1-5 —— 名为 x.png 的 FIFO 或指向 /dev/zero 的

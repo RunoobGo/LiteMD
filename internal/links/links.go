@@ -255,14 +255,6 @@ func decodePath(s string) (string, error) {
 	return url.PathUnescape(s)
 }
 
-// normalizePath 归一路径形态：剥 file:// 前缀、反斜杠转正斜杠。
-//
-//   - file:///C:/docs/a.md → C:/docs/a.md
-//   - file://server/share/a.md → //server/share/a.md（UNC）
-func normalizePath(s string) string {
-	return toSlashes(stripFileURL(strings.TrimSpace(s)))
-}
-
 // stripFileURL 把 file:// 形态还原成本地路径写法（不含斜杠归一）。
 func stripFileURL(s string) string {
 	if len(s) >= 7 && strings.EqualFold(s[:7], "file://") {

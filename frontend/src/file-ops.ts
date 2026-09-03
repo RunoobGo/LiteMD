@@ -127,6 +127,7 @@ window.__litemd__bindings = {
     OpenDialog: pickOpenPath,
     SaveFile: saveFile,
     SaveFileAs: saveFileAs,
+    SaveDialog: pickSavePath,
     GetConfig: getConfig,
     PushRecent: pushRecent,
     CopyImageAsset: copyImageAsset,
@@ -134,4 +135,5 @@ window.__litemd__bindings = {
     OpenExternal: openExternal,
     OpenPath: openPath,
     ReadLocalAsset: readLocalAsset,
+    SetUnsavedCount: setUnsavedCount,
 };

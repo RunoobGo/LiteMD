@@ -11,11 +11,38 @@ import (
 
 	"litemd/internal/config"
 	"litemd/internal/fileio"
+	"litemd/internal/links"
 )
 
 // 注意：本文件测试 App 的 binding 方法。
 // 由于 binding 直接调用 fileio/config 包，stub 不需要外部依赖，
 // 但 ctx 是 nil 时部分方法会失败，正好可以借此验证 nil 安全。
+
+// TestErrorTextContractForFrontend 钉死前端 main.ts 依赖的 Go 错误文案。
+//
+// Wails v2 把 binding error 序列化为字符串传到前端，前端无法 errors.Is，
+// 只能对 message 做子串匹配（保存冲突检测、未保存引导等分支依赖此）。
+// Go 侧任何人改写这些 sentinel 文案，前端对应功能会静默退化为通用错误
+// 弹窗——本测试让这类改动在 CI 阶段立刻失败，而不是等到用户报障。
+// 前端消费位置：frontend/src/main.ts 的 saveTabNow / openLocalLink。
+func TestErrorTextContractForFrontend(t *testing.T) {
+	cases := []struct {
+		name string
+		got  error
+		want string // 必须 == error 全文（sentinel 不带包装前缀）
+	}{
+		{"ErrExternalModified（保存冲突检测）", fileio.ErrExternalModified, "file modified by another program"},
+		{"ErrNoBase（未保存文档引导）", links.ErrNoBase, "base file path is empty"},
+		{"ErrNotLocal（外链兜底分流）", links.ErrNotLocal, "link target is not a local path"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.got.Error() != c.want {
+				t.Fatalf("错误文案被修改，前端 main.ts 的子串匹配将失效：\n  got:  %q\n  want: %q", c.got.Error(), c.want)
+			}
+		})
+	}
+}
 
 func TestAppOpenFile_NotFound(t *testing.T) {
 	a := NewApp()

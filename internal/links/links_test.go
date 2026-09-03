@@ -219,9 +219,9 @@ func TestOpenWithSystemRejectsExecutable(t *testing.T) {
 	}
 }
 
-// TestRequireExistingFileRejectsNonRegular 审查 P1-4/P1-5：
+// TestNonRegularFileRejected 审查 P1-4/P1-5：
 // FIFO / 设备 / 目录都必须被拒 —— 它们的 Size() 为 0，能绕过大小预检。
-func TestRequireExistingFileRejectsNonRegular(t *testing.T) {
+func TestNonRegularFileRejected(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 无 POSIX FIFO")
 	}
@@ -231,7 +231,6 @@ func TestRequireExistingFileRejectsNonRegular(t *testing.T) {
 		t.Skipf("无法创建 FIFO: %v", err)
 	}
 	for _, fn := range []func(string) error{
-		func(p string) error { _, err := requireExistingFile(p); return err },
 		func(p string) error { _, err := ReadAssetDataURL(p); return err },
 		func(p string) error { return OpenWithSystem(p) },
 	} {
