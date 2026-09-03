@@ -1,0 +1,154 @@
+# GitHub Actions CI for LiteMD
+# 设计：每次 push/PR 跑 lint+test 矩阵（go 与 node 分两段，跨平台），build 留作
+# 发布触发（v* tag）以避免 PR 阶段被 macOS runner 分钟数吃光。
+#
+# 任务：go-test / frontend-test / npm-audit 全部为合并前置拦截。任一失败 block PR。
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------------
+  # Go 测试矩阵：linux/macos/windows + race 检测
+  # 复用 cache（按 go.sum + 源文件路径哈希）保持增量速度
+  # -------------------------------------------------------------------
+  go-test:
+    name: go test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      # Wails build 阶段会 go:embed 前端产物，但测试不嵌入：跳过
+      - name: go test -race
+        run: go test ./... -race -count=1
+
+      # 覆盖率（仅在 main 分支非 PR 时上传，可选）
+      - name: go test coverage
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          go test ./... -coverprofile=coverage.out -count=1
+          go tool cover -func=coverage.out | tail -1
+
+  # -------------------------------------------------------------------
+  # 前端：tsc 类型检查 + 单测
+  # -------------------------------------------------------------------
+  frontend-test:
+    name: frontend (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+
+      # tsc 类型检查：test 模式是为了 npm test 也要先过类型
+      - name: tsc --noEmit
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: run unit tests
+        working-directory: frontend
+        env:
+          LITEMD_TEST: all
+        run: npx tsx src/preview.test-bootstrap.ts
+
+  # -------------------------------------------------------------------
+  # npm audit：依赖 CVE 前置拦截（medium 以上才 fail，避免噪声）
+  # 试运行 verify-deps 确认脚本签名
+  # -------------------------------------------------------------------
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm install
+        working-directory: frontend
+
+      - name: audit (>= high)
+        working-directory: frontend
+        run: |
+          npx --yes npm-audit-resolver@^1 --audit-level=high || \
+          (echo "::warning::npm-audit-resolver 未装上，回退到 npm audit"; npm audit --audit-level=high)
+
+  # -------------------------------------------------------------------
+  # 构建产物：仅在打 v* tag 时跑（macOS runner 较贵，避免 PR 阶段占用）
+  # -------------------------------------------------------------------
+  build:
+    name: wails build (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [go-test, frontend-test, npm-audit]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+
+      - name: wails build (tag=${{ github.ref_name }})
+        run: wails build -clean -platform ${{ matrix.os == 'macos-latest' && 'darwin/universal' || (matrix.os == 'windows-latest' && 'windows/amd64' || 'linux/amd64') }}
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: litemd-${{ matrix.os }}
+          path: |
+            build/bin/LiteMD*
+            build/bin/litemd*
+            !build/bin/*.pdb

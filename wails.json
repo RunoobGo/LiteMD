@@ -16,7 +16,8 @@
       { "ext": "md", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
       { "ext": "markdown", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
       { "ext": "mdown", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
-      { "ext": "mkd", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" }
+      { "ext": "mkd", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" },
+      { "ext": "mkdn", "name": "Markdown Document", "description": "Markdown 文档", "role": "Editor", "iconName": "appicon" }
     ]
   },
   "author": {

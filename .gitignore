@@ -165,9 +165,20 @@ lerna-debug.log*
 # ----------------------------------------------------------------------------
 # 9. E2E 屏幕截图外的临时产物（截图基准保留入库）
 # ----------------------------------------------------------------------------
+# 命名约定：sprint* 脚本默认产出 e2e/sprintN-*.png。Sprint7 系列（bar-height、
+# topbar-compact 等）是有意保留的视觉基准，单独白名单。
 e2e/*.tmp.png
 e2e/*.diff.png
 e2e/*.log
+e2e/sprint*-screenshot.png
+e2e/sprint6-preview-jump.png
+e2e/sprint6-split-jump.png
+e2e/sprint7-*.png
+!e2e/sprint7-bar-height.png
+!e2e/sprint7-bar-height-top.png
+!e2e/sprint7-codeblocks.png
+!e2e/sprint7-tooltip-on-top.png
+!e2e/sprint7-topbar-compact.png
 
 # ----------------------------------------------------------------------------
 # 10. 代理/助手工作区状态（非项目源码，不入库）
