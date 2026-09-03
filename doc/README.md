@@ -26,6 +26,7 @@
 | 规划 / 需求 | [archive/DEVELOPMENT_PLAN.md](./archive/DEVELOPMENT_PLAN.md) | 项目目标、范围边界（v0.2.0 历史基线） | 产品 / 架构 | 一次性，历史冻结 |
 | 设计 / 架构 | [TECHNICAL.md](./TECHNICAL.md) | 架构总览、渲染管线、安全模型、构建 | 全研发 | 每次功能/安全变更 |
 | 设计原则 | [design/PRINCIPLES.md](./design/PRINCIPLES.md) | 跨模块设计约定与编码纪律（原子写、XSS、并发） | 全研发 | 新增约定时 |
+| 建议 / 路线图 | [design/ROADMAP-2026-09-03.md](./design/ROADMAP-2026-09-03.md) | 优化/改进/功能开发建议与预期效果（R1-R12） | 架构 / 研发 | 每轮评审 |
 | 测试 | [test/TEST-MATRIX.md](./test/TEST-MATRIX.md) | 分级测试矩阵、运行方式、覆盖率统计 | QA / 研发 | 每次用例变更 |
 | 发布 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更日志（逐版本平铺） | 发布 / 全团队 | **每次修复/功能落地** |
 | 发布说明 | [archive/RELEASE-NOTES.md](./archive/RELEASE-NOTES.md) | v0.2.0 发布亮点（历史） | 市场 / 用户 | 一次性，历史冻结 |
@@ -43,7 +44,8 @@ doc/
 ├── CHANGELOG.md                 版本变更日志（主文档锚点）
 ├── TECHNICAL.md                 技术文档（架构/管线/安全/构建/测试，主文档锚点）
 ├── design/
-│   └── PRINCIPLES.md            设计原则与约定（含主题配色）
+│   ├── PRINCIPLES.md            设计原则与约定（含主题配色）
+│   └── ROADMAP-2026-09-03.md    优化/改进/功能建议（R1-R12）
 ├── test/
 │   └── TEST-MATRIX.md           分级测试矩阵与运行文档
 ├── audit/
