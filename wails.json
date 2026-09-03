@@ -9,7 +9,7 @@
   "info": {
     "companyName": "LiteMD",
     "productName": "LiteMD",
-    "productVersion": "0.2.8",
+    "productVersion": "0.2.9",
     "copyright": "Copyright © 2026 LiteMD",
     "comments": "A lightweight Markdown editor with Obsidian-compatible syntax",
     "fileAssociations": [

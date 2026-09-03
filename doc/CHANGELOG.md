@@ -5,6 +5,33 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ---
 
+## [0.2.9] — 2026-09-03
+
+基于代码审查（`doc/CODE-REVIEW-2026-09-02.html`）的 patch 收口。
+
+### 🔒 安全
+
+- **打开链路加固**：`OpenWithSystem` 增加 `IsRegular()` 校验与可执行扩展名黑名单
+  （bat/exe/lnk/sh）；`ReadAssetDataURL` 改用 `statExistingFile` 消除 TOCTOU、
+  补 `LimitReader` 兜底、`.svg` 默认关闭（需 `AllowSVG` 显式开启）。
+- **文件读取**：`ReadText` 增加 NUL 字节检测；`OpenFile` 增加文本类型白名单 +
+  凭据黑名单（`id_rsa` / `.env` / `.pem`）。
+- **链接分类**：`classifyHref` 判定协议前剥离控制字符
+  （U+0000–U+001F / U+007F–U+009F），防控制字符绕过。
+
+### 🐛 修复
+
+- **callout 行号漂移**：callout 体内含 `[[wiki]]` 时保留 `m[1]` 前缀，使
+  `rawLines == prepLines`、行号记账守恒（审查 P1-2）。
+- **OS 级关闭守卫**：新增 `SetUnsavedCount` 绑定，`OnBeforeClose` 检查未保存计数
+  弹原生确认框（审查 P1-11）。
+
+### ⚡ 性能
+
+- **大文档增量渲染**：按顶层 token 分块走完整安全管线并缓存
+ （`BLOCK_CACHE_MAX=4096`），共享单个 `DOMParser` 实例，防抖按文档大小分档
+  （审查 P1-3）。
+
 ## [0.2.8] — 2026-09-01
 
 新增 **Mermaid 图表渲染**（评估报告 P1）：动态 import 启动≈0、图级缓存 +30MB
