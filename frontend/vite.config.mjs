@@ -39,16 +39,19 @@ export default {
             },
             // 按 vendor 拆包：避免主 chunk 超过 500KB 告警，并让增量构建/HMR
             // 对单个 vendor 改动只重编对应分块。mermaid 已是动态 import 自然拆出。
+            // 审计 R2-F5：原 `id.includes("codemirror")` 子串匹配会把
+            // 任何含子串的路径（潜在含 `codemirror` 的插件/主题）误归；
+            // 改用 `node_modules/<scope>/` 的目录前缀精确匹配。
             output: {
                 manualChunks: (id) => {
                     if (!id.includes("node_modules")) return undefined;
-                    if (id.includes("codemirror") || id.includes("@lezer") || id.includes("@codemirror")) {
+                    if (/(?:^|[\\/])(?:@codemirror|@lezer)[\\/]/.test(id)) {
                         return "vendor-codemirror";
                     }
-                    if (id.includes("katex")) {
+                    if (/(?:^|[\\/])katex[\\/]/.test(id)) {
                         return "vendor-katex";
                     }
-                    if (id.includes("marked") || id.includes("dompurify")) {
+                    if (/(?:^|[\\/])(?:marked|dompurify)[\\/]/.test(id)) {
                         return "vendor-marked";
                     }
                     return "vendor";

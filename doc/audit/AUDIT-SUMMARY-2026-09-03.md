@@ -3,6 +3,10 @@
 > 日期：2026-09-03
 > 范围：阶段一（全景审计与测试计划）+ 阶段二（逐项修复与验证循环）
 > 详细问题清单、差异报告与测试矩阵见 [AUDIT-2026-09-03.md](AUDIT-2026-09-03.md)
+>
+> **后续**：本轮之后做了 [AUDIT-2026-09-03-R2.md](AUDIT-2026-09-03-R2.md) 第二轮审计
+> （F1 错误码体系 + 20 P1 + 18 P2 全部修复），见其
+> [AUDIT-SUMMARY-2026-09-03-R2.md](AUDIT-SUMMARY-2026-09-03-R2.md)。
 
 ***
 
@@ -66,9 +70,9 @@
 
 **未修复（有意保留）**：
 
-- S6 navGuard 经 `httptest.Recorder` 全量缓冲响应（\~1MB 双份内存）：本地 assetserver 无实测瓶颈，已记入 TECHNICAL.md §8.1 已知限制
+- S6 navGuard 经 `httptest.Recorder` 全量缓冲响应（\~1MB 双份内存）：本地 assetserver 无实测瓶颈，已记入 TECHNICAL.md §8.1 已知限制（R2 维持）
 
-- macOS `OnFileOpen`（Finder 双击打开）仍是真实待办，见 TECHNICAL.md §8.2
+- ~~macOS `OnFileOpen`（Finder 双击打开）仍是真实待办~~ → **R2 落地**（commit 729e1b7，详见 [AUDIT-2026-09-03-R2.md](AUDIT-2026-09-03-R2.md)）
 
 **后续建议**：
 

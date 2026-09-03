@@ -3,7 +3,8 @@
 > 本页是 LiteMD 全部技术文档的**单一入口**。按软件生命周期（规划 → 设计 → 开发 → 测试 → 发布 → 审计）组织，目标是让任何角色都能在 1 分钟内定位所需文档。
 
 - **产品入口**（用户视角）：见仓库根 [README.md](../README.md)
-- **版本基线**：v0.2.9（2026-09-03）
+- **版本基线**：v0.2.10（2026-09-03）
+- **当前批次**：[0.2.10] 段 = [AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md) 落地项（F1 错误码体系 + G1-G11 后端加固 + F2-F17 前端清理）
 
 ---
 
@@ -30,8 +31,10 @@
 | 测试 | [test/TEST-MATRIX.md](./test/TEST-MATRIX.md) | 分级测试矩阵、运行方式、覆盖率统计 | QA / 研发 | 每次用例变更 |
 | 发布 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更日志（逐版本平铺） | 发布 / 全团队 | **每次修复/功能落地** |
 | 发布说明 | [archive/RELEASE-NOTES.md](./archive/RELEASE-NOTES.md) | v0.2.0 发布亮点（历史） | 市场 / 用户 | 一次性，历史冻结 |
-| 审计 / 评审 | [audit/AUDIT-2026-09-03.md](./audit/AUDIT-2026-09-03.md) | 本轮全景审计（问题/差异/测试计划） | 研发 / 架构 | 每次大审查 |
-| 审计总结 | [audit/AUDIT-SUMMARY-2026-09-03.md](./audit/AUDIT-SUMMARY-2026-09-03.md) | 本轮审计一页版结论 | 管理层 / 研发 | 每次大审查 |
+| 审计 / 评审 | [audit/AUDIT-2026-09-03.md](./audit/AUDIT-2026-09-03.md) | 第一轮全景审计（7 项 P1 全部修复） | 研发 / 架构 | 每次大审查 |
+| 审计 / 评审（R2）| [audit/AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md) | 第二轮审计（F1 错误码体系 + G1-G11 / F2-F17） | 研发 / 架构 | 每次大审查 |
+| 审计总结 | [audit/AUDIT-SUMMARY-2026-09-03.md](./audit/AUDIT-SUMMARY-2026-09-03.md) | 第一轮审计一页版结论 | 管理层 / 研发 | 每次大审查 |
+| 审计总结（R2）| [audit/AUDIT-SUMMARY-2026-09-03-R2.md](./audit/AUDIT-SUMMARY-2026-09-03-R2.md) | 第二轮审计一页版结论（F1 错误码体系 + 20 P1 + 18 P2 全部修复） | 管理层 / 研发 | 每次大审查 |
 | 历史归档 | [archive/](./archive/) | 已取代文档（标注基线，仅追溯） | — | 一次性，历史冻结 |
 
 ---
@@ -49,10 +52,12 @@ doc/
 ├── test/
 │   └── TEST-MATRIX.md           分级测试矩阵与运行文档
 ├── audit/
-│   ├── AUDIT-2026-09-03.md         全景审计主报告
-│   ├── AUDIT-SUMMARY-2026-09-03.md 审计总结
-│   ├── CODE-REVIEW-2026-09-02.html 代码审查（历史）
-│   └── LiteMD-0.2.0-*.html         早期审查/交付报告（历史）
+│   ├── AUDIT-2026-09-03.md            第一轮全景审计主报告（7 项 P1 已修复）
+│   ├── AUDIT-2026-09-03-R2.md        第二轮全景审计（F1 错误码体系 + G1-G11/F2-F17）
+│   ├── AUDIT-SUMMARY-2026-09-03.md   第一轮审计总结
+│   ├── AUDIT-SUMMARY-2026-09-03-R2.md 第二轮审计总结
+│   ├── CODE-REVIEW-2026-09-02.html   代码审查（历史）
+│   └── LiteMD-0.2.0-*.html          早期审查/交付报告（历史）
 └── archive/                     历史归档（每份均带「归档声明」头部）
     ├── CODE_WIKI.md                 代码百科（§11 设计原则、§13 配色 → 已吸收）
     ├── DEVELOPMENT_PLAN.md          开发计划
@@ -75,4 +80,4 @@ doc/
 
 ---
 
-*最后更新：2026-09-03（目录重构后）· 详见 [AUDIT-SUMMARY-2026-09-03.md](./audit/AUDIT-SUMMARY-2026-09-03.md)*
+*最后更新：2026-09-03（v0.2.10 发布）· 详见 [CHANGELOG.md](./CHANGELOG.md) [0.2.10] 段 + [audit/AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md)*

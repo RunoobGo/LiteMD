@@ -30,6 +30,18 @@
 | 14 | **任务列表占位符还原** | GFM 复选框：先用占位符替换 `<input>`，DOMPurify 清洗后再还原，避免 input 标签被 strip | `frontend/src/preview.ts` |
 | 15 | **IPC 路径只接受受控输入** | 前端传入的 path 一律后端二次校验：类型白名单、凭据黑名单、可执行扩展黑名单、资产写入由后端推导目录 | `internal/links/`、`internal/fileio/safepath.go` |
 
+**新增约定（R2，源自 [AUDIT-2026-09-03-R2.md](../audit/AUDIT-2026-09-03-R2.md)）**：
+
+| # | 约定 | 说明 | 锚点 |
+|---|---|---|---|
+| 16 | **错误码体系 `[code] message`** | 所有 binding error 在文案前挂 `[code]` 前缀（如 `[external_modified]`），Go 端用 `errors.Is(err, fileio.ErrXxx)` 类型判定 + `CodeOf(err)` 文本提取；前端用 `errCode(e) === EC.xxx` switch。**两端 code 字符串必须一一对应**（`EC` 常量对齐 Go `CodeXxx` 常量），改动任一端都会被 `TestErrorTextContractForFrontend` + `errcode.test.ts` 拦截。code 用小写下划线命名 | `errcode.go` + `frontend/src/errcode.ts` |
+| 17 | **错误文案不外发完整路径** | fileio/links 的 error 只能含 `filepath.Base(path)`（用户名/父目录不外发），完整路径走 `log.Printf`；当前实现走 `publicPath` helper。`~/.ssh/id_rsa` 之类敏感路径不会出现在 toast | `internal/fileio/fileio.go:publicPath` |
+| 18 | **AllowSVG 走 atomic.Bool** | 全局可变配置（SVG 支持、用户偏好等）必须 `atomic.Bool` + `SetXxx` / `Xxx()` 接缝，禁止裸 `var xxx = false`。`-race` 守护 | `internal/links/asset.go` + `TestAllowSVG_ConcurrentReadWrite` |
+| 19 | **文档身份用 path 而非 id** | 跨 IO 异步期间需"找回原 tab"用 `tabs.findByPath(path)` 而非 id（id 来自 `Date.now()-counter`，理论可复用）。任何"操作回填原 tab"场景必须用 path 校验 | `frontend/src/tabs.ts:findByPath` + `main.ts:onImageDrop` |
+| 20 | **异步回声防 stale 必须用代际序号** | `scheduleSync` / `renderGen` 等防"旧调用覆盖新结果"场景必须用单调递增代际 + 旧结果丢弃，**不能**仅靠时间戳锁（双侧都锁会丢事件） | `titlebar.ts:syncGen`、`preview.ts:renderGen` |
+| 21 | **持久化 + 防抖高频写** | `setFontSize` 等用户高频触发（按住 Ctrl+= 触发 OS auto-repeat）必须 200ms 防抖后写 localStorage，CSS 变量即时生效；测试用 `flushXxx` 立即落盘 | `frontend/src/font-size.ts:flushFontSizePersist` |
+| 22 | **正则匹配优先用字符串源 + 局部实例** | module-level `/g` 正则被 `exec` 循环消费会改 lastIndex，混用易踩坑。统一用 `const X_SOURCE = "..."` + `new RegExp(X_SOURCE, "g")` 局部实例 | `frontend/src/obsidian.ts:CALLOUT_RE_SOURCE` |
+
 ---
 
 ## 二、主题配色方案

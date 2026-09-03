@@ -1,6 +1,6 @@
 # LiteMD 技术文档
 
-> 最后更新：2026-09-03（对齐当前代码快照 v0.2.9，全景审计见 `doc/audit/AUDIT-2026-09-03.md`）
+> 最后更新：2026-09-03（对齐当前代码快照 v0.2.10，全景审计见 `doc/audit/AUDIT-2026-09-03-R2.md`）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
 > 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)。
 
@@ -341,7 +341,13 @@ Markdown。相对路径图片经 `ResolveLocalPath` + `ReadLocalAsset`（≤10MB
 
 - 单实例：`SingleInstanceLock` 三平台生效，二次启动转发参数 → `litemd:openExternalFile` 事件
 
-- macOS 注意：`mac.Options.OnFileOpen` 未配置（2026-08-31 待办 P1-F），Finder 双击打开链路失效
+- macOS Finder 双击打开（v0.2.9 已实装）：`main.go` 注册
+  `mac.Options.OnFileOpen`（commit 729e1b7），复用 `startupFiles` 队列 +
+  `notifyExternalOpen` 兜底（回调先于 startup 时置 `pendingNotify`，startup
+  后由 `flushPendingNotify` 补发）。
+  `app_test.go:TestOnFileOpen_PushAndNotify` 覆盖：合法 .md 入队 + startup
+  后补发、`extractStartupFiles` 拒非 Markdown 后缀（落盘 .exe 后不入队）、
+  空路径拒。
 
 ***
 
@@ -401,17 +407,18 @@ cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 | 套件                                 | 断言/用例数                                                                      |
 | ---------------------------------- | --------------------------------------------------------------------------- |
 | Go（main + config + fileio + links） | 69 个 Test 函数（含关闭守卫 app\_close\_test.go、二实例通知 app\_notify\_test.go、navguard） |
-| preview\.test.ts                   | 84（含分块增量渲染）                                                                 |
+| preview\.test.ts                   | 91（含分块增量渲染）                                                                 |
 | user-css.test.ts                   | 64（前缀化/at-rule 分支/声明黑名单/逃逸转义）                                               |
 | obsidian.test.ts                   | 45（含 ReDoS 防护 9 项）                                                          |
-| latex.test.ts                      | 55（含占位符防伪 + ReDoS 守卫）                                                       |
-| titlebar.test.ts                   | 21（按钮/手势/状态同步/降级）                                                           |
-| tabs.test.ts                       | 22                                                                          |
-| link-handler.test.ts               | 33（链接分类/锚点切分/slug 生成）                                                       |
-| toc.test.ts                        | 33                                                                          |
-| md-escape.test.ts                  | 30                                                                          |
-| mermaid.test.ts                    | 26（缓存/主题隔离/失败三分/超时/串行/LRU）                                                  |
-| E2E sprint4\~11                    | 全绿（16 / 29 / 30 / 14 / 26 / 新增）                                             |
+| latex.test.ts                      | 59（含占位符防伪 + ReDoS 守卫 + 闸门 9 例）                                              |
+| titlebar.test.ts                   | 17（按钮/手势/状态同步/降级）                                                           |
+| tabs.test.ts                       | 21                                                                          |
+| link-handler.test.ts               | 23（链接分类/锚点切分/slug 生成）                                                       |
+| toc.test.ts                        | 22                                                                          |
+| md-escape.test.ts                  | 9                                                                           |
+| mermaid.test.ts                    | 25（缓存/主题隔离/失败三分/超时/串行）                                                    |
+| font-size.test.ts                  | 16（钳位/持久化/CSS 写入/隐私模式降级）                                                   |
+| E2E sprint4\~11                    | 全绿（sprint4 16 / sprint6 29 / sprint7 30 / sprint8 14 / sprint9 26 / sprint10 28 / sprint11 新增） |
 
 E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 `window.__litemd__unsavedCount` 记录 mock 侧最近一次 `SetUnsavedCount` 上报值。
@@ -447,14 +454,29 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 - navGuard 中间件经 `httptest.Recorder` 全量缓冲响应再拷贝（主 chunk
   \~1MB 双份内存）；本地 assetserver 无实测瓶颈，按「无瓶颈不重构」保留
+  （R2 维持原状态；R10 触发时再顺带优化）
 
 - 自动更新模块已移除（v0.2.0 曾有，2026-08-31 e64af52 删除，见 CHANGELOG 勘误）
 
-### 8.2 待办（v0.2.9 审计后更新）
+- **错误码体系依赖文案前缀**：所有 binding error 在文案前挂 `[code]`
+  前缀（`errcode.go:CodeOf` 解析），改任一端文案都会被
+  `TestErrorTextContractForFrontend` + `errcode.test.ts` 拦截（审计 R2-F1）
 
-> 2026-09-03 审计：原 P1 待办中 `OnBeforeClose` 协商、保存重构
-> （`updateContentBaseline` 不覆盖 liveContent）、`PushRecent` 事务化
-> （`store.Mutate`）三项已随 v0.2.9 落地，从表中移除。
+- **fileio 错误文案不外发完整路径**：`publicPath` helper 保证
+  `~/.ssh/id_rsa` 等敏感路径只露 basename（审计 R2-G1）
+
+- **macOS Finder "打开方式 .exe" 拦截**：`extractStartupFiles` 经
+  `links.CheckEditable` 过滤，Finder 选 .exe 不入队（审计 R2-G3）
+
+### 8.2 待办（v0.2.9 + R2 审计后更新）
+
+> **R1 审计**（[AUDIT-2026-09-03.md](../audit/AUDIT-2026-09-03.md)）落地 P1 三项：
+> `OnBeforeClose` 协商、保存重构（`updateContentBaseline` 不覆盖
+> liveContent）、`PushRecent` 事务化（`store.Mutate`）—— 全部并入 v0.2.9。
+>
+> **R2 审计**（[AUDIT-2026-09-03-R2.md](../audit/AUDIT-2026-09-03-R2.md)）落地 20 P1：
+> F1 错误码体系 + G1-G11 后端加固 + F2-F17 前端清理—— 全部并入 [未发布] 段。
+> P2 全部修复，剩余 0 P1 / 0 P2。
 
 | 优先级 | 项                                                   | 位置                   |
 | --- | --------------------------------------------------- | -------------------- |
