@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -118,24 +119,23 @@ func TestAppInfo(t *testing.T) {
 	}
 }
 
-// T8 修复：用真实断言替代空 t.Logf。SaveFileAs 依赖 Wails ctx 注入 PickFile dialog，
-// nil ctx 下必须返回 "not ready" 错误（与 app.go impl 一致）；若实际实现不同则显式报告。
+// SaveFileAs 在 Wails ctx 未注入时（早期 IPC 不可用）必须按"app not ready"契约返回。
+// 契约要求两条都满足才视为通过：
+//   1. err 必须非空；
+//   2. err 必须显式提示 ctx 不可用（"app not ready"）。
+// 之前实现塞了 `t.Logf; return` 把"任何 err"都判通过——这是恒过测试，
+// 任何错误的破坏（路径校验错 / I/O 错 / Wails API 签名变更）都不会被发现。
 func TestAppSaveFileAs_NilCtxSafe(t *testing.T) {
 	a := NewApp()
 	gotPath, err := a.SaveFileAs("hello.md", "abc")
-	if err != nil {
-		// 期望：nil ctx 下 Wails runtime 不可用 → 返回 "not ready"
-		if strings.Contains(err.Error(), "not ready") {
-			// ok：符合 nil ctx 的错误契约
-			return
-		}
-		// 其他错误（如路径问题）也允许，但 err 必须非空。显式 log 便于追踪
-		t.Logf("SaveFileAs returned err=%v (acceptable)", err)
-		return
+	if err == nil {
+		t.Fatalf("nil ctx 下 SaveFileAs 应返回 err，实际为 nil（gotPath=%q）——契约破坏", gotPath)
 	}
-	// err==nil：说明 runtime 实际可用（如真实 Wails 注入）。gotPath 应非空
-	if gotPath == "" {
-		t.Fatalf("SaveFileAs err=nil but gotPath empty — 契约错误")
+	if gotPath != "" {
+		t.Fatalf("nil ctx 下 gotPath 必须为空字符串，实际为 %q", gotPath)
+	}
+	if !strings.Contains(err.Error(), "app not ready") {
+		t.Fatalf("err 必须含 \"app not ready\"，实际为 %q——ctx 检查可能已被旁路", err.Error())
 	}
 }
 
@@ -188,7 +188,10 @@ func TestAppPushRecent_Limit10(t *testing.T) {
 	var lastCfg config.Config
 	var err error
 	for i := 0; i < 15; i++ {
-		p := filepath.Join("/notes", "n"+strings.Repeat(string(rune('0'+i)), 1)+".md")
+		// 双位十进制填充：i>=10 时旧实现 string(rune('0'+i)) 会产出 ':;' 等
+		// 字符（unicode '.'/'/'/'0'+10 之后），导致断言"前 5 条被挤掉"
+		// 在没有 SetEnv HOME 的隔离下仍可能因路径不可比而误判。
+		p := filepath.Join("/notes", fmt.Sprintf("n%02d.md", i))
 		lastCfg, err = a.PushRecent(p)
 		if err != nil {
 			t.Fatalf("push %d: %v", i, err)
@@ -197,16 +200,14 @@ func TestAppPushRecent_Limit10(t *testing.T) {
 	if len(lastCfg.RecentFiles) != 10 {
 		t.Fatalf("limit=10 got len=%d  list=%+v", len(lastCfg.RecentFiles), lastCfg.RecentFiles)
 	}
-	// 最新的一条应该是第 15 个（n4??? 不对，i 从 0 到 14 共 15 个，顺序最后一个是 "n" + string('0'+14) = "n"+"\x0e"? 错！'0'+i 当 i=10 时是 ':'，这不好。改一下判断逻辑，只要第一个是 i=14 的就行）
+	// 最新的一条应是 i=14 推入的 n14.md（去重 + LRU 后置顶）
 	first := lastCfg.RecentFiles[0]
-	if !strings.HasSuffix(first, ".md") {
-		t.Fatalf("first recent invalid: %q", first)
+	if first != "/notes/n14.md" {
+		t.Fatalf("first recent 期望 /notes/n14.md，实际为 %q（去重/LRU 顺序错）", first)
 	}
-	// 最旧的一条不应包含 n0-n4（前 5 条都应该被挤掉）
-	for _, p := range lastCfg.RecentFiles {
-		if strings.Contains(p, "n0.md") || strings.Contains(p, "n1.md") ||
-			strings.Contains(p, "n2.md") || strings.Contains(p, "n3.md") || strings.Contains(p, "n4.md") {
-			t.Fatalf("前 5 条应被挤掉，但仍存在: %q all=%+v", p, lastCfg.RecentFiles)
-		}
+	// 最旧的那条应是 i=5 的 n05.md（前 5 条 i=0..4 应被挤出）
+	last := lastCfg.RecentFiles[len(lastCfg.RecentFiles)-1]
+	if last != "/notes/n05.md" {
+		t.Fatalf("last recent 期望 /notes/n05.md，实际为 %q（limit=10 边界错）", last)
 	}
 }

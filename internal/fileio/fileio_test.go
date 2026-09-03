@@ -101,10 +101,13 @@ func TestWriteText_AtomicNoLeftoverTmp(t *testing.T) {
 }
 
 func TestWriteBase64File_InvalidPath(t *testing.T) {
+	dir := t.TempDir()
 	if err := WriteBase64File("", "AAAA"); err == nil {
 		t.Fatal("empty path should fail")
 	}
-	if err := WriteBase64File("/tmp/x.png", ""); err == nil {
+	// P2：硬编码 /tmp/x.png 在多套件并发跑测试时会撞同类文件名、且
+	// 在 CI 多实例并行时也会互相覆盖；改用 t.TempDir() 隔离。
+	if err := WriteBase64File(filepath.Join(dir, "empty.png"), ""); err == nil {
 		t.Fatal("empty data should fail")
 	}
 }
@@ -142,7 +145,9 @@ func TestWriteBase64File_StripsDataURIPrefix(t *testing.T) {
 }
 
 func TestWriteBase64File_BadPayload(t *testing.T) {
-	if err := WriteBase64File("/tmp/x.png", "!!!not base64!!!"); err == nil {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "bad.png")
+	if err := WriteBase64File(p, "!!!not base64!!!"); err == nil {
 		t.Fatal("expected decode error")
 	}
 }

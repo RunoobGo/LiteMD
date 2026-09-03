@@ -43,13 +43,34 @@ need wails     "go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0"
 need makensis  "apt-get install -y nsis"
 need zip       "apt-get install -y zip"
 
-# ---- 版本号自动递增（第三级 patch）----
-# 规则：每次打包安装包，patch 位 +1（0.2.0 → 0.2.1），保证产物版本号单调不重复。
-# 绕过方式：
-#   SKIP_BUMP=1 ./build-win11-x64.sh    沿用 wails.json 当前版本（重打包同一版）
-#   VERSION=1.0.0 ./build-win11-x64.sh  直接指定，既不读取也不回写 wails.json
-if [ -z "${VERSION:-}" ] && [ -z "${SKIP_BUMP:-}" ]; then
-  CUR="$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)"
+# ---- 版本号管理 ----
+# 规则：
+#   无参         → 自动递增 patch 位（0.2.0 → 0.2.1），同时回写五处事实源
+#   VERSION=x.y.z → 用指定版本替换五处事实源（不做自增，仅替换）
+#                   若与 wails.json 当前值不同，回写并警告（避免 exe 内部
+#                   版本与交付文件名错位——审查 P1-12）
+#   SKIP_BUMP=1   → 完全不动 wails.json / app.go 等，仅沿用当前版本打包
+#                   （重打包同一版的合理用例——给到上游发行通道外的复测；
+#                   与 VERSION= 的"重写"语义不同，必须显式区分）
+#
+# 事实源（必须全部同步，否则安装包是新版、关于框/启动屏/前端版本仍是旧版）：
+#   1. wails.json                — NSIS 的 OutFile、VIProductVersion
+#   2. app.go (AppVersion)       — 关于框/设置面板显示
+#   3. frontend/index.html       — 启动屏 v 号
+#   4. frontend/dev.html         — dev server 启动屏 v 号
+#   5. frontend/src/mocks.ts     — 浏览器 mock 的 AppInfo
+#   6. README.md 下载文件名       — 审查 P1-12 新增第六处
+CUR="$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)"
+
+if [ -n "${SKIP_BUMP:-}" ]; then
+  NEXT="$CUR"
+  echo "==> SKIP_BUMP：沿用当前版本 $CUR，跳过事实源同步（仅供重打包）"
+elif [ -n "${VERSION:-}" ]; then
+  NEXT="$VERSION"
+  case "$CUR" in "$NEXT") echo "==> VERSION=$NEXT 与 wails.json 一致，跳过回写（同值无意义 sed）";; *)
+    echo "==> VERSION=${VERSION} → 回写五处事实源（原 ${CUR}）"
+  esac
+else
   case "$CUR" in
     *.*.*)
       MAJ="${CUR%%.*}"; REST="${CUR#*.}"; MIN="${REST%%.*}"; PAT="${REST#*.}"
@@ -61,27 +82,28 @@ if [ -z "${VERSION:-}" ] && [ -z "${SKIP_BUMP:-}" ]; then
     *) echo "✗ 版本号格式不是 x.y.z：$CUR"; exit 1;;
   esac
   echo "==> 版本号递增：$CUR → $NEXT"
-  # 五处版本事实源一并同步。app.go 的 AppVersion 是应用内显示的版本，
-  # index.html/dev.html 是启动屏的 v 号，mocks.ts 是浏览器 mock 的 AppInfo；
-  # 只改 wails.json 会导致"安装包是新版、关于框还是旧版"。
+fi
+
+if [ "${NEXT:-}" != "${CUR}" ] && [ -z "${SKIP_BUMP:-}" ]; then
   sed -i.bak "s/\"productVersion\":[[:space:]]*\"$CUR\"/\"productVersion\": \"$NEXT\"/" wails.json
   sed -i.bak "s/const AppVersion = \"$CUR\"/const AppVersion = \"$NEXT\"/" app.go
   sed -i.bak "s/>v$CUR</>v$NEXT</" frontend/index.html frontend/dev.html
   sed -i.bak "s/\"$CUR-mock\"/\"$NEXT-mock\"/" frontend/src/mocks.ts
-  rm -f wails.json.bak app.go.bak frontend/index.html.bak frontend/dev.html.bak frontend/src/mocks.ts.bak
+  # 审查 P1-12：README.md 的下载文件名也属事实源
+  sed -i.bak "s/LiteMD-${CUR}-Setup/LiteMD-${NEXT}-Setup/" README.md
+  rm -f wails.json.bak app.go.bak frontend/index.html.bak frontend/dev.html.bak frontend/src/mocks.ts.bak README.md.bak
 fi
 
-# 必须在版本号递增之后读取：这两行读的就是刚被 sed 改过的 wails.json。
-# 放在 bump 之前会导致 VERSION 先被填成旧值，使递增守卫 -z "${VERSION:-}" 恒为假。
-VERSION="${VERSION:-$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)}"
-VERSION="${VERSION:-0.2.0}"
+# VERSION 必须放在 bump 之后读取：否则在 bump 分支会被旧值覆盖
+VERSION="${VERSION:-$NEXT}"
+[ -z "$VERSION" ] && VERSION="$CUR"
 
-# P1-12：VERSION= 显式指定时不回写任何事实源——若与 wails.json 内部版本不一致，
-# 交付文件名与 exe 内部版本（VIProductVersion / 关于框）会出现两套版本号。给出明确警告。
-WAILS_VER="$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json | grep -o '[0-9][^"]*' | head -1)"
-if [ -n "${VERSION+x}" ] && [ "${VERSION}" != "${WAILS_VER}" ]; then
-  echo "==> 警告：VERSION=${VERSION} 与 wails.json 的 ${WAILS_VER} 不一致——" \
-       "交付文件名将用 ${VERSION}，exe 内部版本仍为 ${WAILS_VER}（VERSION= 分支不回写事实源）。"
+# P1-12：VERSION 显式指定且与 wails.json 不一致时给出明确警告（已改为回写，
+# 此处警告仅在用户用了 SKIP_BUMP=1 又同时传 VERSION= 的矛盾组合下出现）
+if [ -n "${VERSION+x}" ] && [ -n "${SKIP_BUMP+x}" ] && [ "${VERSION}" != "${CUR}" ]; then
+  echo "==> 警告：SKIP_BUMP + VERSION= 是矛盾组合——脚本沿用 ${CUR}，" \
+       "但你指定的 VERSION=${VERSION} 未生效。要重写请去掉 SKIP_BUMP。"
+  VERSION="$CUR"
 fi
 
 echo "==> LiteMD v${VERSION} — Windows 11 x64 精简构建"
