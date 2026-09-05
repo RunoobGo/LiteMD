@@ -55,7 +55,20 @@ func safeWritePath(p string) (string, error) {
 		return "", fmt.Errorf("%w: not absolute: %s", ErrUnsafePath, p)
 	}
 	clean := filepath.Clean(p)
-	// 拒绝 `..` 残余（Clean 在绝对路径上通常已规范化，这里兜底）
+	// 拒绝 `..` 残余（Clean 在绝对路径上通常已规范化，这里兜底）。
+	//
+	// 审查 G1（v0.2.11）：这段代码原先只有上面这行注释，**并没有真正的检查**，
+	// 注释会误导维护者以为存在第二道闸。现按分隔符切段精确比对补上：
+	// 绝对路径经 Clean 后理论上不会出现 ".." 段，此检查属纵深防御，目的是
+	// 让注释成立；按段比对而非 strings.Contains，避免误伤
+	// "笔记..备份.md"、".gitignore" 这类含点的合法文件名。
+	for _, seg := range strings.FieldsFunc(clean, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if seg == ".." {
+			return "", fmt.Errorf("%w: path traversal: %s", ErrUnsafePath, p)
+		}
+	}
 	if runtime.GOOS == "windows" {
 		if windowsReservedNames[windowsBaseName(clean)] {
 			return "", fmt.Errorf("%w: reserved device name: %s", ErrUnsafePath, p)

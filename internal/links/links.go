@@ -86,11 +86,48 @@ var secretExts = map[string]bool{
 // secretNames 无扩展名（或扩展名不在管控内）的敏感文件名。
 //
 // 这些文件在三大系统上都没有扩展名，靠扩展名白名单拦不住，只能按名字判。
+//
+// v0.2.11（审查 Y3）：原名单是"想到一个加一个"，遗漏面随时间累积（例如
+// .git-credentials 明文存 git 凭据、.dockercfg 存 registry 凭据、各类 shell
+// 历史文件会记录带密码的命令行）。现补齐常见形态，并把变体极多的 .env.*
+// 交给 secretNamePrefixes 按前缀判定，避免逐个穷举。
+//
+// 注意：本名单**只**用于拦"敏感文件"，不代表收紧放行策略——无扩展名文件
+// 依旧按 Obsidian 约定放行（见下方 CheckEditable 注释）。
 var secretNames = map[string]bool{
+	// SSH / 私钥类
 	"id_rsa": true, "id_dsa": true, "id_ecdsa": true, "id_ed25519": true,
-	".env": true, ".env.local": true, ".netrc": true, ".npmrc": true,
-	".htpasswd": true, ".gitconfig": true, ".bash_history": true,
-	".zsh_history": true, ".pgpass": true, ".my.cnf": true,
+	"id_ecdsa_sk": true, "id_ed25519_sk": true,
+	// 凭据 / token 类
+	".netrc": true, ".npmrc": true, ".yarnrc": true, ".pypirc": true,
+	".htpasswd": true, ".gitconfig": true, ".git-credentials": true,
+	".dockercfg": true, "credentials": true,
+	// 数据库凭据
+	".pgpass": true, ".my.cnf": true,
+	// shell / 交互历史（会记录带密码的命令行）
+	".bash_history": true, ".zsh_history": true, ".fish_history": true,
+	".psql_history": true, ".mysql_history": true, ".python_history": true,
+	// .env 及其变体走前缀判定（见 secretNamePrefixes），此处保留 .env/.env.local
+	// 仅为可读性，前缀规则已覆盖。
+	".env": true, ".env.local": true,
+}
+
+// secretNamePrefixes 需要按前缀判定的敏感文件名前缀。
+//
+// .env 的变体（.env.development / .env.production / .env.staging.local /…）
+// 在实践中由框架与团队约定自由扩展，穷举名单必然落后，改按前缀判定。
+// 代价：名为 .environment 之类的文件会被一并拦下——这类误拒成本极低，
+// 而漏放一个 .env.production 的代价是密钥泄露，不对称。
+var secretNamePrefixes = []string{".env"}
+
+// hasSecretNamePrefix 判定小写文件名是否命中敏感前缀。
+func hasSecretNamePrefix(name string) bool {
+	for _, p := range secretNamePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckEditable 判定 path 是否允许在编辑器中打开（审查 P1-9）。
@@ -106,7 +143,8 @@ func CheckEditable(path string) error {
 	if secretExts[ext] {
 		return fmt.Errorf("%w: %s", ErrNotEditable, ext)
 	}
-	if name := strings.ToLower(filepath.Base(path)); secretNames[name] {
+	// v0.2.11：名单命中 或 前缀命中（.env.* 变体）都拒
+	if name := strings.ToLower(filepath.Base(path)); secretNames[name] || hasSecretNamePrefix(name) {
 		return fmt.Errorf("%w: %s", ErrNotEditable, name)
 	}
 	switch {

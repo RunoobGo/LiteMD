@@ -2,7 +2,7 @@
 //
 // 重点覆盖 #2 修复的回归守卫：保存 IO 窗口期的新输入不被 baseline 回写覆盖。
 
-import { TabManager } from "./tabs";
+import { TabManager, pathCompareKey } from "./tabs";
 
 let pass = 0; let fail = 0;
 function assertEq(a: unknown, b: unknown, msg: string) {
@@ -116,6 +116,65 @@ console.log("findByPath（审计 R2-F17 守护）：");
     const u2 = tm.openTab("/docs/shared.md", "Y"); // 去重，应激活 u1
     assertEq(u2.id, u1.id, "openTab 已去重");
     assertEq(tm.findByPath("/docs/shared.md")?.id, u1.id, "path → 唯一 tab");
+}
+
+// ============================================================================
+// Y2 修复（v0.2.11）：去重与反查按「比较键」匹配，显示路径保持原样。
+//
+// 背景：原先 t.path === path 是大小写敏感 + 分隔符敏感的字符串比较。
+// 在 macOS/Windows（大小写不敏感卷）上，用户从最近文件以 /notes/TODO.md 打开、
+// 再从文件树以 /notes/todo.md 点开，会被当成两个不同文件开成两个标签，
+// 保存时互相覆盖。
+console.log("Y2 路径比较键去重（v0.2.11）：");
+{
+    // 平台判定是惰性读 navigator.platform 的，测试里直接改写即可覆盖两条分支
+    const setPlatform = (p: string) => {
+        Object.defineProperty(window.navigator, "platform", { value: p, configurable: true });
+        Object.defineProperty((navigator as any), "platform", { value: p, configurable: true });
+    };
+    const origPlatform = (window.navigator as any).platform;
+
+    // --- 大小写不敏感卷（Windows / macOS）---
+    setPlatform("Win32");
+    assertEq(pathCompareKey("/notes/TODO.md"), "/notes/todo.md", "Win：比较键转小写");
+    assertEq(pathCompareKey("C:\\notes\\TODO.md"), "c:/notes/todo.md", "Win：反斜杠 + 小写归一");
+    assertEq(pathCompareKey("%E7%AC%94%E8%AE%B0.md"), "笔记.md", "Win：百分号解码后再归一");
+
+    {
+        const { tm } = fresh();
+        const t1 = tm.openTab("/notes/TODO.md", "A");
+        const t2 = tm.openTab("/notes/todo.md", "B"); // 同一文件，仅大小写不同
+        assertEq(t2.id, t1.id, "Y2: 大小写不同不新建标签（去重生效）");
+        assertEq(tm.order.length, 1, "Y2: 只保留一个标签");
+        assertEq(t1.path, "/notes/TODO.md", "Y2: 显示路径保持首次打开的真实大小写");
+        assertEq(tm.findByPath("/notes/todo.md")?.id, t1.id, "Y2: findByPath 大小写不敏感命中");
+    }
+    {
+        const { tm } = fresh();
+        const t1 = tm.openTab("C:\\notes\\a.md", "A");
+        const t2 = tm.openTab("C:/notes/a.md", "B"); // 分隔符形态不同
+        assertEq(t2.id, t1.id, "Y2: 反斜杠/正斜杠视为同一路径");
+        assertEq(t1.path, "C:\\notes\\a.md", "Y2: 显示路径保持原始分隔符形态");
+    }
+
+    // --- 大小写敏感卷（Linux）---
+    setPlatform("Linux x86_64");
+    assertEq(pathCompareKey("/notes/TODO.md"), "/notes/TODO.md", "Linux：比较键保留大小写");
+    {
+        const { tm } = fresh();
+        const t1 = tm.openTab("/notes/TODO.md", "A");
+        const t2 = tm.openTab("/notes/todo.md", "B"); // Linux 上是两个不同文件
+        assertEq(t2.id === t1.id, false, "Y2: Linux 上大小写不同 = 不同文件，不误合并");
+        assertEq(tm.order.length, 2, "Y2: Linux 上两个文件各占一个标签");
+        assertEq(pathCompareKey("C:\\notes\\a.md"), "C:/notes/a.md", "Linux：分隔符归一但大小写保留");
+    }
+
+    // 还原，避免污染后续套件
+    setPlatform(origPlatform);
+
+    // 边界：空串 / 已折叠路径
+    assertEq(pathCompareKey(""), "", "Y2: 空路径比较键为空");
+    assertEq(pathCompareKey("//a//b//c.md"), "/a/b/c.md", "Y2: 连续斜杠折叠");
 }
 
 // ============================================================================

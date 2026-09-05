@@ -60,6 +60,25 @@ curl -sf -o /dev/null "$BASE" && echo "vite=200" || { echo "vite=DOWN"; exit 2; 
 
 # ============================================================================
 log "Step 1: 准备 mock 文档库"
+# v0.2.11 修复：必须在打开应用、确认 mockfs 就绪**之后**再执行 setFile。
+# 原脚本在 open 之前就 inject——浏览器无页面（agent-browser close 后）或页面
+# 尚未加载完时 eval 抛错且被 >/dev/null 静默吞掉，文档根本没写进去；随后
+# open ?open=/css.md 找不到文件，后续依赖文档元素的断言全部连锁失败
+# （querySelector 落空 → fallback 读 body，把应用自身的主题渐变误读为
+# "外发背景图生效"，产生假阳性安全告警）。
+agent-browser open "$BASE" > /dev/null 2>&1
+READY=""
+for i in 1 2 3 4 5; do
+    READY=$(agent-browser eval "typeof window.__litemd__mockfs" 2>/dev/null | tail -1 | tr -d '"')
+    [[ "$READY" == "object" ]] && break
+    sleep 1
+done
+if [[ "$READY" == "object" ]]; then
+    echo "  mockfs=ready"
+else
+    echo "❌ mockfs 未就绪（应用未加载完成），终止"
+    exit 2
+fi
 CSSDOC='# 内嵌渲染测试\n\n<div class=\"md-hl\">作用域高亮</div>\n\n<details><summary>折叠</summary>详情内容</details>\n\n<span style=\"color: red\">红字</span>\n\n<div class=\"t\">定位测试</div>\n\n<style>\n.md-hl { color: rgb(2, 170, 80); }\n#meta { display: none; }\nbody { background: rgb(255, 0, 0); }\n@import url(\"https://evil.example/x.css\");\n.t { background: url(\"https://evil.example/t.png\"); position: fixed; }\n@keyframes kf { from { opacity: 0 } to { opacity: 1 } }\n</style>\n\n<img src=\"data:image/png;base64,iVBORw0KGgo=\" alt=\"b64\">\n\n<img src=\"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=\" alt=\"svg\">\n\n<script>alert(1)</script>\n\n<div onclick=\"alert(1)\">点击窃取</div>\n'
 inject "'/css.md'" "\"$CSSDOC\""
 echo "  mock 文档已注入"

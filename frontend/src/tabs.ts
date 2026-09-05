@@ -25,6 +25,47 @@ export interface Tab {
 let _nextId = 1;
 const genId = () => `tab-${Date.now()}-${_nextId++}`;
 
+/**
+ * 文件系统是否大小写不敏感（审查 Y2）。
+ *
+ * Windows NTFS 与 macOS APFS（默认）不区分大小写，`/notes/TODO.md` 与
+ * `/notes/todo.md` 是同一个文件；Linux ext4 区分大小写，它们是两个文件。
+ * 判定错了会有两种后果：在 Linux 上误合并两个不同文件（内容互相覆盖），
+ * 或在 Win/mac 上把同一文件开成两个标签（保存时互相覆盖）。
+ */
+// 惰性求值而非模块级常量：一是页面加载早期判定更容易受嵌入环境影响，
+// 二是便于单测直接改写 navigator.platform 覆盖两条分支。
+// 读取开销可忽略（每次比较一次字符串包含判断）。
+function detectCaseInsensitiveFs(): boolean {
+    if (typeof navigator === "undefined") return false;
+    // userAgentData.platform 是现代写法，navigator.platform 是兼容回退
+    const p = String(
+        (navigator as any)?.userAgentData?.platform ?? navigator.platform ?? ""
+    ).toLowerCase();
+    return p.includes("win") || p.includes("mac");
+}
+
+/**
+ * 路径比较键：只用于判断"是不是同一个文件"，**绝不用于展示**。
+ *
+ * 归一化内容：反斜杠统一为正斜杠、百分号解码（前端拿到的 href 可能是
+ * `%E6%96%87.md` 形态）、折叠连续斜杠；大小写不敏感的卷上再转小写。
+ *
+ * 注意这里**不**把结果写回 tab.path —— 状态栏 / 标签页 / 另存为对话框
+ * 都应当显示磁盘上的真实大小写，归一化只发生在比较处。
+ */
+export function pathCompareKey(p: string): string {
+    if (!p) return "";
+    let s = p.replace(/\\/g, "/");
+    try {
+        s = decodeURI(s);
+    } catch {
+        // 百分号编码损坏（如孤立的 %zz）时保持原文，交由下游 Resolve 报错
+    }
+    s = s.replace(/\/{2,}/g, "/");
+    return detectCaseInsensitiveFs() ? s.toLowerCase() : s;
+}
+
 export class TabManager {
     tabs = new Map<string, Tab>();
     order: string[] = []; // 显示顺序
@@ -54,9 +95,11 @@ export class TabManager {
 
     /** 从文件路径打开一个新标签；mtime 为磁盘真实 mtime（P0-5 外部修改检测记账） */
     openTab(path: string, content: string, mtime?: number): Tab {
-        // 路径去重：已经打开则激活它
+        // 路径去重：已经打开则激活它（Y2：按比较键匹配，兼容大小写不敏感卷
+        // 与 % 编码形态；tab.path 本身保持原样用于展示）
+        const key = pathCompareKey(path);
         for (const t of this.tabs.values()) {
-            if (t.path === path) {
+            if (pathCompareKey(t.path) === key) {
                 this.activate(t.id);
                 return t;
             }
@@ -183,8 +226,10 @@ export class TabManager {
      *  稳定）。未找到或空 path 返回 null。 */
     findByPath(path: string): Tab | null {
         if (!path) return null;
+        // Y2：与 openTab 同一口径，按比较键匹配
+        const key = pathCompareKey(path);
         for (const t of this.tabs.values()) {
-            if (t.path === path) return t;
+            if (pathCompareKey(t.path) === key) return t;
         }
         return null;
     }

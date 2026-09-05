@@ -264,35 +264,13 @@ export function parseFrontmatter(md: string): { frontmatter: Frontmatter | null;
     return { frontmatter: { raw, data }, body: md.slice(m[0].length) };
 }
 
-// ============================================================================
-// 图片资产复制
-// ============================================================================
-
-export interface ImageDropResult {
-    /** 重写后的 markdown 引用文本（追加到当前文档） */
-    markdown: string;
-    /** 复制的资产路径（绝对路径或 mock 路径） */
-    assetPath: string;
-}
-
-/**
- * 把拖入的 File 对象持久化为 assets 目录下的图片，并返回 markdown 引用。
- * 实际写入由 binding `copyImageAsset` 完成。这里仅产出资产名。
- */
-export async function persistImageAsset(
-    file: File,
-    copyFn: (suggestedName: string, base64: string) => Promise<string>,
-    bufferToBase64: (buf: ArrayBuffer) => string
-): Promise<ImageDropResult> {
-    const buf = await file.arrayBuffer();
-    const b64 = bufferToBase64(buf);
-    // 简单文件名 = timestamp + 原名 hash
-    const ts = Date.now().toString(36);
-    const safe = file.name.replace(/[^\w.\-]/g, "_");
-    const assetPath = await copyFn(`assets/${ts}_${safe}`, b64);
-    const md = `\n![${file.name}](${assetPath})\n`;
-    return { markdown: md, assetPath: assetPath };
-}
+// v0.2.11（审查 Y1）：原 persistImageAsset / ImageDropResult 已删除。
+//
+// 它以 copyFn(`assets/${ts}_${safe}`, b64) 的形态调用写入接口——带目录分隔符的
+// 路径与 P0-2 收敛后 Go 端 AssetWritePath 的「纯文件名」校验直接冲突，调用必然
+// 被拒；而真实的图片落盘由 main.ts 的 onImageDrop → CopyImageAsset +
+// buildImageMarkdown 承担。也就是说它是 P0-2 之后遗留的死代码，留着只会诱导
+// 后来者写出同款无效调用。
 
 // ============================================================================
 // Pipeline: 一站式预处理

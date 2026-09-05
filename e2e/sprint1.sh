@@ -100,7 +100,8 @@ fresh_open
 cm_inject '# Hello LiteMD'
 DIRTY=$(jrun 'document.querySelectorAll("#tabbar .tab .dirty").length' | grep -oE '^[0-9]+$' | tail -1)
 assert_eq "dirty 标识" "$DIRTY" "1"
-DIRTY_META=$(jrun 'document.getElementById("meta").textContent.includes("已修改") ? "Y" : "N"' | grep -oE '^[NY]$' | tail -1)
+# v0.2.11：eval 对字符串返回值带引号（"Y"），grep 模式须兼容引号
+DIRTY_META=$(jrun 'document.getElementById("meta").textContent.includes("已修改") ? "Y" : "N"' | grep -oE '"?[NY]"?' | tail -1 | tr -d '"')
 assert_eq "meta 显示已修改" "$DIRTY_META" "Y"
 CONTENT=$(cm_get)
 assert_eq "textarea 内容" "$CONTENT" "# Hello LiteMD"
@@ -145,7 +146,9 @@ fresh_open
 cm_inject 'do not close me'
 agent-browser eval "(() => { document.querySelector('#tabbar .tab .close').click(); return 'c'; })()" > /dev/null 2>&1
 sleep 1
-DLG=$(jrun 'document.getElementById("unsavedDialog").open.toString()' | grep -oE 'true\|false' | tail -1)
+# v0.2.11：.open 直接返回 boolean（无引号）；原 `.toString()` 会得到带引号的
+# 字符串，且 ERE 下 `true\|false` 是字面管道符——两个 bug 叠加，断言永不匹配
+DLG=$(jrun 'document.getElementById("unsavedDialog").open' | grep -oE '"?(true|false)"?' | tail -1 | tr -d '"')
 assert_eq "未保存对话框弹出" "$DLG" "true"
 agent-browser eval "(() => { document.querySelector('#unsavedDialog button[value=cancel]').click(); return 'c'; })()" > /dev/null 2>&1
 sleep 1
@@ -186,9 +189,12 @@ This is **Sprint 1** final screenshot.
 
 [link](https://example.com)'
 sleep 1
-agent-browser screenshot /workspace/LiteMD/e2e/sprint1-screenshot.png > /dev/null 2>&1
-if [[ -f /workspace/LiteMD/e2e/sprint1-screenshot.png ]]; then
-    SIZE=$(du -h /workspace/LiteMD/e2e/sprint1-screenshot.png | cut -f1)
+# v0.2.11：截图路径不再写死仓库绝对路径（/workspace/LiteMD/…），改为脚本所在目录，
+# 仓库 checkout 在任意位置都能存档
+SHOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+agent-browser screenshot "$SHOT_DIR/sprint1-screenshot.png" > /dev/null 2>&1
+if [[ -f "$SHOT_DIR/sprint1-screenshot.png" ]]; then
+    SIZE=$(du -h "$SHOT_DIR/sprint1-screenshot.png" | cut -f1)
     ok "截图 ($SIZE)"
 else
     fail "截图未保存"

@@ -58,7 +58,7 @@ const mockFs = new InMemoryMockFs();
         App: {
             AppInfo: async () => ({
                 name: "LiteMD",
-                version: "0.2.10-mock",
+                version: "0.2.11-mock",
                 os: "browser-mock",
             }),
             // 契约来源：internal/config/config.go 的 config.Config

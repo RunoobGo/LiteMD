@@ -77,6 +77,98 @@ const xss5 = renderMarkdown('<a href="x" onclick="alert(1)">click</a>');
 assert(!/onclick\s*=/i.test(xss5), "xss5: onclick 属性被剥离");
 
 // ============================================================================
+// G2 修复回归（v0.2.11）：渲染缓存 key 用内容摘要，不再驻留整篇文档。
+// 同一内容重复渲染必须命中缓存（结果一致），不同内容不得互相串味。
+console.log("\nG2 渲染缓存（v0.2.11）：");
+{
+    const doc = "# 标题\n\n正文 **加粗**\n\n- [x] 完成\n- [ ] 未完成";
+    const a = renderMarkdown(doc);
+    const b = renderMarkdown(doc);
+    assert(a === b, "G2: 相同内容重复渲染结果一致（缓存命中不改变输出）");
+
+    // 长度相同、内容不同 → 摘要必须区分，不得返回同一份 HTML
+    const x = renderMarkdown("aaaa");
+    const y = renderMarkdown("bbbb");
+    assert(x !== y, "G2: 等长不同内容不串味（摘要区分）");
+
+    // 极小差异（尾部空格）也必须区分
+    const p = renderMarkdown("hello");
+    const q = renderMarkdown("hello ");
+    assert(p !== q, "G2: 尾部空格差异不串味");
+
+    // 带 lineNumbers 选项与不带的结果不得混用
+    const plain = renderMarkdown("- a\n- b");
+    const numbered = renderMarkdown("- a\n- b", { lineNumbers: true });
+    assert(plain !== numbered, "G2: lineNumbers 选项参与 key（两条路径不互串）");
+}
+
+// ============================================================================
+// G4 修复回归（v0.2.11）：占位 class 带随机盐，用户伪造的 span 不应被还原成复选框
+console.log("\nG4 复选框占位防伪（v0.2.11）：");
+{
+    // 真实 GFM 任务列表仍应渲染为 disabled checkbox
+    const real = renderMarkdown("- [x] 已完成\n- [ ] 未完成");
+    assert(/<input[^>]*type="checkbox"/.test(real), "G4: 真实任务列表渲染为 checkbox");
+    assert(/checked/.test(real), "G4: 已完成项保留 checked");
+
+    // 用户裸 HTML 伪造旧占位 class：不应再被还原为复选框
+    const forged = renderMarkdown('<span class="litemd-cb"></span>');
+    assert(!/<input/i.test(forged), "G4: 伪造 litemd-cb 不再被还原成 input");
+    assert(!/data-checked/i.test(forged), "G4: 伪造 span 的 data-checked 仍被剥除");
+}
+
+// ============================================================================
+// R1 修复回归（v0.2.11）：本地路径链接的 href/src 不应被 ALLOWED_URI_REGEXP 剥除
+//
+// 历史修复只补了 ASCII 相对路径分支，中文文件名（marked 会百分号编码成
+// %E6%96%87…，% 不在首字符类里）与 Windows 盘符（冒号前被当成 scheme）
+// 仍被剥 → <a> 渲染出来但 href=null，点击无反应。
+console.log("\nR1 本地路径链接保留（v0.2.11）：");
+{
+    const hrefOf = (md: string): string | null => {
+        const m = renderMarkdown(md).match(/<a[^>]*href="([^"]*)"/);
+        return m ? m[1] : null;
+    };
+    const srcOf = (md: string): string | null => {
+        const m = renderMarkdown(md).match(/<img[^>]*src="([^"]*)"/);
+        return m ? m[1] : null;
+    };
+    const decode = (s: string | null): string => {
+        if (s === null) return "";
+        try { return decodeURIComponent(s); } catch { return s; }
+    };
+
+    // 中文文件名（R1 主体）
+    const cn = hrefOf("[x](文档.md)");
+    assert(cn !== null, "R1: 中文文件名链接保留 href（不再剥为 null）");
+    assert(decode(cn).includes("文档.md"), `R1: 中文文件名 href 解码后正确（got ${cn}）`);
+
+    const cnImg = srcOf("![img](图片.png)");
+    assert(cnImg !== null, "R1: 中文文件名图片保留 src");
+    assert(decode(cnImg).includes("图片.png"), `R1: 中文图片 src 解码后正确（got ${cnImg}）`);
+
+    // Windows 盘符
+    const drive = hrefOf("[x](C:/notes/a.md)");
+    assert(drive !== null && /^c:\//i.test(drive), `R1: Windows 盘符路径保留 href（got ${drive}）`);
+
+    // 原有分支不得回归
+    assert(hrefOf("[x](./a.md)") !== null, "R1: ./ 相对路径仍保留 href");
+    assert(hrefOf("[x](../目录/b.md)") !== null, "R1: ../ 相对路径仍保留 href");
+    assert(hrefOf("[x](sub/图片.png)") !== null, "R1: 子目录中文路径仍保留 href");
+    assert(hrefOf("[x](https://example.com)") !== null, "R1: https 外链仍保留 href");
+    assert(hrefOf("[x](#anchor)") !== null, "R1: 锚点仍保留 href");
+
+    // 安全回归：危险 scheme 仍必须被剥
+    assert(!/javascript:/i.test(hrefOf("[x](javascript:alert(1))") ?? ""),
+           "R1: javascript: 仍被拒绝");
+    assert(hrefOf("[x](vbscript:msgbox(1))") === null, "R1: vbscript: 仍被拒绝");
+    assert(hrefOf("[x](data:text/html;base64,PHNjcmlwdD4=)") === null,
+           "R1: 非图片 data: 仍被拒绝");
+    assert(hrefOf("[x](file:///etc/passwd)") === null, "R1: file: 仍被拒绝");
+    assert(hrefOf("[x](JaVaScRiPt:alert(1))") === null, "R1: 大小写绕过仍被拒绝");
+}
+
+// ============================================================================
 console.log("\n样式回归（#1 修复守卫）：");
 // marked 输出裸 <h1> 标签（无 class），标题样式必须用标签选择器命中。
 // 旧版 .md-h1 class 选择器永不匹配 → 预览标题退化为浏览器默认样式。

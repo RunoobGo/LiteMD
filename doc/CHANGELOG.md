@@ -5,6 +5,121 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ***
 
+## \[0.2.11] — 2026-09-04
+
+基于外部代码审查报告（🔴 R1 / 🟡 Y1-Y3 / 🟢 G1-G5，下称 REV-09-04）与其前期文档核对结论的 patch 收口。核对确认 R1 为 v0.2.x 历史修复的不彻底复发、Y1 与 P0-2 契约同向，同时发现并修复了 R2-F7 修复引入的 E2E 回归。
+
+### 🐛 修复
+
+- **预览链接 URL 白名单剥除中文文件名 / Windows 盘符（REV-09-04 R1，v0.2.x 历史问题复发）**：
+  `preview.ts` 的 `ALLOWED_URI_REGEXP` 在 v0.2.x 修复"相对路径链接不可点击"时
+  只补了 `./`、`../` 与 `[a-zA-Z0-9._-]` 开头三条分支——最后一条仅认 ASCII 开头，
+  中文文件名（marked 输出为 `%E6%96%87…`，`%` 不在首字符类）与盘符路径
+  （`C:/notes/a.md` 的冒号被当成 scheme）仍被剥成 `href=null`，`<a>` 渲染出来
+  却点不动。现改为"白名单协议 + 本地路径"两段判定：协议分支不变；
+  盘符单独前置分支；其余路径用负向前瞻排除 `scheme:` 形态
+  （`javascript:` / `vbscript:` / `file:` / `blob:` / 非图片 `data:` 一律照旧拒绝）
+  后放行。`preview.test.ts` 新增 15 例回归（中文 / 盘符 / 各类危险 scheme 大小写绕过）。
+
+- **调试句柄 DEV 守门导致 E2E 全线失效（R2-F7 回归修复）**：R2-F7 用
+  `import.meta.env.DEV` 守门 `window.__litemd__bindings`，但全部 E2E sprint 跑在
+  `vite preview --port 5174` 服务的**生产构建产物**上（`DEV` 被静态替换为 `!1`），
+  dev.html 与 index.html 共用同一份 bundle，换入口页并不能让 `DEV` 变回 true——
+  `sprint1.sh` Phase 4 的 `bindings.SaveFile` 硬断言在生产产物下必然失败。
+  0.2.10 段"（注意：E2E 走 dev-bootstrap + dev.html 路径，绑定仍可用。）"
+  的声明**不成立**，已勘误。现统一改为按"是否存在 Wails 运行时"判定
+  （新增 `frontend/src/env.ts`：`isWailsRuntime` / `exposeDebugHandles`，
+  与 main.ts 既有的 `window.runtime` 判据同一口径）：真实桌面端不注入，
+  浏览器 / E2E（含生产产物）注入。`main.ts` 的 7 个调试句柄同口径收口
+  （REV-09-04 G3）。新增 `env.test.ts` 8 用例锁定判定契约。
+
+- **`safeWritePath` 补上注释承诺的 `..` 兜底检查（REV-09-04 G1）**：
+  `internal/fileio/safepath.go` 原注释称"拒绝 `..` 残余（这里兜底）"但代码里
+  没有该检查，注释误导维护者以为存在第二道闸。现按分隔符切段精确比对补上
+  （`strings.Contains("..")` 会误伤"笔记..备份.md"这类合法名，故按段比对）；
+  Unix 上反斜杠不是分隔符、Clean 折叠不掉的形态由此闸拦住。
+  新增 `TestSafeWritePath_DotDotBackstop`（含不误伤用例）。
+
+- **E2E 脚本自身缺陷修复**：
+  - `sprint1.sh`：eval 对字符串返回值带引号（`"Y"`），`grep -oE '^[NY]$'`
+    永不匹配；`grep -oE 'true\|false'` 在 ERE 下 `\|` 是字面管道符，
+    对话框断言永不匹配（两个 bug 叠加，曾把真实正常的对话框行为误报为失败）；
+    截图路径从写死 `/workspace/LiteMD/…` 改为脚本所在目录，仓库 checkout
+    在任意位置均可存档。
+  - `sprint10.sh`：原脚本在打开应用之前就执行 `mockfs.setFile`——浏览器无页面
+    或页面未加载完时 eval 抛错且被 `>/dev/null` 静默吞掉，文档没写进去，
+    后续依赖文档元素的断言连锁失败，并把 fallback 读到的应用自身主题渐变
+    误报为"🔴 外发背景图生效"（假阳性安全告警）。现先 open 并轮询
+    `window.__litemd__mockfs` 就绪后再注入。
+
+### 🛡 健壮性
+
+- **标签去重 / path 反查改用比较键归一（REV-09-04 Y2）**：`tabs.ts` 的
+  `t.path === path` 是大小写与分隔符敏感的字符串比较——在 macOS / Windows
+  （大小写不敏感卷）上，`/notes/TODO.md` 与 `/notes/todo.md` 会被开成两个标签，
+  保存时互相覆盖。新增 `pathCompareKey()`（反斜杠统一、百分号解码、连续斜杠
+  折叠、大小写不敏感卷上转小写），`openTab` 去重与 `findByPath` 反查统一改走
+  比较键；**tab.path 保持磁盘真实大小写原样，展示不受影响**；Linux（大小写
+  敏感卷）不转小写，避免误合并两个真实存在的不同文件。`tabs.test.ts` 新增
+  12 例覆盖双平台分支。
+
+- **`secretNames` 敏感名单扩充 + `.env` 前缀判定（REV-09-04 Y3）**：
+  原"想到一个加一个"的名单遗漏面随时间累积。新增 SSH FIDO 私钥
+  （`id_ecdsa_sk` / `id_ed25519_sk`）、git / 容器 / 语言生态凭据
+  （`.git-credentials` / `.dockercfg` / `credentials` / `.yarnrc` / `.pypirc`）、
+  各类交互历史（`.fish_history` / `.psql_history` / `.mysql_history` /
+  `.python_history`）；变体极多的 `.env.*`（.env.development / .env.production /
+  …）改由 `secretNamePrefixes` 按前缀判定，不再逐个穷举（误拒
+  `.environment` 类名字的成本远低于漏放一个 `.env.production`）。
+  **"无扩展名放行"的 Obsidian 约定不变**（与 Resolve / looksLikeText 同一口径），
+  新增 `TestCheckEditable_ObsidianNoExtStillAllowed` 反向守卫防误伤。
+
+- **渲染缓存 key 改内容摘要（REV-09-04 G2）**：`preview.ts` 的 `renderCache`
+  原以整篇 md 为 key，50MB 文档 × 8 条 LRU 光 key 就要 ~800MB 常驻。改用
+  长度 + 双 FNV-1a 摘要（~64 位），key 开销 O(文档大小) → O(1)；单哈希的
+  碰撞后果是"渲染出另一篇文档的内容"，故用双哈希 + 长度三重区分。
+
+- **复选框占位 class 加随机盐（REV-09-04 G4）**：原固定串 `litemd-cb` 可被
+  用户裸 HTML 伪造（`<span class="litemd-cb">` 会被还原阶段替换成复选框，
+  仅视觉异常、无安全影响）。占位 class 改为带随机盐的不可预测形态，
+  与 KaTeX 占位符（latex.ts）的防伪思路一致；还原正则按盐预编译一次，
+  不影响分块渲染高频路径。
+
+- **`SaveFile` TOCTOU 残余窗口显式记录（REV-09-04 G5）**：P0-5 的 mtime
+  冲突检测在 stat 与 rename 之间仍有理论窗口，完全闭合需文件锁 / CAS 写入，
+  对单人手动保存场景成本收益不成比例。维持现状，已在 `app.go` 注释中记录
+  决策，避免后续审计重复提出。
+
+### 🧹 清理
+
+- **`persistImageAsset` / `ImageDropResult` 死代码删除（REV-09-04 Y1）**：
+  `obsidian.ts` 的该函数以 `copyFn("assets/xxx", b64)` 形态调用写入接口，
+  带目录分隔符的路径与 P0-2 收敛后 Go 端 `AssetWritePath` 的"纯文件名"校验
+  直接冲突，调用必然被拒；真实图片落盘由 `main.ts` 的 onImageDrop →
+  `CopyImageAsset` + `buildImageMarkdown` 承担。属 P0-2 后的遗留死代码，
+  全仓库（含 E2E）零引用，安全删除。
+
+### 🧪 测试
+
+- 新增 `frontend/src/env.test.ts`（第 16 个套件）：运行形态判定 8 用例。
+- `preview.test.ts` +15 例（R1 URI 白名单、G2 缓存摘要、G4 占位防伪）。
+- `tabs.test.ts` +12 例（Y2 双平台比较键）。
+- `internal/links`：`TestCheckEditable` deny 列表扩至新名单；
+  新增 `TestCheckEditable_ObsidianNoExtStillAllowed`。
+- `internal/fileio`：新增 `TestSafeWritePath_DotDotBackstop`。
+- E2E 实测：`sprint1.sh` 15/15、`sprint10.sh` 21/21（vite preview 生产产物 + agent-browser）。
+- 全量：`go vet` 干净、`go test ./... -race` 4 包全过、前端 16/16 套件
+  （tsc + vite build 通过）。
+
+### 📚 文档
+
+- `TECHNICAL.md` §3.1 的 `ALLOWED_URI_REGEXP` 描述对齐实现（补盘符分支与
+  "scheme 形态负向前瞻"说明）。
+- 勘误 0.2.10 段 `window.__litemd__bindings` 条目中"绑定仍可用"的失实声明
+  （详见上文修复条目）。
+
+***
+
 ## \[0.2.10] — 2026-09-03
 
 基于 [AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md) 的 patch 收口。第二轮全景审计 + 文档对齐 + 测试补强，全项目落地 0 P0 / 20 P1 / 18 P2 / 6 个新测试套件 + 12 个 Go 新测试函数。
@@ -68,7 +183,11 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 - **`window.__litemd__bindings`** **仅 DEV 暴露**：`file-ops.ts` 原所有模式都
   注入到 window（含生产构建），与上方注释"real binding 总是被打包"相矛盾。
   守 `import.meta.env.DEV` 后仅 dev/E2E 暴露，生产构建不泄漏。
-  （注意：E2E 走 dev-bootstrap + dev.html 路径，绑定仍可用。）
+  （注意：E2E 走 dev-bootstrap + dev.html 路径，绑定仍可用。
+  —— **勘误（0.2.11）**：该声明不成立。E2E 跑在 vite preview 的生产产物上，
+  `DEV` 恒为 false，dev.html 与 index.html 共用同一 bundle，调试句柄在 E2E
+  中实际已全部失效（sprint1 Phase 4 硬断言必挂）。0.2.11 已改为按
+  "是否存在 Wails 运行时"判定，详见 [0.2.11] 修复段。）
 
 ### 🧪 测试
 

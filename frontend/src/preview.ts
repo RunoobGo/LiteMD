@@ -131,7 +131,11 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
     if (!md) return "";
     // 整文渲染 LRU（审查 🟡-7）：切 tab 往返 / 内容未变时直接复用上次结果，
     // 跳过 marked + DOMPurify + KaTeX 全管线。上限 8 条防无界增长。
-    const key = `${opts.lineNumbers ? "L" : "P"}\u0000${md}`;
+    //
+    // 审查 G2（v0.2.11）：key 不再用整篇 md 原文。原文长度可达 MaxReadSize
+    // （50MB），8 条缓存光 key 就要 ~800MB 常驻。改用长度 + 内容摘要，
+    // key 开销从 O(文档大小) 降为 O(1)；value（HTML）本来就必须留着。
+    const key = `${opts.lineNumbers ? "L" : "P"}\u0000${md.length}\u0000${contentDigest(md)}`;
     const hit = renderCache.get(key);
     if (hit !== undefined) {
         renderCache.delete(key); // LRU touch
@@ -149,6 +153,30 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
 
 const RENDER_CACHE_MAX = 8;
 const renderCache = new Map<string, string>();
+
+/**
+ * 文档内容摘要，仅用于缓存 key（审查 G2）。
+ *
+ * 两个不同 offset basis / 质数的 FNV-1a 变体拼成 ~64 位摘要：单条 32 位
+ * 哈希在长期运行的编辑器里仍有可感知的碰撞概率，而**碰撞的后果是渲染出
+ * 另一篇文档的内容**——属于必须避免的严重错误，因此用双哈希把概率压到
+ * 天文数字级（2^-64），再加长度做第三重区分。
+ *
+ * 逐 code unit 处理（不拆代理对）即可：摘要只要求"同内容同值、异内容异值"，
+ * 不需要字符语义。
+ */
+function contentDigest(s: string): string {
+    let h1 = 0x811c9dc5; // FNV offset basis
+    let h2 = 0x01000193; // 第二个独立初值
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        h1 ^= c;
+        h1 = Math.imul(h1, 0x01000193); // FNV prime
+        h2 ^= c;
+        h2 = Math.imul(h2, 0x85ebca6b); // 不同质数，与 h1 独立
+    }
+    return `${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
+}
 
 // 审查 P1-3：顶层块缓存（key = token.raw → value = 全管线处理后的
 // { html, css }）。仅 lineNumbers 路径使用；LRU 上限按块数（单块通常
@@ -292,7 +320,18 @@ const SANITIZE_OPTIONS = {
     ],
     FORBID_TAGS: ["style", "iframe", "object", "embed", "form", "input", "button", "link", "script", "meta", "base"],
     FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onmouseout", "onfocus", "onblur", "srcdoc"],
-    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,|\/|#|\.{0,2}\/|[a-zA-Z0-9._-][^:]*$)/i,
+    // v0.2.11（审查 R1）：放行形态按"白名单协议 + 本地路径"两段判定。
+    //
+    // 历史：v0.2.x 曾把相对路径全剥（href=null，链接不可点），当时补了
+    // `./`、`../` 与 `[a-zA-Z0-9._-]` 开头三条分支。但最后一条只认 ASCII 开头，
+    // 中文文件名（marked 会百分号编码成 %E6%96%87…，% 不在首字符类里）和
+    // Windows 盘符（`C:/notes/a.md`，冒号前被当成 scheme）仍被剥 —— 这是本次修的复发。
+    //
+    // 现在第 5 条改为"任意非 scheme 的本地路径"：用负向前瞻排除
+    // `scheme:` 形态（javascript:/vbscript:/file:/blob:/data: 等一律拒绝），
+    // 其余（中文、% 编码、空格外的任意字符）放行；盘符单独作为第 4 条前置，
+    // 否则 `C:` 会被 scheme 前瞻误杀。
+    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|data:image\/(?:png|gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,|\/|#|[a-zA-Z]:[\\/]|(?![a-zA-Z][a-zA-Z0-9+.-]*:)[^\s<>"'`]*)/i,
 };
 
 // v0.2.7：style 属性过滤 hook（模块级注册一次，全项目唯一的 DOMPurify 实例
@@ -317,8 +356,9 @@ DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
 /**
  * GFM 任务列表复选框的两步处理：
  *
- * 1) sanitize 前（本函数）：把 marked 输出的 `<input type=checkbox checked disabled>`
- *    替换为 `<span class="litemd-cb" data-checked="1"></span>` 占位。
+ * 1) sanitize 前（taskCheckboxPlaceholder）：把 marked 输出的
+ *    `<input type=checkbox checked disabled>` 替换为
+ *    `<span class="${CHECKBOX_PLACEHOLDER_CLASS}" data-checked="1"></span>` 占位。
  *    - 绕开 DOMPurify 对 input 的属性歧义（jsdom 会把 input[type] 当 URI 属性校验并剥除）
  *    - 任何用户裸 HTML 注入的 input（非 checkbox+disabled 形态）不匹配替换正则，
  *      直接被 FORBID_TAGS 剥掉，天然免疫注入
@@ -326,6 +366,16 @@ DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
  *    `<input type="checkbox" checked disabled>`——属性是程序白名单生成的，
  *    无任何用户可控内容，disabled 保证无交互面。
  */
+//
+// 审查 G4（v0.2.11）：占位 class 改为**带随机盐**的形态。
+//
+// 原先是可预测的固定串 `litemd-cb`，用户裸 HTML 写
+// `<span class="litemd-cb"></span>` 就会被还原阶段当成占位符替换成复选框
+// （data-checked 会被 DOMPurify 剥掉，所以 checked 状态仍不可控，无安全影响，
+// 但渲染结果与书写意图不符）。加盐后 class 名不可预测，与 KaTeX 占位符
+// （latex.ts）的防伪思路一致；用户伪造的 span 会原样保留为空 span。
+const CHECKBOX_PLACEHOLDER_CLASS = `litemd-cb-${Math.random().toString(36).slice(2, 10)}`;
+
 function taskCheckboxPlaceholder(html: string): string {
     // 属性顺序无关：marked 实际输出为 <input disabled="" type="checkbox">
     //（disabled 在 type 前），不能假设固定顺序
@@ -336,15 +386,22 @@ function taskCheckboxPlaceholder(html: string): string {
             const isDisabled = /\bdisabled/.test(tag);
             if (!isCheckbox || !isDisabled) return tag; // 非法形态留给 FORBID_TAGS 剥除
             const checked = /\bchecked/.test(tag) ? ' data-checked="1"' : "";
-            return `<span class="litemd-cb"${checked}></span>`;
+            return `<span class="${CHECKBOX_PLACEHOLDER_CLASS}"${checked}></span>`;
         },
     );
 }
 
+// 还原正则按占位 class 预编译一次（P1-3：分块渲染下本函数高频调用，
+// 不能每次 replace 都现场 new RegExp）。
+const CHECKBOX_RESTORE_RE = new RegExp(
+    `<span\\s+class="${CHECKBOX_PLACEHOLDER_CLASS}"(?:\\s+data-checked="1")?\\s*\\/?>(?:\\s*</span>)?`,
+    "g",
+);
+
 /** 占位 span → disabled checkbox（sanitize 后调用，输入已无用户可控属性） */
 function restoreCheckboxes(html: string): string {
     return html.replace(
-        /<span\s+class="litemd-cb"(?:\s+data-checked="1")?\s*\/?>(?:\s*<\/span>)?/g,
+        CHECKBOX_RESTORE_RE,
         (m) => (m.includes("data-checked") ? '<input type="checkbox" checked disabled>' : '<input type="checkbox" disabled>'),
     );
 }

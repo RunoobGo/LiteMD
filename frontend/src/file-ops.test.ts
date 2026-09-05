@@ -9,6 +9,7 @@
 // （那些由 E2E + Wails runtime 验证）。
 
 import { bind } from "./file-ops";
+import { isWailsRuntime, exposeDebugHandles } from "./env";
 
 let pass = 0;
 let fail = 0;
@@ -100,14 +101,16 @@ console.log("bind 优先级：");
     teardownWindow();
 }
 
-console.log("\n__litemd__bindings DEV 守门（审计 R2-F7）：");
+console.log("\n__litemd__bindings Wails 运行时守门（审计 R2-F7 / v0.2.11 修正）：");
 {
-    // 生产构建 import.meta.env.DEV=false，window.__litemd__bindings
-    // 不应被注入。当前 tsx 走 dev 模式（DEV=true），bindings 应注入。
-    // 这里只校验 typeof 是 object（无论 DEV 模式如何，注入路径已
-    // 守 import.meta.env.DEV；tsx 跑的是 dev，所以应注入）。
+    // v0.2.11 起守门条件由 import.meta.env.DEV 改为「是否存在 Wails 运行时」。
+    // 原因：E2E 跑在 vite preview 服务的生产产物上，DEV 恒为 false，旧守门
+    // 会让调试句柄在 E2E 中整体消失（sprint1.sh 的 bindings.SaveFile 断言挂）。
+    // tsx 单测环境没有 window.runtime，等价于浏览器 / E2E 形态 → 应注入。
+    assertEq(isWailsRuntime(), false, "单测环境无 window.runtime → 非 Wails 桌面环境");
+    assertEq(exposeDebugHandles(), true, "非 Wails 环境 → 应暴露调试句柄");
     const w = (window as any).__litemd__bindings;
-    assert(typeof w === "object" && w !== null, "ts 跑在 dev 模式，bindings 已注入 window");
+    assert(typeof w === "object" && w !== null, "无 Wails 运行时，bindings 已注入 window");
     assertEq(typeof w?.OpenFile, "function", "OpenFile binding 可调用");
     assertEq(typeof w?.SaveFile, "function", "SaveFile binding 可调用");
     assertEq(typeof w?.CopyImageAsset, "function", "CopyImageAsset binding 可调用");

@@ -1,7 +1,7 @@
 # LiteMD 分级测试矩阵
 
 > **测试体系单一入口**：运行方式、分级用例矩阵、覆盖统计全在此。整合自 `audit/AUDIT-2026-09-03.md` §3 + `audit/AUDIT-2026-09-03-R2.md` §三 + `TECHNICAL.md` §7 与历史 `archive/TEST_AUDIT.md`。
-> 版本基线：v0.2.10（2026-09-03）。**任何测试变更都要同步更新本文档**（见 `doc/README.md` 维护纪律）。
+> 版本基线：v0.2.11（2026-09-04）。**任何测试变更都要同步更新本文档**（见 `doc/README.md` 维护纪律）。
 
 ***
 
@@ -23,13 +23,13 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 # 失败脚本：sprint1/2/3/5 已降级归档至 `e2e/SPRINT-LEGACY-README.md`
 ```
 
-## 2. 覆盖统计（v0.2.10 · 2026-09-03）
+## 2. 覆盖统计（v0.2.11 · 2026-09-04）
 
 | 层     | 数量              | 备注                                                                                                                                                                                                                                    |
 | ----- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Go 单测 | 73 Test 函数（4 包） | main / config / fileio / links；含关闭守卫、二实例通知、navguard、错误文案契约（6 哨兵）、**错误码穿透 wrap**、**AllowSVG -race 并发**、**CopyImageAsset 5 用例**、**SaveFile expectMtime 3 用例**、**publicPath 6 用例**、**ResolveMalformedPath**                              |
-| 前端单测  | 15 套件全绿         | preview(91) / user-css(64) / obsidian(45) / latex(59) / titlebar(17) / tabs(21+7) / link-handler(23) / toc(22) / md-escape(9) / mermaid(25) / font-size(17) / **errcode(33)** / **file-ops(7)** / **sidebar(21)** / **splitpane(28)** |
-| E2E   | sprint4\~11     | sprint1/2/3/5 已降级归档至 `e2e/SPRINT-LEGACY-README.md`                                                                                                                                                                                    |
+| Go 单测 | 75 Test 函数（4 包） | main / config / fileio / links；含关闭守卫、二实例通知、navguard、错误文案契约（6 哨兵）、**错误码穿透 wrap**、**AllowSVG -race 并发**、**CopyImageAsset 5 用例**、**SaveFile expectMtime 3 用例**、**publicPath 6 用例**、**ResolveMalformedPath**；v0.2.11 新增 **DotDotBackstop**（safeWritePath `..` 兜底）与 **ObsidianNoExtStillAllowed**（敏感名单扩充不误伤无扩展名约定） |
+| 前端单测  | 16 套件全绿         | preview(116) / user-css(64) / obsidian(45) / latex(66) / titlebar(17) / tabs(43) / link-handler(23) / toc(30) / md-escape(22) / mermaid(26) / font-size(17) / **errcode(33)** / **file-ops(12)** / **sidebar(21)** / **splitpane(28)** / **env(8)**（v0.2.11 新增：运行形态判定契约） |
+| E2E   | sprint1、sprint4\~11 | sprint1（v3 版，走 `__litemd__bindings`）v0.2.11 实测 15/15 恢复有效；sprint2/3/5 仍降级归档至 `e2e/SPRINT-LEGACY-README.md`（sprint10 的 mockfs 注入时序缺陷已修复，21/21） |
 
 **核心业务逻辑覆盖率估计 >87%**（目标 >80%，达标；R2 修复后新增 errcode / file-ops / sidebar / splitpane + tabs.findByPath 把"主目录、IPC、UI 容器"模块全部覆盖）。
 

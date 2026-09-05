@@ -1,6 +1,6 @@
 # LiteMD 技术文档
 
-> 最后更新：2026-09-03（对齐当前代码快照 v0.2.10，全景审计见 `doc/audit/AUDIT-2026-09-03-R2.md`）
+> 最后更新：2026-09-04（对齐当前代码快照 v0.2.11；0.2.11 修复项见 `doc/CHANGELOG.md` [0.2.11] 段）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
 > 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)。
 
@@ -183,8 +183,13 @@ ALLOWED_ATTR: v0.2.7 起 style 属性放行（经 hook 声明级过滤，见 3.2
               span/scope/datetime/start/reversed/open/dir/kind/srclang/label/type
 FORBID_ATTR:  onerror/onload/onclick/onmouseover/onmouseout/onfocus/onblur/srcdoc
               （style 已从禁用列表移除，改由 hook 过滤）
-ALLOWED_URI_REGEXP: https?:/mailto:/tel:/相对路径 + data:image/(png|gif|jpeg|
-              jpg|webp|avif|bmp|x-icon);base64,（v0.2.7，不含 svg+xml）
+ALLOWED_URI_REGEXP: https?:/mailto:/tel:/盘符(C:\)/本地路径 + data:image/(png|
+              gif|jpeg|jpg|webp|avif|bmp|x-icon);base64,（v0.2.7，不含 svg+xml）。
+              v0.2.11：本地路径分支改用负向前瞻排除 scheme: 形态后放行任意
+              非 scheme 路径——覆盖中文文件名（% 编码）与盘符（v0.2.x 的
+              ASCII 开头分支会误剥二者，审查 R1）；javascript:/vbscript:/
+              file:/blob:/非图片 data: 照旧拒绝。盘符 C:\ 单独前置分支，
+              否则冒号会被 scheme 前瞻误杀
 ```
 
 注意：`style` 属性对 KaTeX 输出是**有意放行**的（公式还原发生在 DOMPurify 之后），这一层依赖 KaTeX `trust:false` 保证输出安全。v0.2.7 起用户 HTML 的 style 属性也放行，但每个声明值都会经过 `uponSanitizeAttribute` hook 的声明级过滤（黑名单 + url 白名单，见 4.2）。

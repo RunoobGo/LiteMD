@@ -11,6 +11,7 @@ import { main as MainT, config as ConfigT } from "../wailsjs/go/models";
 // 真实 binding 总是被打包（vite 会忽略运行时引用），所以可以放心静态导入
 // 实际运行时如果存在 window.go.main.App，优先用它（mock 模式）
 import * as wailsBindings from "../wailsjs/go/main/App";
+import { exposeDebugHandles } from "./env";
 
 /** 审计 R2 测试补强：bind 改为导出，便于 file-ops.test.ts 单元测试
  *  mock 优先级 / fallback / 缺失 throw 三种契约。 */
@@ -124,20 +125,18 @@ declare global {
         __litemd__bindings?: Record<string, (...args: any[]) => Promise<any>>;
     }
 }
-// 审计 R2-F7：原先所有模式都注入到 window（含生产构建），与上方注释
-// "real binding 总是被打包"相矛盾——产线下 wailsBindings 已可用，多一
-// 份 window.__litemd__bindings 只是冗余。守 import.meta.env.DEV 后
-// 仅 dev/E2E 暴露，生产构建不会泄漏。
-// 兜底：tsx 单测环境 import.meta.env 可能 undefined，默认当 dev 走
-// （生产构建中 import.meta.env.DEV 由 Vite 显式替换为 false）。
-const isDev = (() => {
-    try {
-        const env = (import.meta as any)?.env;
-        if (env && typeof env.DEV === "boolean") return env.DEV;
-        return true; // tsx / 非 Vite 环境 → 当 dev 走
-    } catch { return true; }
-})();
-if (isDev && typeof window !== "undefined") {
+// 审计 R2-F7（v0.2.11 修正）：原先所有模式都注入到 window（含生产构建），
+// 与上方注释"real binding 总是被打包"相矛盾——产线下 wailsBindings 已可用，
+// 多一份 window.__litemd__bindings 只是冗余。
+//
+// R2-F7 初版用 import.meta.env.DEV 守门，但 E2E 跑在 vite preview 服务的
+// **生产构建产物**上（DEV 被静态替换为 !1），dev.html 与 index.html 共用
+// 同一份 bundle，换入口页并不能让 DEV 变回 true —— 结果是调试句柄在 E2E
+// 里整体消失（sprint1.sh 依赖的 bindings.SaveFile 硬断言必挂）。
+//
+// 现改为按"是否存在 Wails 运行时"判定（见 env.ts）：真实桌面端不注入，
+// 浏览器 / E2E（含生产产物）注入。
+if (exposeDebugHandles()) {
     window.__litemd__bindings = {
         OpenFile: openFile,
         OpenDialog: pickOpenPath,

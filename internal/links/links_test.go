@@ -322,6 +322,16 @@ func TestCheckEditable(t *testing.T) {
 	}
 	deny := []string{
 		"/home/u/.ssh/id_rsa", "/home/u/.ssh/id_ed25519",
+		// v0.2.11（Y3）：新增凭据 / 历史类
+		"/home/u/.ssh/id_ecdsa_sk", "/home/u/.ssh/id_ed25519_sk",
+		"/home/u/.git-credentials", "/home/u/.dockercfg",
+		"/home/u/.aws/credentials", "/proj/.yarnrc", "/proj/.pypirc",
+		"/home/u/.zsh_history", "/home/u/.psql_history",
+		"/home/u/.mysql_history", "/home/u/.python_history",
+		"/home/u/.my.cnf",
+		// v0.2.11（Y3）：.env 变体走前缀判定
+		"/proj/.env.development", "/proj/.env.production",
+		"/proj/.env.staging.local",
 		"/proj/.env", "/proj/.env.local", "/home/u/.netrc",
 		"/home/u/cert.pem", "/home/u/server.key", "/home/u/vault.kdbx",
 		"/home/u/.bash_history",
@@ -330,6 +340,28 @@ func TestCheckEditable(t *testing.T) {
 	for _, p := range deny {
 		if err := CheckEditable(p); !errors.Is(err, ErrNotEditable) {
 			t.Fatalf("%s 应被拒, 得到 %v", p, err)
+		}
+	}
+}
+
+// TestCheckEditable_ObsidianNoExtStillAllowed v0.2.11（审查 Y3）：
+// 敏感名单扩充**不得**收紧「无扩展名放行」的 Obsidian 约定。
+//
+// 该约定由 links.go 注释、CHANGELOG（v0.2.6 链接重构段）、TECHNICAL.md 与
+// Resolve/looksLikeText 的同一口径共同钉死，一旦误伤，会出现"链接能打开、
+// 手动打开却被拒"的自相矛盾行为。这里作为反向守卫锁住。
+func TestCheckEditable_ObsidianNoExtStillAllowed(t *testing.T) {
+	allow := []string{
+		"/vault/文档名",       // 无扩展名的 Obsidian 风格笔记
+		"/vault/Obsidian 笔记",
+		"/vault/我的 日记 2026",
+		"/vault/environment",   // 不以 ".env" 开头（前缀规则不应误伤）
+		"/vault/env 配置说明",    // 中文名 + 空格，前缀不匹配
+		"/vault/notes/todo",    // 子目录下的无扩展名笔记
+	}
+	for _, p := range allow {
+		if err := CheckEditable(p); err != nil {
+			t.Fatalf("%s 应放行（无扩展名 Obsidian 约定被名单扩充误伤）, 得到 %v", p, err)
 		}
 	}
 }

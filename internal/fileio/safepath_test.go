@@ -43,6 +43,34 @@ func TestSafeWritePath_CleansDots(t *testing.T) {
 	}
 }
 
+// TestSafeWritePath_DotDotBackstop 审查 G1（v0.2.11）：补上注释早已承诺、
+// 但代码里一直缺失的 ".." 段兜底检查，同时确认它不误伤含点的合法文件名。
+func TestSafeWritePath_DotDotBackstop(t *testing.T) {
+	dir := t.TempDir()
+
+	// 不误伤：兜底检查按段比对，而不是笼统的 strings.Contains("..")
+	allow := []string{
+		filepath.Join(dir, "笔记..备份.md"), // 文件名内含连续两个点
+		filepath.Join(dir, "..gitignore.md"),
+		filepath.Join(dir, "a.b.c.md"),
+		filepath.Join(dir, "sub", "..", "x.md"), // Clean 可消解
+	}
+	for _, in := range allow {
+		if _, err := safeWritePath(in); err != nil {
+			t.Errorf("safeWritePath(%q) 不应拒绝（兜底检查误伤）, got %v", in, err)
+		}
+	}
+
+	// 真正触发兜底：Unix 上反斜杠不是路径分隔符，filepath.Clean 折叠不掉
+	// ".." 段，此时只能靠兜底检查拦住（Windows 上 Clean 会消解，分支不可达）。
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 上 Clean 会消解该形态，兜底分支不可达")
+	}
+	if _, err := safeWritePath(`/tmp/a\..\b.md`); !errors.Is(err, ErrUnsafePath) {
+		t.Errorf(`safeWritePath("/tmp/a\..\b.md") 应被 ".." 兜底检查拒绝, got %v`, err)
+	}
+}
+
 func TestSafeWritePath_WindowsReserved(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-specific check; safeWritePath only enforces on Windows")

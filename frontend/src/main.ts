@@ -39,6 +39,7 @@ import { EventsOn, WindowIsMaximised, WindowMinimise, WindowToggleMaximise, Quit
 import { initTitlebar } from "./titlebar";
 import { Sidebar } from "./sidebar";
 import { TocPanel } from "./toc";
+import { exposeDebugHandles } from "./env";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
@@ -1227,11 +1228,16 @@ declare global {
         __getEditorContent?: () => string;
     }
 }
-window.__litemd__split = split!;
-window.__litemd__cm = editor!;
-window.__litemd__tm = tm;
-window.__litemd__preview = preview!;
-window.__litemd__sync = syncScroll!;
-window.__litemd__toc = tocPanel;
-window.__litemd__sidebar = sidebar;
-window.__getEditorContent = () => editor!.getContent();
+// 与 file-ops.ts 的 __litemd__bindings 同一口径：真实 Wails 桌面端（有
+// window.runtime）不暴露，浏览器 / E2E 暴露。注意不能用 import.meta.env.DEV
+// 判定——E2E 跑在 vite preview 的生产产物上，DEV 恒为 false（详见 env.ts）。
+if (exposeDebugHandles()) {
+    window.__litemd__split = split!;
+    window.__litemd__cm = editor!;
+    window.__litemd__tm = tm;
+    window.__litemd__preview = preview!;
+    window.__litemd__sync = syncScroll!;
+    window.__litemd__toc = tocPanel;
+    window.__litemd__sidebar = sidebar;
+    window.__getEditorContent = () => editor!.getContent();
+}

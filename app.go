@@ -21,7 +21,7 @@ import (
 // AppVersion 是 LiteMD 当前版本号,作为全项目唯一版本事实源。
 // 发版时需同步更新:wails.json 的 info.productVersion(NSIS 安装包名/版本
 // 信息由此生成)。注释中的"编译时注入"曾与硬编码实现不符,已修正。
-const AppVersion = "0.2.10"
+const AppVersion = "0.2.11"
 
 // 错误码（审计 R2-F1）：见 fileio.go 顶部约定；主包定义 binding 层的码。
 const (
@@ -283,6 +283,14 @@ func (a *App) SaveDialog(suggestedName string) (string, error) {
 // 实际不会进此分支；这里兜住「传非零 expectMtime 但目标不存在」的边缘场景）。
 //
 // 注意：调用方应先通过 SaveDialog 让用户确认目标路径（如果不希望弹窗，可由前端直接调）。
+//
+// 审查 G5（v0.2.11，已知并接受）：上述 mtime 冲突检测**不是原子的**——
+// os.Stat 之后到 WriteText 内部 rename 落盘之间仍存在窗口，外部程序若在
+// 此间隙修改文件，最后一次写入仍会覆盖它。
+//
+// 完全闭合需要文件锁（flock/OFD lock）或比较并交换（CAS）式写入，对本
+// 编辑器的使用场景（单人、手动 Ctrl+S）成本与收益不成比例，故维持现状。
+// 这里显式记录，避免后续审计重复提出同一问题。
 func (a *App) SaveFile(path, content string, expectMtime int64) (int64, error) {
 	if path == "" {
 		return 0, ErrEmptyPath
