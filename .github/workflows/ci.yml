@@ -12,6 +12,7 @@ on:
       - "v*"
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -76,6 +77,7 @@ jobs:
 
       - name: npm ci
         working-directory: frontend
+        run: npm ci
 
       # tsc 类型检查：test 模式是为了 npm test 也要先过类型
       - name: tsc --noEmit
@@ -106,6 +108,7 @@ jobs:
 
       - name: npm install
         working-directory: frontend
+        run: npm install
 
       - name: audit (>= high)
         working-directory: frontend
@@ -141,6 +144,11 @@ jobs:
 
       - name: npm ci
         working-directory: frontend
+        run: npm ci
+
+      # wails CLI 不在 runner 预装列表里，必须显式安装
+      - name: install wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
 
       - name: wails build (tag=${{ github.ref_name }})
         run: wails build -clean -platform ${{ matrix.os == 'macos-latest' && 'darwin/universal' || (matrix.os == 'windows-latest' && 'windows/amd64' || 'linux/amd64') }}
