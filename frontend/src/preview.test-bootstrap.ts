@@ -50,6 +50,11 @@ if (suiteName) {
     (globalThis as any).document = dom.window.document;
     // DOMPurify 需要 navigator
     Object.defineProperty((globalThis as any).window.navigator, "userAgent", { value: "node" });
+    // 全局 navigator 自 Node 21 才内置。tabs.ts / tabs.test.ts 会直接引用裸 navigator，
+    // 在 Node 20 上会抛 ReferenceError（CI 曾以此失败）。缺失时回落到 jsdom 的实现。
+    if (typeof (globalThis as any).navigator === "undefined") {
+        (globalThis as any).navigator = dom.window.navigator;
+    }
     // F10 修复后 preview.ts 使用 DOMParser 加固 link，需暴露到 globalThis
     (globalThis as any).DOMParser = dom.window.DOMParser;
     // mermaid.ts ensureInitialized 调用 getComputedStyle（不挂会 TypeError）
