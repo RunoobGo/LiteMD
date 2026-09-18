@@ -50,12 +50,21 @@ jobs:
       # 长期存在对齐漂移（app.go / app_test.go / main.go / links.go /
       # links_test.go）却无人发现。格式不统一会让 diff 混入纯空白噪声，
       # 也让"注释里承诺的检查是否真的存在"这类审计更难做。
+      # 依赖仓库根 .gitattributes 的 `*.go text eol=lf`：Windows 镜像全局
+      # core.autocrlf=true 会把 checkout 出的 .go 变成 CRLF，gofmt 恒输出 LF，
+      # 直接比较会全库误报（首跑即 26 个文件全红，本地 macOS 无法复现）。
       - name: gofmt check
         shell: bash
         run: |
           unformatted="$(gofmt -l . | grep -v 'node_modules' || true)"
           if [ -n "$unformatted" ]; then
             echo "::error::以下文件未通过 gofmt，请本地执行 gofmt -w 后提交"
+            # 辅助定位：若几乎全库文件都被列出，通常不是格式问题而是行尾
+            # （CRLF）—— 检查 .gitattributes 是否覆盖到这些后缀。
+            total=$(echo "$unformatted" | wc -l | tr -d ' ')
+            if [ "$total" -gt 5 ]; then
+              echo "::error::一次性列出 $total 个文件，高度疑似 CRLF 行尾导致，请核对 .gitattributes"
+            fi
             echo "$unformatted" | while IFS= read -r f; do echo "::error::$f"; done
             gofmt -d $unformatted | head -n 60
             exit 1

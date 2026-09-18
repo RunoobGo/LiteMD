@@ -1,0 +1,14 @@
+# 行尾归一：强制 LF
+#
+# 背景（2026-09-18 审查）：GitHub 的 windows-latest 镜像全局 core.autocrlf=true，
+# checkout 时把文本文件转成 CRLF；而 gofmt 恒输出 LF —— CI 的 gofmt 门禁因此
+# 把全库 26 个 Go 文件全部判为"未格式化"，本地 macOS（LF）永远复现不了。
+# eol=lf 的优先级高于 core.autocrlf，能让三平台 checkout 结果一致。
+#
+# 只声明 Go 与前端源码：二进制（png / ico / woff2）Git 本就按 -text 处理，
+# 不受影响；.nsi / .sh / .bat 等构建脚本保持现状，避免改动 Windows 打包行为。
+*.go text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf

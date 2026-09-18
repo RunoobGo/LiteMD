@@ -71,6 +71,12 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   漂移无人发现）。
 - `build.yml` 的 Windows `go test` 去掉 `continue-on-error`：真因（config.Path
   不读 HOME）已修、ci.yml 三平台全绿，advisory 让发布前的测试门槛形同虚设。
+- **新增 `.gitattributes`（`*.go` 等强制 `eol=lf`）**：`gofmt check` 门禁上线后
+  Windows runner 首跑即全库 27 个 Go 文件报红——该镜像全局 `core.autocrlf=true`，
+  checkout 出的 `.go` 是 CRLF，而 gofmt 恒输出 LF，逐行都算 diff。本地 macOS 是
+  LF，永远复现不了。`eol=lf` 优先级高于 `core.autocrlf`，三平台 checkout 结果
+  由此一致（已用 `git -c core.autocrlf=true checkout` 对照验证：27/27 CRLF → 0/27）。
+  gofmt 步骤同步加"一次列出 >5 个文件疑似行尾问题"的诊断提示。
 
 ***
 
