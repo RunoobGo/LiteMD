@@ -62,9 +62,26 @@ jobs:
 
       # Windows 上 go test -race 因 cgo/race 链接工具链失败（无测试被运行，仅 job 级 exit 1）；
       # 对 Windows 矩阵去掉 -race，其余平台保留 race 检测。
-      # 若后续 Windows 仍失败且出现具体 FAIL 行，则转为精准修复对应测试。
+      # 用 bash 统一三平台 shell（规避 Windows PowerShell 引号差异），-v 让失败测试/
+      # panic/编译错误以注解形式暴露；失败时打印末尾日志便于定位根因。
       - name: go test (${{ matrix.os == 'windows-latest' && 'no-race' || 'race' }})
-        run: ${{ matrix.os == 'windows-latest' && 'go test ./... -count=1' || 'go test ./... -race -count=1' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          RACE=""
+          if [ "${{ matrix.os }}" != "windows-latest" ]; then RACE="-race"; fi
+          go test ./... $RACE -count=1 -v 2>&1 | tee test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "::error::go test 失败 (exit $code)"
+            # 把关键失败信号直接提升为注解，便于在 Annotations 面板看到根因
+            grep -E '^(--- FAIL|panic:|#[[:space:]]|build failed)' test.log \
+              | head -n 40 | while IFS= read -r line; do echo "::error::$line"; done
+            echo "::group::末尾 60 行日志"
+            tail -n 60 test.log
+            echo "::endgroup::"
+          fi
+          exit "$code"
 
       # 覆盖率（仅在 main 分支非 PR 时上传，可选）
       - name: go test coverage
