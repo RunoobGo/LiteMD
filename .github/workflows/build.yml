@@ -1,0 +1,169 @@
+name: Build LiteMD
+
+on:
+  push:
+    tags:
+      - 'v*'           # 推送 v0.2.x 等标签时自动构建并发布 Release
+  workflow_dispatch:   # 允许在 GitHub 网页端手动点击触发
+
+jobs:
+  build:
+    name: Build - ${{ matrix.asset_name }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read   # 最小权限：仅 release job 需要 contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 1. Linux AMD64
+          # webkit2_41：wails v2 要求 WebKit 4.1（ubuntu-24.04 无 4.0 包）。
+          - os: ubuntu-latest
+            platform: linux
+            arch: amd64
+            go_tags: webkit2_41
+            asset_name: LiteMD-linux-amd64
+            archive_name: LiteMD-linux-amd64.tar.gz
+          # 2. Windows AMD64
+          - os: windows-latest
+            platform: windows
+            arch: amd64
+            asset_name: LiteMD-windows-amd64
+            archive_name: LiteMD-windows-amd64.zip
+          # 3. macOS ARM64 (Apple Silicon M1/M2/M3)
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            asset_name: LiteMD-macos-arm64
+            archive_name: LiteMD-macos-arm64.zip
+          # 4. macOS AMD64 (Intel)：macos-13 已退役，用 macos-15-intel
+          - os: macos-15-intel
+            platform: darwin
+            arch: amd64
+            asset_name: LiteMD-macos-amd64
+            archive_name: LiteMD-macos-amd64.zip
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # ================= 1. Linux 系统依赖 =================
+      - name: Install Linux Dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          # ubuntu-24.04：wails v2 要求 WebKit 4.1，无 4.0 包，不做回退。
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev
+
+      # ================= 2. 前端构建 =================
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        shell: bash
+        run: |
+          if [ -f "package-lock.json" ]; then npm ci; else npm install; fi
+          npm run build
+
+      # ================= 3. Go & Wails 环境 =================
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod   # 与 go.mod 保持一致（go 1.27.1），工具链自动对齐
+          cache: true
+
+      - name: Install Wails CLI
+        # 固定与 go.mod 相同的 wails 版本（v2.14.0），避免 @latest 与项目版本漂移
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
+
+      # ================= 4. Go 测试（发布门槛） =================
+      - name: Run Go Tests
+        if: matrix.platform != 'windows'
+        run: go test -count=1 ./...
+
+      # Windows 测试仅告警不阻断：路径分隔符 / 与 \、chmod 语义等差异可能
+      # 导致部分用例失败，后续单独修复。
+      - name: Run Go Tests (Windows, advisory)
+        if: matrix.platform == 'windows'
+        continue-on-error: true
+        run: go test -count=1 ./...
+
+      # ================= 5. Wails 编译 =================
+      - name: Build Wails Binary
+        shell: bash
+        env:
+          GOOS: ${{ matrix.platform }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 1
+          GO_TAGS: ${{ matrix.go_tags }}
+          GOTOOLCHAIN: auto
+        run: |
+          # 将 go install 落地的 wails 加入 PATH
+          export PATH="$PATH:$(go env GOPATH)/bin"
+
+          # 打印环境诊断信息，方便排查
+          wails doctor || true
+
+          # LiteMD 不入库 bindings（Go 侧用 Bind:[]interface{}{app} 反射绑定），
+          # 故不使用 -skipbindings，由 wails build 正常重新生成。
+          # -s 跳过前端构建（已在上一步 npm run build 完成，main.go 内联 embed 前端产物）。
+          # -trimpath 移除构建机路径，利于可重现构建。
+          wails build -clean -s -trimpath -ldflags "-s -w" -tags "$GO_TAGS"
+
+          echo "✅ Build output:"
+          ls -la build/bin/
+
+      # ================= 6. 打包 =================
+      - name: Package Artifact
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
+        run: |
+          if [ "$PLATFORM" == "darwin" ]; then
+            # macOS：打包完整 .app bundle（保留 Info.plist/图标）
+            [ -d "build/bin/LiteMD.app" ] || { echo "❌ build/bin/LiteMD.app not found"; exit 1; }
+            zip -ry "$ARCHIVE_NAME" build/bin/LiteMD.app
+          elif [ "$PLATFORM" == "windows" ]; then
+            BINARY="build/bin/LiteMD.exe"
+            [ -f "$BINARY" ] || { echo "❌ $BINARY not found"; exit 1; }
+            powershell -Command "Compress-Archive -Path '$BINARY' -DestinationPath '$ARCHIVE_NAME'"
+          else
+            BINARY="build/bin/LiteMD"
+            [ -f "$BINARY" ] || { echo "❌ $BINARY not found"; exit 1; }
+            tar -czf "$ARCHIVE_NAME" -C build/bin LiteMD
+          fi
+
+      # ================= 7. 上传产物 =================
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.archive_name }}
+          retention-days: 7
+
+  # ================= 8. 自动发布 Release =================
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*
+          generate_release_notes: true
