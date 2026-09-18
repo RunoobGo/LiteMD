@@ -86,11 +86,13 @@ jobs:
         if: matrix.platform != 'windows'
         run: go test -count=1 ./...
 
-      # Windows 测试仅告警不阻断：路径分隔符 / 与 \、chmod 语义等差异可能
-      # 导致部分用例失败，后续单独修复。
-      - name: Run Go Tests (Windows, advisory)
+      # 2026-09-18：Windows 用例此前长期 advisory（continue-on-error），真因是
+      # config.Path() 用 os.UserHomeDir 不读 HOME 导致测试写 runner 真实主目录，
+      # 已随 4 组平台专属用例一并修复（ci.yml 三平台全绿）。advisory 会让
+      # "发布前的测试门槛"形同虚设，故收口为阻断；ci.yml 已全平台覆盖，
+      # 此处保留作为发布前的最后一道确认。
+      - name: Run Go Tests (Windows)
         if: matrix.platform == 'windows'
-        continue-on-error: true
         run: go test -count=1 ./...
 
       # ================= 5. Wails 编译 =================

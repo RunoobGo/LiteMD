@@ -46,6 +46,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # gofmt 门禁（2026-09-18 审查补）：此前仓库无任何格式校验，5 个文件
+      # 长期存在对齐漂移（app.go / app_test.go / main.go / links.go /
+      # links_test.go）却无人发现。格式不统一会让 diff 混入纯空白噪声，
+      # 也让"注释里承诺的检查是否真的存在"这类审计更难做。
+      - name: gofmt check
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l . | grep -v 'node_modules' || true)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::以下文件未通过 gofmt，请本地执行 gofmt -w 后提交"
+            echo "$unformatted" | while IFS= read -r f; do echo "::error::$f"; done
+            gofmt -d $unformatted | head -n 60
+            exit 1
+          fi
+          echo "gofmt: 全部合规"
+
       # main.go 用 //go:embed all:frontend/dist 嵌入前端产物，不先构建会报
       # "pattern all:frontend/dist: no matching files found"（根包 setup failed）。
       - uses: actions/setup-node@v7
