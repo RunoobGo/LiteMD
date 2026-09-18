@@ -33,6 +33,14 @@ import (
 // ResolveLocalPath
 // ============================================================================
 
+// wantSlash 构造 ResolveLocalPath 的期望路径。
+//
+// links.Resolve 的输出经 toSlashes 归一（结果要喂给 WebView 与前端做路径比较，
+// Windows 盘符后的反斜杠会破坏 file:// 与字符串比对），所以契约是「恒为正斜杠」。
+// 测试若直接用 filepath.Join 当期望值，Windows runner 上会假失败（曾因此在 CI
+// 挂掉 TestResolveLocalPath_RelativeMarkdown / _StripsQueryAndAnchor）。
+func wantSlash(elem ...string) string { return filepath.ToSlash(filepath.Join(elem...)) }
+
 func TestResolveLocalPath_RelativeMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "note.md")
@@ -45,7 +53,7 @@ func TestResolveLocalPath_RelativeMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("相对链接解析失败: %v", err)
 	}
-	if want := filepath.Join(dir, "other.md"); got.Path != want {
+	if want := wantSlash(dir, "other.md"); got.Path != want {
 		t.Fatalf("Path: got %q want %q", got.Path, want)
 	}
 	if got.Exists || got.Kind != string(links.KindMissing) {
@@ -92,7 +100,7 @@ func TestResolveLocalPath_StripsQueryAndAnchor(t *testing.T) {
 	if got.Anchor != "top" {
 		t.Fatalf("Anchor: got %q want top", got.Anchor)
 	}
-	if want := filepath.Join(dir, "a.md"); got.Path != want {
+	if want := wantSlash(dir, "a.md"); got.Path != want {
 		t.Fatalf("查询串应被裁掉，Path: got %q want %q", got.Path, want)
 	}
 }
