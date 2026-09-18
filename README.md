@@ -76,7 +76,7 @@ npm run dev      # 仅前端，Vite dev server，用 dev-bootstrap.ts 里的 moc
 **测试**
 
 ```bash
-# 前端单测（16 个套件全绿）
+# 前端单测（17 个套件全绿）
 cd frontend && LITEMD_TEST=all npx tsx src/preview.test-bootstrap.ts
 
 # Go 单测（86 个测试函数，含 race 检测）
@@ -158,7 +158,7 @@ LiteMD/
 欢迎 Issue 与 PR。为保证质量，请遵循：
 
 1. **先开 Issue 再动手** —— 尤其是涉及渲染管线、安全策略或文件关联的改动，这些区域有对应的审计结论，需要对齐后再改。
-2. **提交前跑通测试** —— 前端 16 套件 + Go `go test ./... -race` 必须全绿，CI 会以此拦截。
+2. **提交前跑通测试** —— 前端 17 套件 + Go `go test ./... -race` 必须全绿，且 `gofmt -l .` 无输出，CI 会以此拦截。
 3. **提交信息用 Conventional Commits** —— 如 `fix(preview): callout 行号漂移`。
 4. **改动测试必同步文档** —— `doc/test/TEST-MATRIX.md` 是测试事实源，任何测试变更都要同步更新（见 `doc/README.md` 的维护纪律）。
 5. **新增文档要挂进地图** —— 新文档需在 `doc/README.md` 的导航中登记。

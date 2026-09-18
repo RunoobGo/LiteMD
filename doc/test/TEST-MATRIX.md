@@ -27,8 +27,8 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 
 | 层     | 数量              | 备注                                                                                                                                                                                                                                    |
 | ----- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Go 单测 | 75 Test 函数（4 包） | main / config / fileio / links；含关闭守卫、二实例通知、navguard、错误文案契约（6 哨兵）、**错误码穿透 wrap**、**AllowSVG -race 并发**、**CopyImageAsset 5 用例**、**SaveFile expectMtime 3 用例**、**publicPath 6 用例**、**ResolveMalformedPath**；v0.2.11 新增 **DotDotBackstop**（safeWritePath `..` 兜底）与 **ObsidianNoExtStillAllowed**（敏感名单扩充不误伤无扩展名约定） |
-| 前端单测  | 16 套件全绿         | preview(116) / user-css(64) / obsidian(45) / latex(66) / titlebar(17) / tabs(43) / link-handler(23) / toc(30) / md-escape(22) / mermaid(26) / font-size(17) / **errcode(33)** / **file-ops(12)** / **sidebar(21)** / **splitpane(28)** / **env(8)**（v0.2.11 新增：运行形态判定契约） |
+| Go 单测 | 107 Test 函数（4 包） | main / config / fileio / links；含关闭守卫、二实例通知、navguard、错误文案契约（6 哨兵）、**错误码穿透 wrap**、**AllowSVG -race 并发**、**CopyImageAsset 5 用例**、**SaveFile expectMtime 3 用例**、**publicPath 6 用例**、**ResolveMalformedPath**；v0.2.11 新增 **DotDotBackstop**（safeWritePath `..` 兜底）与 **ObsidianNoExtStillAllowed**（敏感名单扩充不误伤无扩展名约定）；**审查 2026-09-18 新增 app\_bindings\_test.go 20 例**：binding 层 0 覆盖补齐（ResolveLocalPath / OpenExternal / OpenPath / ReadLocalAsset / 对话框 nil ctx）、**全 16 哨兵错误码契约**、**SaveFile+SaveFileAs 敏感目标拦截**、**OpenFile 软链绕过 CheckEditable** |
+| 前端单测  | 17 套件全绿         | preview(116) / user-css(64) / obsidian(45) / latex(66) / titlebar(17) / tabs(43) / link-handler(23) / toc(30) / md-escape(22) / mermaid(26) / font-size(17) / **errcode(33)** / **file-ops(12)** / **sidebar(21)** / **splitpane(28)** / **unsaved-guard(11)** / **env(8)**（v0.2.11 新增：运行形态判定契约；2026-09-18 新增 unsaved-guard：quitDecision 决策表 + 对话框失效安全方向 + returnValue 清零） |
 | E2E   | sprint1、sprint4\~11 | sprint1（v3 版，走 `__litemd__bindings`）v0.2.11 实测 15/15 恢复有效；sprint2/3/5 仍降级归档至 `e2e/SPRINT-LEGACY-README.md`（sprint10 的 mockfs 注入时序缺陷已修复，21/21） |
 
 **核心业务逻辑覆盖率估计 >87%**（目标 >80%，达标；R2 修复后新增 errcode / file-ops / sidebar / splitpane + tabs.findByPath 把"主目录、IPC、UI 容器"模块全部覆盖）。
@@ -61,7 +61,10 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 | 原子写：临时文件→fsync→rename；沿用原权限                       | P0 | 🟢 fileio\_test.go                                     |
 | 保存期间继续输入不丢字（enqueueSave 串行）                       | P0 | 🟡 E2E 覆盖                                              |
 | SaveFileAs：取消返回空；无扩展名补 .md                        | P1 | 🟢 app\_test.go                                        |
+| **SaveFile / SaveFileAs 拒绝敏感目标（写入侧与读取侧同口径）**      | P0 | 🟢 **app\_bindings\_test.go** TestSaveFile\_RejectsSecretTarget + TestSaveFile\_AllowsNormalMarkdown |
+| **OpenFile 软链绕过 CheckEditable（真实目标二次判定）**          | P0 | 🟢 **app\_bindings\_test.go** TestOpenFile\_RejectsSymlinkToSecret + TestOpenFile\_AllowsSymlinkToMarkdown |
 | **CopyImageAsset 受限资产写入（R2-G7）**                  | P0 | 🟢 **app\_asset\_test.go 5 例**                         |
+| **CopyImageAsset 锚点 baseFile 须为可编辑文本文件**            | P0 | 🟢 **app\_bindings\_test.go** TestCopyImageAsset\_RejectsNonEditableBase |
 
 ### 模块 2：标签管理（P0）
 
@@ -104,7 +107,9 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 
 | 用例                                          | 级  | 状态                      |
 | ------------------------------------------- | -- | ----------------------- |
-| dialog returnValue 残留清零（ESC 不误选）            | P0 | 🟢 unsaved-guard        |
+| dialog returnValue 残留清零（ESC 不误选）            | P0 | 🟢 **unsaved-guard.test.ts 11 例** |
+| **对话框缺失时的失效安全方向（cancel / 不覆盖 / 不退出）**  | P0 | 🟢 **unsaved-guard.test.ts**（askUnsaved 曾缺判空，模板改坏即抛 TypeError） |
+| **quitDecision 决策表（无脏放行 / 有脏仅显式退出放行）**    | P0 | 🟢 **unsaved-guard.test.ts** |
 | SetUnsavedCount 上报 + beforeClose 放行/否决/负数钳位 | P0 | 🟢 app\_close\_test.go  |
 | pendingNotify 并发补发（二实例不丢事件）                 | P0 | 🟢 app\_notify\_test.go |
 
@@ -129,6 +134,8 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 | ------------------------------------------------------------ | -- | ------------------------------------------------------------------------------------------------------ |
 | **错误码体系 R2-F1：所有 binding error** **`[code] message`** **形态** | P1 | 🟢 TestErrorTextContractForFrontend 6 哨兵 + TestErrorCodeOf\_Wrapped wrap 穿透 + **errcode.test.ts 33 例** |
 | 错误码常量与 Go 端 const 对齐                                         | P1 | 🟢 errcode.test.ts EC 与 fileio/links/main Code 一一对应                                                    |
+| **全哨兵 `[code]` 前缀 + CodeOf 可解出（防新增哨兵漏加码）**                | P1 | 🟢 **app\_bindings\_test.go** TestErrorCodeContract\_AllSentinels（16 哨兵逐一定码）                            |
+| **AppInfo.Version === AppVersion（版本事实源不漂移）**                  | P1 | 🟢 **app\_bindings\_test.go** TestAppInfo\_VersionMatchesConst                                            |
 
 ### 模块 9：UI/UX（P2）
 

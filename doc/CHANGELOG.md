@@ -5,6 +5,75 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ***
 
+## \[Unreleased] — 2026-09-18
+
+全面审查与测试补强批次。基线：Go 全绿（4 包）、前端 16/16 套件全绿。
+
+### 🔒 安全
+
+- **写入侧补齐敏感文件拦截（读 / 写不对称）**：`OpenFile` 一直有
+  `links.CheckEditable` 白名单（读不到 `id_rsa` / `.env`），但 `SaveFile`
+  只过 `safeWritePath` 的"绝对路径 + 非遍历"形态校验——同一个 `id_rsa`
+  读被拒、写却能覆写，防护形同虚设。现 `SaveFile` / `SaveFileAs` 补上与
+  读取侧同口径的判定（`SaveFileAs` 在补全 `.md` 之后判定，避免"无扩展名"
+  走 Obsidian 约定被误放行）。回归：
+  `TestSaveFile_RejectsSecretTarget` + `TestSaveFile_AllowsNormalMarkdown`。
+
+- **OpenFile 符号链接绕过读取白名单**：`CheckEditable` 只按路径字符串判定，
+  名为 `note.md` 却指向 `~/.ssh/id_rsa` 的软链会被放行，`ReadText` 随后
+  跟随链接把私钥读进编辑器。现对 `filepath.EvalSymlinks` 解析出的真实目标
+  再判一次；用户用软链组织笔记库（`alias.md → 真实笔记.md`）不受影响，
+  因为真实目标仍是 Markdown。回归：
+  `TestOpenFile_RejectsSymlinkToSecret` + `TestOpenFile_AllowsSymlinkToMarkdown`。
+
+### 🐛 修复
+
+- `internal/fileio` 空 base64 的报错补上 `[invalid_asset]` 前缀（原为裸
+  `errors.New`，跨 IPC 后前端 `errCode()` 解出 `null`，该分支静默退化为
+  通用错误弹窗）。
+- `frontend/src/errcode.ts` 补齐 `EC.MalformedPath`（Go 侧 R2-G6 引入的
+  `malformed_path` 码一直没同步到前端，注释声称"与 Go 端 const 严格对应"
+  但已漏项），`errcode.test.ts` 同步断言。
+- 消除资产名长度上限的双份魔法数字：`fileio.MaxAssetNameLen` 为唯一事实源，
+  `app.go` 的同名常量转引它（原来只定义不引用，真正的判定是文件里的 `128`）。
+- `errcode.go` 顶部示例里的 `main.CodeExternalModified` 实际不存在（在
+  `fileio` 包），已更正。
+- 全库 `gofmt` 归位（`app.go` / `app_test.go` / `main.go` /
+  `internal/links/links.go` / `links_test.go` 五处对齐漂移，CI 无 gofmt 门禁）。
+
+### ✅ 测试
+
+- 新增 `app_bindings_test.go`（20 例）：补齐此前 0 覆盖的 binding 层
+  ——`ResolveLocalPath`（相对解析 / 锚点 / 查询串 / 四类错误）、
+  `OpenExternal`（scheme 白名单 + nil ctx）、`OpenPath`（可执行黑名单在
+  进程启动前拦截）、`ReadLocalAsset`（data URL / 非图片 / svg 默认拒）、
+  对话框 nil ctx 契约。
+- 新增 `TestErrorCodeContract_AllSentinels`：16 个对外哨兵逐个钉死
+  `[code]` 前缀与 `CodeOf` 可解出，防新增哨兵漏加码。
+- 新增 `TestAppInfo_VersionMatchesConst` 与 `TestNavGuard_RedirectTargetIsEscaped`。
+- Go 单测 107 例（原 75），主包覆盖率 66.5% → 74.9%。
+- 新增前端套件 `unsaved-guard.test.ts`（11 例，17 套件全绿）：`quitDecision`
+  决策表、对话框缺失时的失效安全方向、showModal 前 `returnValue` 清零。
+  jsdom 未实现 `HTMLDialogElement.showModal/close`，按规范语义打桩。
+
+### 🧹 清理与门禁
+
+- 删除 `App.shutdown` 空钩子（审计 R2-G11 只摘了 main.go 的注册，方法本体
+  残留成"看起来能用其实是空"的死代码）；`main.go` 对应注释同步。
+- `CopyImageAsset` 的 `baseFile` 加 `links.CheckEditable` 校验：assets 目录
+  由 baseFile 推导，此前锚点可为任意绝对路径（把 `~/.ssh/id_rsa` 当锚点即可
+  在其同级建目录写文件）。同步勘误函数注释里"写入范围被结构性限死"的边界
+  ——限死的是文件名与目录层级，落点目录仍随 baseFile 变化。
+- `frontend/src/unsaved-guard.ts` `askUnsaved` 补 dialog 判空（同文件
+  `confirmOverwrite` / `confirmQuit` 早已有；缺判空时模板改坏会抛 TypeError，
+  把关闭流程打断在未保存数据的中途）。
+- `ci.yml` 加 `gofmt check` 门禁（此前仓库无任何格式校验，5 个文件长期对齐
+  漂移无人发现）。
+- `build.yml` 的 Windows `go test` 去掉 `continue-on-error`：真因（config.Path
+  不读 HOME）已修、ci.yml 三平台全绿，advisory 让发布前的测试门槛形同虚设。
+
+***
+
 ## \[0.2.11] — 2026-09-04
 
 基于外部代码审查报告（🔴 R1 / 🟡 Y1-Y3 / 🟢 G1-G5，下称 REV-09-04）与其前期文档核对结论的 patch 收口。核对确认 R1 为 v0.2.x 历史修复的不彻底复发、Y1 与 P0-2 契约同向，同时发现并修复了 R2-F7 修复引入的 E2E 回归。
