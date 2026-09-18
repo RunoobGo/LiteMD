@@ -59,10 +59,19 @@ func NewStore() *Store { return &Store{} }
 // Path 返回配置文件应位于的完整路径。目录不存在时会自动创建（仅首次）。
 func (s *Store) Path() (string, error) {
 	s.pathOnce.Do(func() {
-		dir, err := os.UserHomeDir()
-		if err != nil {
-			s.pathErr = fmt.Errorf("home dir: %w", err)
-			return
+		// 优先使用 HOME 环境变量（与 Unix 上 os.UserHomeDir 行为一致），
+		// 使测试可通过 t.Setenv("HOME", t.TempDir()) 隔离配置目录。
+		// Windows 上 os.UserHomeDir 不读 HOME，会导致测试污染真实主目录
+		// （C:\Users\<user>\.litemd\config.json），引发状态串扰与 rename
+		// "Access is denied"。生产环境 HOME 未设置时回退到系统主目录，行为不变。
+		dir := os.Getenv("HOME")
+		if dir == "" {
+			var err error
+			dir, err = os.UserHomeDir()
+			if err != nil {
+				s.pathErr = fmt.Errorf("home dir: %w", err)
+				return
+			}
 		}
 		cfgDir := filepath.Join(dir, ".litemd")
 		if err := os.MkdirAll(cfgDir, 0o755); err != nil {

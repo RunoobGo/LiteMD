@@ -60,10 +60,10 @@ jobs:
           npm ci
           npm run build
 
-      # Windows 上 go test -race 因 cgo/race 链接工具链失败（无测试被运行，仅 job 级 exit 1）；
-      # 对 Windows 矩阵去掉 -race，其余平台保留 race 检测。
-      # 用 bash 统一三平台 shell（规避 Windows PowerShell 引号差异），-v 让失败测试/
-      # panic/编译错误以注解形式暴露；失败时打印末尾日志便于定位根因。
+      # 三平台统一用 bash（规避 Windows PowerShell 引号差异）；-v 让失败测试/
+      # panic/编译错误以 ::error:: 注解形式暴露，失败时打印末尾日志便于定位根因。
+      # （Windows 曾失败的根因是 config.Path() 用 os.UserHomeDir 不读 HOME，
+      #  测试 t.Setenv("HOME",...) 隔离在 Windows 失效 → 已修复于 internal/config/config.go）
       - name: go test (${{ matrix.os == 'windows-latest' && 'no-race' || 'race' }})
         shell: bash
         run: |
