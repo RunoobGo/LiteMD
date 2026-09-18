@@ -352,12 +352,12 @@ func TestCheckEditable(t *testing.T) {
 // 手动打开却被拒"的自相矛盾行为。这里作为反向守卫锁住。
 func TestCheckEditable_ObsidianNoExtStillAllowed(t *testing.T) {
 	allow := []string{
-		"/vault/文档名",       // 无扩展名的 Obsidian 风格笔记
+		"/vault/文档名", // 无扩展名的 Obsidian 风格笔记
 		"/vault/Obsidian 笔记",
 		"/vault/我的 日记 2026",
-		"/vault/environment",   // 不以 ".env" 开头（前缀规则不应误伤）
+		"/vault/environment", // 不以 ".env" 开头（前缀规则不应误伤）
 		"/vault/env 配置说明",    // 中文名 + 空格，前缀不匹配
-		"/vault/notes/todo",    // 子目录下的无扩展名笔记
+		"/vault/notes/todo",  // 子目录下的无扩展名笔记
 	}
 	for _, p := range allow {
 		if err := CheckEditable(p); err != nil {

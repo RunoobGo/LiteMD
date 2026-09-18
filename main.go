@@ -88,15 +88,14 @@ func main() {
 			Middleware: navGuard,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup: app.startup,
+		OnStartup:        app.startup,
 		// 审查 P1-11：OS 级关闭路径（任务栏关闭 / Alt+F4 / Cmd+Q）不经过
 		// 前端标题栏的 confirmQuit 协商，beforeunload 在 WebView 关闭序列中
 		// 不可靠 —— 这里注册原生守卫：有未保存标签时弹确认框，取消则阻止
-		// 关闭（beforeClose 返回 true = 阻止）。OnShutdown 暂不挂（审计
-		// R2-G11：app.shutdown 钩子体为空；需要资源释放/统计上报时再
-		// 启用，避免空函数+空注册）。
+		// 关闭（beforeClose 返回 true = 阻止）。OnShutdown 不挂：审计
+		// R2-G11 已删除空的 shutdown 钩子，未来需要资源释放/统计上报时
+		// 连方法带注册一起加回。
 		OnBeforeClose: app.beforeClose,
-		// OnShutdown: app.shutdown,
 		// 单实例锁：应用已运行时，文件关联再次触发的启动会带参拉起第二实例，
 		// 这里截获其命令行参数并转发给已运行实例（Windows / Linux 生效）。
 		SingleInstanceLock: &options.SingleInstanceLock{

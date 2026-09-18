@@ -9,7 +9,7 @@ package main
 //
 // 用法：
 //
-//	if main.CodeOf(err) == main.CodeExternalModified { … }
+//	if main.CodeOf(err) == fileio.CodeExternalModified { … }
 //
 // 或对跨包错误：
 //

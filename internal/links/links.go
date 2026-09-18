@@ -38,12 +38,12 @@ const (
 
 // 错误码（审计 R2-F1）：见 fileio.go 顶部约定。
 const (
-	CodeEmptyTarget    = "empty_target"
-	CodeNoBase         = "no_base"
-	CodeNotLocal       = "not_local"
-	CodeNotFile        = "not_file"
-	CodeNotEditable    = "not_editable"
-	CodeMalformedPath  = "malformed_path"
+	CodeEmptyTarget   = "empty_target"
+	CodeNoBase        = "no_base"
+	CodeNotLocal      = "not_local"
+	CodeNotFile       = "not_file"
+	CodeNotEditable   = "not_editable"
+	CodeMalformedPath = "malformed_path"
 )
 
 var (

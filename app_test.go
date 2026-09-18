@@ -31,9 +31,9 @@ import (
 // 后端改 code 也立刻暴露。
 func TestErrorTextContractForFrontend(t *testing.T) {
 	cases := []struct {
-		name    string
-		got     error
-		want    string // 全文：必须 == "[code] message"
+		name     string
+		got      error
+		want     string // 全文：必须 == "[code] message"
 		wantCode string // 错误码：必须 == 紧跟 [ 后到 ] 前的部分
 	}{
 		{"ErrExternalModified（保存冲突检测）", fileio.ErrExternalModified, "[" + fileio.CodeExternalModified + "] file modified by another program", fileio.CodeExternalModified},
@@ -186,8 +186,9 @@ func TestAppInfo(t *testing.T) {
 
 // SaveFileAs 在 Wails ctx 未注入时（早期 IPC 不可用）必须按"app not ready"契约返回。
 // 契约要求两条都满足才视为通过：
-//   1. err 必须非空；
-//   2. err 必须显式提示 ctx 不可用（"app not ready"）。
+//  1. err 必须非空；
+//  2. err 必须显式提示 ctx 不可用（"app not ready"）。
+//
 // 之前实现塞了 `t.Logf; return` 把"任何 err"都判通过——这是恒过测试，
 // 任何错误的破坏（路径校验错 / I/O 错 / Wails API 签名变更）都不会被发现。
 func TestAppSaveFileAs_NilCtxSafe(t *testing.T) {
