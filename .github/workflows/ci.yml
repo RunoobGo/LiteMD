@@ -60,8 +60,11 @@ jobs:
           npm ci
           npm run build
 
-      - name: go test -race
-        run: go test ./... -race -count=1
+      # Windows 上 go test -race 因 cgo/race 链接工具链失败（无测试被运行，仅 job 级 exit 1）；
+      # 对 Windows 矩阵去掉 -race，其余平台保留 race 检测。
+      # 若后续 Windows 仍失败且出现具体 FAIL 行，则转为精准修复对应测试。
+      - name: go test (${{ matrix.os == 'windows-latest' && 'no-race' || 'race' }})
+        run: ${{ matrix.os == 'windows-latest' && 'go test ./... -count=1' || 'go test ./... -race -count=1' }}
 
       # 覆盖率（仅在 main 分支非 PR 时上传，可选）
       - name: go test coverage
