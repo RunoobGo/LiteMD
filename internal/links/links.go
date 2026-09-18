@@ -214,6 +214,11 @@ func Resolve(baseFile, href string) (Target, error) {
 		}
 		path = filepath.Join(filepath.Dir(base), path)
 	}
+	// 输出统一为正斜杠：filepath.Join/Clean 在 Windows 会引入反斜杠，而
+	// LiteMD 的路径最终喂给 WebView（前端按 / 解析），跨平台一致性与测试
+	// 也都期望正斜杠（见本文件顶部说明）。cleanAbsolute 已对 UNC 做了
+	// 正斜杠处理，这里对相对分支补齐同样的归一。
+	path = toSlashes(path)
 
 	t := Target{Path: path, Anchor: anchor}
 	st, err := os.Stat(path)

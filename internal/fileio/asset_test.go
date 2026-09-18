@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -107,6 +108,12 @@ func TestWriteBase64File_OversizedPayloadRejectedBeforeDecode(t *testing.T) {
 // ============================================================================
 
 func TestWriteText_PreservesExistingPermissions(t *testing.T) {
+	// Windows 不支持 Unix 权限位：os.WriteFile 的 perm 模式与 os.Stat 的
+	// Mode().Perm() 在 Windows 上不反映 0o640 这类精确位，权限保留语义由
+	// ACL 保障，该断言在 Windows 无意义。
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 不支持 Unix 权限位，权限保留语义由 ACL 保障")
+	}
 	dir := t.TempDir()
 	p := filepath.Join(dir, "note.md")
 	if err := os.WriteFile(p, []byte("old"), 0o640); err != nil {

@@ -18,7 +18,7 @@ func TestPublicPath_AuditG1(t *testing.T) {
 		{"/Users/x/.ssh/id_rsa", "id_rsa"},
 		{"/tmp/secret.env", "secret.env"},
 		{"", ""},
-		{"/", "/"},
+		{"/", filepath.Base("/")}, // Windows 上 filepath.Base("/") 为 "\\"，预期需平台感知
 		{"plain.md", "plain.md"},
 	}
 	for _, c := range cases {

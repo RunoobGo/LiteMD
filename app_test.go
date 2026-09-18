@@ -267,13 +267,13 @@ func TestAppPushRecent_Limit10(t *testing.T) {
 	}
 	// 最新的一条应是 i=14 推入的 n14.md（去重 + LRU 后置顶）
 	first := lastCfg.RecentFiles[0]
-	if first != "/notes/n14.md" {
-		t.Fatalf("first recent 期望 /notes/n14.md，实际为 %q（去重/LRU 顺序错）", first)
+	if first != filepath.Join("/notes", "n14.md") {
+		t.Fatalf("first recent 期望 %s，实际为 %q（去重/LRU 顺序错）", filepath.Join("/notes", "n14.md"), first)
 	}
 	// 最旧的那条应是 i=5 的 n05.md（前 5 条 i=0..4 应被挤出）
 	last := lastCfg.RecentFiles[len(lastCfg.RecentFiles)-1]
-	if last != "/notes/n05.md" {
-		t.Fatalf("last recent 期望 /notes/n05.md，实际为 %q（limit=10 边界错）", last)
+	if last != filepath.Join("/notes", "n05.md") {
+		t.Fatalf("last recent 期望 %s，实际为 %q（limit=10 边界错）", filepath.Join("/notes", "n05.md"), last)
 	}
 }
 
