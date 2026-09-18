@@ -51,6 +51,10 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 - 新增 `TestErrorCodeContract_AllSentinels`：16 个对外哨兵逐个钉死
   `[code]` 前缀与 `CodeOf` 可解出，防新增哨兵漏加码。
 - 新增 `TestAppInfo_VersionMatchesConst` 与 `TestNavGuard_RedirectTargetIsEscaped`。
+- 修 `ResolveLocalPath` 两个用例在 Windows 的假失败：`links.Resolve` 输出经
+  `toSlashes` 归一（要喂 WebView 的 `file://` 与前端路径比较），契约是恒为正斜杠；
+  用例原用 `filepath.Join` 当期望值，`C:/…` 与 `C:\…` 不等。加 `wantSlash()` helper
+  统一口径。
 - Go 单测 107 例（原 75），主包覆盖率 66.5% → 74.9%。
 - 新增前端套件 `unsaved-guard.test.ts`（11 例，17 套件全绿）：`quitDecision`
   决策表、对话框缺失时的失效安全方向、showModal 前 `returnValue` 清零。
