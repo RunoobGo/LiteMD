@@ -32,8 +32,10 @@ const (
 
 // 审计 R2-G15：PushRecent 容量上限提到 const，与 config.PushRecent 默认同源。
 const MaxRecentFiles = 10
-// 审计 R2-G14：资产名长度上限提到 const（与 fileio.AssetWritePath 内部上限对齐）。
-const MaxAssetNameLen = 128
+
+// 审计 R2-G14：资产名长度上限。转引 fileio 的常量而非另立一份 128——
+// 真正的长度判定在 fileio.AssetWritePath，两处各写一个数字必然漂移。
+const MaxAssetNameLen = fileio.MaxAssetNameLen
 
 // ErrEmptyPath 当 binding 收到空路径时返回。
 //
@@ -71,10 +73,10 @@ var ErrEmptyImageData = errors.New("[" + CodeEmptyImageData + "] base64 data is 
 // OnSecondInstanceLaunch 回调并发读取,因此经 ctxMu 读写锁保护;
 // pendingNotify 用于"回调先于 startup"时挂起通知、startup 后补发。
 type App struct {
-	ctxMu         sync.RWMutex
-	ctx           context.Context
-	store         *config.Store
-	startupFiles  *startupFileQueue // 文件关联打开的待开文件（启动参数 / 二实例参数）
+	ctxMu        sync.RWMutex
+	ctx          context.Context
+	store        *config.Store
+	startupFiles *startupFileQueue // 文件关联打开的待开文件（启动参数 / 二实例参数）
 	// pendingNotify 前端就绪前收到二实例打开请求的补发标记。
 	// 审查 P1-8：由 ctxMu（写锁）而非 atomic 保护 —— 它必须与 ctx 的读写
 	// 在同一临界区内翻转，否则"读 ctx 为 nil"与"置标记"之间会被 startup
@@ -109,15 +111,9 @@ func (a *App) currentCtx() context.Context {
 	return a.ctx
 }
 
-// shutdown 是 Wails 生命周期钩子。当前无需收尾工作:
-// 配置在每次 SetConfig/PushRecent 时即时落盘,文件保存也是即时原子写,
-// 不存在"内存态需在退出前刷盘"的场景。保留钩子供未来扩展。
-// 审计 R2-G11：钩子体为空属"占位代码"，先从 main.go 摘除注册，需要
-// 时再加（避免空函数 + 空注册一起增加阅读负担）。
-func (a *App) shutdown(ctx context.Context) {
-	_ = ctx
-	// 占位：未来加资源释放/统计上报时启用 main.go:OnShutdown。
-}
+// 审计 R2-G11：原 shutdown 钩子体为空（占位代码），main.go 已摘除
+// OnShutdown 注册，本文件残留的同名空方法随之删除——未来需要资源释放 /
+// 统计上报时，连方法带注册一起加回即可，不留"看起来能用其实是空"的坑。
 
 // ============================================================================
 // 关闭守卫（审查 P1-11）
@@ -203,6 +199,19 @@ func (a *App) OpenFile(path string) (FilePayload, error) {
 	// .env 这类明文凭据原样读进编辑器。
 	if err := links.CheckEditable(path); err != nil {
 		return FilePayload{}, err
+	}
+	// 审查（软链绕过）：CheckEditable 只看路径字符串，一个名为 note.md
+	// 却指向 ~/.ssh/id_rsa 的软链会被放行，随后 ReadText 跟随链接把私钥
+	// 读进编辑器。这里对解析后的真实目标再判一次。
+	//
+	// 刻意不拒绝软链本身——用户会用软链组织笔记库（alias.md → 真实笔记.md），
+	// 那种场景的真实目标仍是 Markdown，照常放行（见对应回归测试）。
+	// EvalSymlinks 失败（文件不存在等）时忽略，交由 ReadText 给出
+	// ErrNotFound 等更准确的错误。
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		if err := links.CheckEditable(real); err != nil {
+			return FilePayload{}, err
+		}
 	}
 	content, err := fileio.ReadText(path)
 	if err != nil {
@@ -295,6 +304,17 @@ func (a *App) SaveFile(path, content string, expectMtime int64) (int64, error) {
 	if path == "" {
 		return 0, ErrEmptyPath
 	}
+	// 审查（写入侧加固）：此前只有读取侧（OpenFile）过 CheckEditable，
+	// 写入侧只过 safeWritePath 的"绝对路径 + 非遍历"，于是出现荒谬的
+	// 不对称——读不到 id_rsa，却能把它覆写成任意内容。safeWritePath 是
+	// 形态校验（防遍历/保留名），管不住"用户指定了一个敏感文件"。
+	// 这里补上与读取侧同口径的类型/敏感名判定。
+	//
+	// 影响面：SaveDialog 只暴露 *.md 过滤器，正常"保存/另存为"路径
+	// 不会命中；无扩展名文件按 Obsidian 约定仍放行（CheckEditable 内部口径）。
+	if err := links.CheckEditable(path); err != nil {
+		return 0, err
+	}
 	if expectMtime > 0 {
 		st, statErr := os.Stat(path)
 		if statErr != nil {
@@ -329,6 +349,12 @@ func (a *App) SaveFileAs(suggestedName, content string) (string, error) {
 	}
 	if filepath.Ext(target) == "" {
 		target += ".md"
+	}
+	// 与 SaveFile 同口径：对话框的 *.md 过滤器只是 affordance，
+	// 用户可手输任意路径，这里才是真正的拦截点（补完 .md 后再判，
+	// 否则"无扩展名"会走 Obsidian 约定被误放行）。
+	if err := links.CheckEditable(target); err != nil {
+		return "", err
 	}
 	if err := fileio.WriteText(target, content); err != nil {
 		return "", err
@@ -563,10 +589,22 @@ func (a *App) AppInfo() AppInfo {
 // 白名单 + 128 字符上限，解码内容限 20MB（fileio.MaxAssetWriteSize）。
 // 前端失去指定写入位置的能力，写入范围被结构性限死在 assets/ 内。
 //
+// 注意"限死"的边界：限死的是**文件名与目录层级**（必须是
+// <baseFile 目录>/assets/<白名单扩展名的纯文件名>），baseFile 本身由调用方
+// 传入，因此落点目录仍随 baseFile 变化。2026-09-18 审查补上 baseFile 的
+// CheckEditable 校验（见函数体），把锚点收回到"可编辑的文本文件"。
+//
 // 返回最终写入的绝对路径（供前端生成 markdown 引用）。
 func (a *App) CopyImageAsset(baseFile, assetName, base64Data string) (string, error) {
 	if base64Data == "" {
 		return "", ErrEmptyImageData
+	}
+	// 审查（锚点校验）：assets 目录由 baseFile 推导，若不约束 baseFile 本身，
+	// "<任意绝对路径>/assets/" 都成了合法落点——把 ~/.ssh/id_rsa 之类的
+	// 凭据文件当锚点即可在其同级建目录写文件。与 OpenFile 同口径要求锚点
+	// 是可编辑的文本文件，把落点收回到"某个文档所在目录"。
+	if err := links.CheckEditable(baseFile); err != nil {
+		return "", err
 	}
 	target, err := fileio.AssetWritePath(baseFile, assetName)
 	if err != nil {

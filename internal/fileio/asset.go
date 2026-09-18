@@ -19,6 +19,13 @@ import (
 // MaxAssetWriteSize 是单个资产文件解码后的大小上限（20MB）。
 const MaxAssetWriteSize = 20 << 20
 
+// MaxAssetNameLen 是资产文件名的字符上限。
+//
+// 审查 R2-G14 曾在 app.go 另立一份同名常量（值为 128）却无人引用，
+// 真正的判定躺在本文件的魔法数字里，两处容易漂移。现以本常量为唯一
+// 事实源，app.go 的 MaxAssetNameLen 转引它。
+const MaxAssetNameLen = 128
+
 // ErrInvalidAsset 资产名或写入目标不满足约束时返回。
 // 错误码见 fileio.go CodeInvalidAsset。
 var ErrInvalidAsset = errors.New("[" + CodeInvalidAsset + "] invalid asset target")
@@ -48,7 +55,7 @@ func AssetWritePath(baseFile, assetName string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("%w: empty asset name", ErrInvalidAsset)
 	}
-	if len(name) > 128 {
+	if len(name) > MaxAssetNameLen {
 		return "", fmt.Errorf("%w: asset name too long", ErrInvalidAsset)
 	}
 	if name == "." || name == ".." || strings.ContainsAny(name, "/\\") {

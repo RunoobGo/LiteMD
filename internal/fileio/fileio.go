@@ -210,7 +210,10 @@ func WriteBase64File(path, base64Data string) error {
 	}
 	path = clean // 与 WriteText 同源：统一以 Clean 后路径落盘（审查 🟢-1）
 	if strings.TrimSpace(base64Data) == "" {
-		return errors.New("empty base64 data")
+		// 审查（R2-F1 契约补漏）：原为裸 errors.New，文案无 [code] 前缀，
+		// 前端 errCode() 解出 null，该分支静默退化成通用错误弹窗。
+		// 归入 ErrInvalidAsset——前端已有该码的分支，无需新增常量。
+		return fmt.Errorf("%w: empty base64 data", ErrInvalidAsset)
 	}
 	// 兼容带 data URI 前缀的情况。
 	// B16 修复：data URI 格式为 `data:[mediatype][;base64],<payload>`，仅第一个逗号分隔头和内容；
