@@ -13,7 +13,12 @@ export type UnsavedChoice = "save" | "discard" | "cancel";
  * 使用 <dialog> 元素（HTML 原生），支持 ESC 取消。
  */
 export async function askUnsaved(fileName: string): Promise<UnsavedChoice> {
-    const dlg = document.getElementById("unsavedDialog") as HTMLDialogElement;
+    const dlg = document.getElementById("unsavedDialog") as HTMLDialogElement | null;
+    // 与 confirmOverwrite / confirmQuit 同口径：对话框缺失（模板被改坏）时
+    // 按"取消"处理。此前本函数直接 `dlg.returnValue = ""` 无判空，模板一旦
+    // 改动就抛 TypeError，关闭流程被打断在未保存数据的中途——返回 cancel
+    // 至少让数据留在原地。
+    if (!dlg) return "cancel";
     const nameEl = document.getElementById("unsavedFileName");
     if (nameEl) nameEl.textContent = fileName;
     // 关键：ESC 关闭对话框不修改 returnValue，它残留上一次按钮写入的值——

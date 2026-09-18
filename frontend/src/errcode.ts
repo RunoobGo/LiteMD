@@ -18,6 +18,7 @@
 //   links.CodeNotLocal          → "not_local"
 //   links.CodeNotFile           → "not_file"
 //   links.CodeNotEditable       → "not_editable"
+//   links.CodeMalformedPath     → "malformed_path"
 //   main.CodeEmptyPath          → "empty_path"
 //   main.CodeAppNotReady        → "app_not_ready"
 //   main.CodeEmptyImageData     → "empty_image_data"
@@ -60,6 +61,7 @@ export const EC = {
     NotLocal: "not_local",
     NotFile: "not_file",
     NotEditable: "not_editable",
+    MalformedPath: "malformed_path",
     EmptyPath: "empty_path",
     AppNotReady: "app_not_ready",
     EmptyImageData: "empty_image_data",

@@ -67,6 +67,7 @@ const expected: Record<string, string> = {
     NotLocal: "not_local",
     NotFile: "not_file",
     NotEditable: "not_editable",
+    MalformedPath: "malformed_path",
     EmptyPath: "empty_path",
     AppNotReady: "app_not_ready",
     EmptyImageData: "empty_image_data",
