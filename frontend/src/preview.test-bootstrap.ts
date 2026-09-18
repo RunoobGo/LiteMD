@@ -35,6 +35,7 @@ const suites: Record<string, string> = {
     "file-ops": "./file-ops.test",
     sidebar: "./sidebar.test",
     splitpane: "./splitpane.test",
+    "unsaved-guard": "./unsaved-guard.test",
     env: "./env.test",
 };
 
