@@ -86,7 +86,7 @@ mousemove（按键仍按住）→ WailsInvoke("drag")
 | ------ | ------------------------ | ------------------------------------------------------------------------------------------ |
 | 最小化    | `WindowMinimise()`       | <br />                                                                                     |
 | 最大化/还原 | `WindowToggleMaximise()` | 双击标题栏空白同样触发（Wails 不内建，`titlebar.ts` 补齐）                                                    |
-| 关闭     | `Quit()`                 | **Wails v2 无** **`WindowClose`**，`Quit` 与系统关闭行为一致（均不触发 beforeunload）                       |
+| 关闭     | `requestQuit`            | 序列：前端 quitDialog 协商 → `SetUnsavedCount(0)` → `Quit()`。Wails 的 `Quit()` 同步调用 `OnBeforeClose`，清零防原生框二次弹出；**Wails v2 无** `WindowClose` |
 | 状态同步   | `WindowIsMaximised()`    | Wails v2.14 Windows 不广播 `wails:maximise` 事件，改在 `resize` 上防抖 150ms 查询，切换 `.is-maximised` 图标 |
 
 浏览器 mock 端（dev.html）无 `window.runtime`，`initTitlebar(null)` 自动隐藏控制按钮组。

@@ -6,12 +6,15 @@
 //   2. 对话框缺失时的失效安全方向：askUnsaved → "cancel"、
 //      confirmOverwrite → false、confirmQuit → false（宁可不关也不能丢数据）；
 //   3. showModal 前清零 returnValue：ESC 关闭不修改 returnValue，残留上一
-//      次的选择会造成「第二次按 ESC 静默丢数据」（审查 🔴-2）。
+//      次的选择会造成「第二次按 ESC 静默丢数据」（审查 🔴-2）；
+//   4. requestQuit 放行序列：前端协商通过后必须先把 Go 侧未保存计数清零
+//      再 Quit()——Wails v2.14 的 Quit() 同步调用 OnBeforeClose，计数 >0
+//      会再弹一次原生确认框（双重确认 bug）。
 //
 // 注：askUnsaved 原缺判空（直接 dlg.returnValue = ""），模板改坏即抛
 // TypeError；本套件第 2 组即该缺陷的回归。
 
-import { askUnsaved, confirmOverwrite, confirmQuit, quitDecision } from "./unsaved-guard";
+import { askUnsaved, confirmOverwrite, confirmQuit, quitDecision, requestQuit } from "./unsaved-guard";
 
 let pass = 0;
 let fail = 0;
@@ -81,6 +84,52 @@ void (async () => {
     assertEq(dlg2.returnValue, "", "第二轮同样清零");
     dlg2.close(""); // ESC 关闭：returnValue 为空
     assertEq(await pending2, "cancel" as const, "ESC 关闭（returnValue 空）→ cancel，不复用上次选择");
+
+    console.log("\nrequestQuit 放行序列（防 OnBeforeClose 双弹窗）：");
+    const cleanTm = { hasAnyDirty: () => false } as any;
+    const dirtyTm = { hasAnyDirty: () => true } as any;
+    {
+        // 无脏：不打扰用户，但 Quit() 前计数仍须清零归位（幂等保险）
+        const seq: string[] = [];
+        await requestQuit(cleanTm, {
+            clearUnsaved: async () => { seq.push("clear"); },
+            quit: () => { seq.push("quit"); },
+        });
+        assertEq(seq.join(","), "clear,quit", "无脏 → 清零先于 Quit()");
+    }
+    {
+        const dlg = makeDialog("quitDialog");
+        const seq: string[] = [];
+        const p = requestQuit(dirtyTm, {
+            clearUnsaved: async () => { seq.push("clear"); },
+            quit: () => { seq.push("quit"); },
+        });
+        assertEq(seq.length, 0, "对话框未决时不清零、不退出");
+        dlg.close("quit"); // 用户点「退出（放弃修改）」
+        await p;
+        assertEq(seq.join(","), "clear,quit", "有脏 + 确认退出 → 计数清零后 Quit()（原生框不再弹）");
+    }
+    {
+        const dlg = makeDialog("quitDialog");
+        const seq: string[] = [];
+        const p = requestQuit(dirtyTm, {
+            clearUnsaved: async () => { seq.push("clear"); },
+            quit: () => { seq.push("quit"); },
+        });
+        dlg.close("cancel");
+        await p;
+        assertEq(seq.join(","), "", "有脏 + 取消 → 不清零也不退出");
+    }
+    {
+        // 清零 IPC 失败（绑定层异常等）：仍须退出，宁可退回一次原生确认，
+        // 不能让关闭按钮变成无响应
+        const seq: string[] = [];
+        await requestQuit(cleanTm, {
+            clearUnsaved: async () => { throw new Error("ipc down"); },
+            quit: () => { seq.push("quit"); },
+        });
+        assertEq(seq.join(","), "quit", "清零失败仍调用 Quit()（关闭按钮不失效）");
+    }
 
     console.log(`\n结果：${pass} 通过，${fail} 失败`);
     if (fail > 0) process.exit(1);

@@ -13,7 +13,7 @@ import { MarkdownEditor } from "./editor";
 import { Preview } from "./preview";
 import { SplitPane, type SplitMode } from "./splitpane";
 import { SyncScroll } from "./sync-scroll";
-import { askUnsaved, confirmOverwrite, confirmQuit, installBeforeUnloadGuard } from "./unsaved-guard";
+import { askUnsaved, confirmOverwrite, installBeforeUnloadGuard, requestQuit } from "./unsaved-guard";
 import { errCode, hasCode, EC } from "./errcode";
 import {
     openFile,
@@ -1156,10 +1156,11 @@ initTitlebar((window as any).runtime ? {
     minimise: () => WindowMinimise(),
     toggleMaximise: () => WindowToggleMaximise(),
     isMaximised: () => WindowIsMaximised(),
-    // #3 修复：退出前协商——Wails v2 无 OnBeforeClose 异步协商，Quit() 不触发
-    // beforeunload；有未保存修改时先弹 quitDialog，用户确认后才退出。
+    // 修订 2026-09-21：requestQuit = confirmQuit 前端协商 → SetUnsavedCount(0)
+    // → Quit()。清零必需：Wails 的 Quit() 同步走 OnBeforeClose（app.go
+    // beforeClose），计数不清会在原生层二次弹框。
     quit: () => {
-        confirmQuit(tm).then((ok) => { if (ok) Quit(); });
+        void requestQuit(tm, { clearUnsaved: () => setUnsavedCount(0), quit: Quit });
     },
 } : null);
 

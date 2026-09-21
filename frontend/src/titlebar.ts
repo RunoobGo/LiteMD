@@ -6,10 +6,12 @@
 //   2. 双击标题栏空白切换最大化
 //   3. 最大化状态图标同步（is-maximised）
 //
-// 为什么关闭用 quit() 而不是 WindowClose：Wails v2.14 前端 runtime
-// 不存在 WindowClose API（已核对 wailsjs/runtime/runtime.d.ts），
-// 对等能力是 runtime.Quit()，行为与系统关闭按钮一致（均不触发
-// beforeunload；未保存协商属 P0-E 待办，此处保持与原生一致）。
+// 为什么关闭走注入的 quit 而不是直调 runtime.Quit：Wails v2.14 前端
+// runtime 不存在 WindowClose API（已核对 wailsjs/runtime/runtime.d.ts），
+// 对等能力是 runtime.Quit()，而 Quit() 会同步调用 Go 侧 OnBeforeClose
+// （见 windows/frontend.go Quit）。main.ts 注入的是 unsaved-guard 的
+// requestQuit：前端 quitDialog 协商 → SetUnsavedCount(0) 放行 OnBeforeClose
+// → Quit()，避免用户确认后原生框二次弹出。
 //
 // 为什么用 resize 事件同步最大化状态：Wails v2.14 Windows 后端不广播
 // wails:maximise / wails:unmaximise 事件（已核对

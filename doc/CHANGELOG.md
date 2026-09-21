@@ -28,6 +28,13 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ### 🐛 修复
 
+- **标题栏关闭按钮双重确认框**：`confirmQuit` 前端协商通过后直调
+  `Quit()`，而 Wails v2.14 的 `Quit()` 会同步调用 `OnBeforeClose`
+  （已核对 `windows/frontend.go`），Go 侧未保存计数仍 >0 → 原生确认框
+  二次弹出。现收敛为 `unsaved-guard.requestQuit` 固定序列：协商 →
+  `SetUnsavedCount(0)` → `Quit()`；清零 IPC 失败时兜底仍退出（退回一次
+  原生框，不让关闭按钮失灵）。同步修正 titlebar.ts / main.ts /
+  unsaved-guard.ts 三处与此矛盾的陈旧注释。
 - `internal/fileio` 空 base64 的报错补上 `[invalid_asset]` 前缀（原为裸
   `errors.New`，跨 IPC 后前端 `errCode()` 解出 `null`，该分支静默退化为
   通用错误弹窗）。
@@ -56,8 +63,9 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   用例原用 `filepath.Join` 当期望值，`C:/…` 与 `C:\…` 不等。加 `wantSlash()` helper
   统一口径。
 - Go 单测 107 例（原 75），主包覆盖率 66.5% → 74.9%。
-- 新增前端套件 `unsaved-guard.test.ts`（11 例，17 套件全绿）：`quitDecision`
-  决策表、对话框缺失时的失效安全方向、showModal 前 `returnValue` 清零。
+- 新增前端套件 `unsaved-guard.test.ts`（16 例，17 套件全绿）：`quitDecision`
+  决策表、对话框缺失时的失效安全方向、showModal 前 `returnValue` 清零、
+  `requestQuit` 放行序列（清零先于 Quit / 取消不动作 / 清零失败兜底）。
   jsdom 未实现 `HTMLDialogElement.showModal/close`，按规范语义打桩。
 
 ### 🧹 清理与门禁

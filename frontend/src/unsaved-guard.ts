@@ -55,8 +55,9 @@ export function installBeforeUnloadGuard(tabManager: TabManager) {
 }
 
 // ============================================================================
-// #3 修复：退出前协商（Wails v2 无 OnBeforeClose 异步协商，自绘关闭按钮
-// 直调 Quit() 会静默丢弃全部未保存修改——beforeunload 在该路径不触发）
+// #3 修复：退出前协商（OnBeforeClose 是 Go 侧同步原生框，只兜底 OS 级关闭
+// 路径 Alt+F4/Cmd+Q；自绘关闭按钮走这里的前端 quitDialog 异步协商，
+// 放行序列见文件末尾 requestQuit）
 // ============================================================================
 
 export type QuitChoice = "quit" | "cancel";
@@ -117,4 +118,35 @@ export async function confirmQuit(tabManager: TabManager): Promise<boolean> {
         };
         dlg.addEventListener("close", handler, { once: true });
     });
+}
+
+// ============================================================================
+// requestQuit — 标题栏关闭按钮的完整放行序列
+// ============================================================================
+
+/** requestQuit 的副作用依赖（main.ts 注入，避免本模块直接 import wailsjs） */
+export interface QuitFlowDeps {
+    /** 把 Go 侧未保存计数上报清零（SetUnsavedCount(0)） */
+    clearUnsaved(): Promise<void>;
+    /** Wails runtime.Quit() */
+    quit(): void;
+}
+
+/**
+ * 关闭序列：前端协商（confirmQuit）→ 未保存计数清零 → Quit()。
+ *
+ * 清零一步不可省：Wails v2.14 的 Quit() 会同步调用 OnBeforeClose
+ * （internal/frontend/desktop/windows/frontend.go Quit），Go 侧计数 >0
+ * 会再弹一次原生确认框——用户在前端对话框已选「退出」仍被二次追问。
+ * 清零失败（IPC 异常）兜底继续 Quit()：最坏退回一次原生确认框，
+ * 不能让关闭按钮变成无响应。
+ */
+export async function requestQuit(tabManager: TabManager, deps: QuitFlowDeps): Promise<void> {
+    if (!(await confirmQuit(tabManager))) return;
+    try {
+        await deps.clearUnsaved();
+    } catch {
+        /* 计数上报失败不阻塞退出，见上文兜底说明 */
+    }
+    deps.quit();
 }
