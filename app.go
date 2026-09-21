@@ -21,7 +21,7 @@ import (
 // AppVersion 是 LiteMD 当前版本号,作为全项目唯一版本事实源。
 // 发版时需同步更新:wails.json 的 info.productVersion(NSIS 安装包名/版本
 // 信息由此生成)。注释中的"编译时注入"曾与硬编码实现不符,已修正。
-const AppVersion = "0.2.11"
+const AppVersion = "0.2.12"
 
 // 错误码（审计 R2-F1）：见 fileio.go 顶部约定；主包定义 binding 层的码。
 const (
