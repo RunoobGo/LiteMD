@@ -91,6 +91,12 @@ mousemove（按键仍按住）→ WailsInvoke("drag")
 
 浏览器 mock 端（dev.html）无 `window.runtime`，`initTitlebar(null)` 自动隐藏控制按钮组。
 
+**macOS 平台差异（刻意偏离，非缺陷）**：Wails 的 frameless 在 macOS 上会移除
+`Titled` styleMask（已核对 `darwin/WailsContext.m`），系统红绿灯按钮整体消失，
+因此 LiteMD 在 macOS 同样使用右上 Win11 风格自绘按钮，属对平台惯例的刻意偏离
+（CI 同时构建 macos arm64/intel 包）。另注意 macOS 上 `WindowToggleMaximise()`
+等效「zoom」而非全屏。原生红绿灯适配为已接受的待办项（tech debt）。
+
 ***
 
 ## 2. 目录结构

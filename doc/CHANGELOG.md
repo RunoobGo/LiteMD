@@ -90,6 +90,14 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   由此一致（已用 `git -c core.autocrlf=true checkout` 对照验证：27/27 CRLF → 0/27）。
   gofmt 步骤同步加"一次列出 >5 个文件疑似行尾问题"的诊断提示。
 
+### 📚 文档
+
+- `TECHNICAL.md` §1.3 补 macOS 平台差异说明：frameless 会移除 `Titled`
+  styleMask（红绿灯按钮整体消失），LiteMD 在 macOS 沿用右上 Win11 风格自绘
+  按钮属刻意偏离平台惯例，`WindowToggleMaximise` 在 macOS 等效 zoom。对应
+  `wails-frameless-titlebar` 技能审查清单第 8 项（偏离须在项目文档明示），
+  补齐后审计 8/8 合规。
+
 ***
 
 ## \[0.2.11] — 2026-09-04
