@@ -98,6 +98,23 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   `wails-frameless-titlebar` 技能审查清单第 8 项（偏离须在项目文档明示），
   补齐后审计 8/8 合规。
 
+### 🗂 结构整理
+
+- **e2e/**：删除失效脚本 sprint2/3/5（断言全部失效且覆盖内容早已由 sprint4~11
+  补充）及其遗留截图、无人引用的 `sprint7-bar-height*.png`、信息已失真的
+  `SPRINT-LEGACY-README.md`——ROADMAP R9 就此收口（sprint1 已于 v0.2.11 重写
+  v3 恢复有效）。有效截图收纳至 `e2e/screenshots/`（同步 sprint1/6/7 脚本输出
+  路径，顺带修掉 sprint7 残留的 `/workspace` 失效绝对路径检查）；手工测试素材
+  `Markdown-test.md` 从 doc/ 移入 `e2e/fixtures/`（素材归测试体系，不属文档）。
+- **doc/**：撤销 `doc/test/` 子目录，`TEST-MATRIX.md` 升为一级文档（与
+  README/TECHNICAL/CHANGELOG 平级）；`audit/` 中 4 份一次性报告
+  （DOC-INTEGRATION-PLAN + 3 份 HTML 审查/交付报告）移入 `archive/` 并按冻结
+  纪律补「归档声明」，`audit/` 只留 4 份活审计报告。
+- **目录清理**：删除僵尸目录 `build_windows/`（.gitignore 已覆盖的 nsis-src
+  rsync 遗骸，未入库）。
+- 全链路同步：根 README、doc/README 目录树、TECHNICAL §2/§7/§8、ROADMAP
+  R9/R10、TEST-MATRIX 相关引用与死链。
+
 ***
 
 ## \[0.2.12] — 2026-09-18 · Pre-release

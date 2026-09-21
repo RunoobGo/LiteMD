@@ -18,9 +18,9 @@ cd frontend && npm test
 cd frontend && LITEMD_TEST=latex npx tsx src/preview.test-bootstrap.ts
 # 单套件：LITEMD_SUITE=<name>（被 bootstrap 内部使用，外部走 LITEMD_TEST）
 
-# E2E（真实 Chromium，需 agent-browser CLI；有效集 sprint4~11）
+# E2E（真实 Chromium，需 agent-browser CLI；有效集 sprint1、sprint4、sprint6~11）
 cd e2e && ./sprint6.sh && ./sprint7.sh
-# 失败脚本：sprint1/2/3/5 已降级归档至 `e2e/SPRINT-LEGACY-README.md`
+# sprint2/3/5（断言全失效的历史脚本）已于 2026-09-21 删除，覆盖内容早已由 sprint4~11 补充（ROADMAP R9 收口）
 ```
 
 ## 2. 覆盖统计（v0.2.12 + Unreleased 批次 · 2026-09-21）
@@ -29,7 +29,7 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 | ----- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Go 单测 | 107 Test 函数（4 包） | main / config / fileio / links；含关闭守卫、二实例通知、navguard、错误文案契约（6 哨兵）、**错误码穿透 wrap**、**AllowSVG -race 并发**、**CopyImageAsset 5 用例**、**SaveFile expectMtime 3 用例**、**publicPath 6 用例**、**ResolveMalformedPath**；v0.2.11 新增 **DotDotBackstop**（safeWritePath `..` 兜底）与 **ObsidianNoExtStillAllowed**（敏感名单扩充不误伤无扩展名约定）；**审查 2026-09-18 新增 app\_bindings\_test.go 20 例**：binding 层 0 覆盖补齐（ResolveLocalPath / OpenExternal / OpenPath / ReadLocalAsset / 对话框 nil ctx）、**全 16 哨兵错误码契约**、**SaveFile+SaveFileAs 敏感目标拦截**、**OpenFile 软链绕过 CheckEditable** |
 | 前端单测  | 17 套件全绿         | preview(116) / user-css(64) / obsidian(45) / latex(66) / titlebar(17) / tabs(43) / link-handler(23) / toc(30) / md-escape(22) / mermaid(26) / font-size(17) / **errcode(33)** / **file-ops(12)** / **sidebar(21)** / **splitpane(28)** / **unsaved-guard(16)** / **env(8)**（v0.2.11 新增：运行形态判定契约；2026-09-18 新增 unsaved-guard：quitDecision 决策表 + 对话框失效安全方向 + returnValue 清零；2026-09-21 补 requestQuit 放行序列） |
-| E2E   | sprint1、sprint4\~11 | sprint1（v3 版，走 `__litemd__bindings`）v0.2.11 实测 15/15 恢复有效；sprint2/3/5 仍降级归档至 `e2e/SPRINT-LEGACY-README.md`（sprint10 的 mockfs 注入时序缺陷已修复，21/21） |
+| E2E   | sprint1、sprint4\~11 | sprint1（v3 版，走 `__litemd__bindings`）v0.2.11 实测 15/15 恢复有效；sprint2/3/5 已删除（2026-09-21，R9 收口；sprint10 的 mockfs 注入时序缺陷已修复，21/21） |
 
 **核心业务逻辑覆盖率估计 >87%**（目标 >80%，达标；R2 修复后新增 errcode / file-ops / sidebar / splitpane + tabs.findByPath 把"主目录、IPC、UI 容器"模块全部覆盖）。
 
@@ -157,8 +157,8 @@ cd e2e && ./sprint6.sh && ./sprint7.sh
 ## 5. 覆盖缺口与建议
 
 1. **main.ts 编排层**（保存竞态、空标签覆盖、冲突确认流程）依赖 DOM + Wails binding，单测成本高，靠 E2E sprint 覆盖——无阻塞发版的空洞。
-2. **e2e sprint12** 把 sprint1/2/3/5 的失效断言迁到 `__litemd__bindings` 注入体系（[ROADMAP R9](../design/ROADMAP-2026-09-03.md)）；非紧急。
-3. **跨语言错误契约 R2-F1**：Go 15 个 sentinel 由 `TestErrorTextContractForFrontend` + `TestErrorCodeOf_Wrapped` 双向钉死，前端 `errcode.ts` 解析后 `errCode(e) === EC.xxx` 切精确分支；契约详情见 [PRINCIPLES.md #16](../design/PRINCIPLES.md)。
+2. ~~**e2e sprint12** 把 sprint1/2/3/5 的失效断言迁到 `__litemd__bindings` 注入体系~~ 已收口（2026-09-21）：sprint1 已重写为 v3 恢复有效，sprint2/3/5 删除（[ROADMAP R9](./design/ROADMAP-2026-09-03.md)）。
+3. **跨语言错误契约 R2-F1**：Go 15 个 sentinel 由 `TestErrorTextContractForFrontend` + `TestErrorCodeOf_Wrapped` 双向钉死，前端 `errcode.ts` 解析后 `errCode(e) === EC.xxx` 切精确分支；契约详情见 [PRINCIPLES.md #16](./design/PRINCIPLES.md)。
 4. **editor undo 隔离 / preview renderGen 旧结果丢弃**：依赖 CodeMirror 完整 setup，单测成本高，靠 E2E + 代码 review 覆盖。
 
 ***

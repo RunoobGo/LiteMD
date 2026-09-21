@@ -139,6 +139,7 @@ LiteMD/
 ├── app.go               # 绑定给前端的后端方法（打开/保存/配置/资产/外部链接）+ AppVersion 事实源
 ├── errcode.go           # 前后端统一的错误码体系
 ├── startupfile.go       # 双击 .md 与二实例间的启动文件传递
+├── *_test.go            # main 包 Go 测试（app / bindings / close / notify / navguard 等，按 Go 规范与包同目录）
 ├── internal/
 │   ├── config/          # 最近文件、主题等配置的持久化读写
 │   ├── fileio/          # 原子写、图片资产复制、安全路径校验
@@ -148,7 +149,9 @@ LiteMD/
 │   └── wailsjs/         # Wails 自动生成的 Go ↔ TS 绑定（勿手改）
 ├── build/               # Wails 平台构建资源（macOS bundle 配置等）
 ├── nsis-src/            # Windows 安装器脚本（NSIS，含文件关联与注册表项）
-├── e2e/                 # 真实 Chromium 端到端脚本（有效集 sprint4~11）
+├── e2e/                 # 真实 Chromium 端到端脚本（有效集 sprint1、sprint4、sprint6~11）
+│   ├── screenshots/     # E2E 截图存档（脚本输出目录）
+│   └── fixtures/        # 手工测试素材（Markdown-test.md 全语法兼容性样本）
 ├── doc/                 # 按软件生命周期组织的全流程文档
 └── .github/workflows/   # ci.yml 测试门禁（三平台）/ build.yml tag 触发四平台发布
 ```
@@ -176,7 +179,7 @@ LiteMD/
 1. **先开 Issue 再动手** —— 尤其是涉及渲染管线、安全策略或文件关联的改动，这些区域有对应的审计结论，需要对齐后再改。
 2. **提交前跑通测试** —— 前端 17 套件 + Go `go test ./... -race`（107 例）必须全绿，且 `gofmt -l .` 无输出，CI 会以此拦截。
 3. **提交信息用 Conventional Commits** —— 如 `fix(preview): callout 行号漂移`。
-4. **改动测试必同步文档** —— `doc/test/TEST-MATRIX.md` 是测试事实源，任何测试变更都要同步更新（见 `doc/README.md` 的维护纪律）。
+4. **改动测试必同步文档** —— `doc/TEST-MATRIX.md` 是测试事实源，任何测试变更都要同步更新（见 `doc/README.md` 的维护纪律）。
 5. **新增文档要挂进地图** —— 新文档需在 `doc/README.md` 的导航中登记。
 
 **安全相关**：本项目把「链接白名单 + 敏感路径双向拦截 + 原子写」当作三道防线。若发现绕过路径，请**不要**开公开 Issue，按 [SECURITY.md](./.github/SECURITY.md) 的私人渠道披露。
@@ -192,9 +195,9 @@ LiteMD/
 | [doc/TECHNICAL.md](./doc/TECHNICAL.md) | 技术文档：架构 / 渲染管线 / 安全模型 / 构建 / 待办 |
 | [doc/CHANGELOG.md](./doc/CHANGELOG.md) | 版本变更日志（Keep a Changelog 格式） |
 | [doc/design/PRINCIPLES.md](./doc/design/PRINCIPLES.md) | 设计原则与工程约定、主题配色 |
-| [doc/test/TEST-MATRIX.md](./doc/test/TEST-MATRIX.md) | 分级测试矩阵、运行方式、覆盖率统计 |
-| [doc/audit/](./doc/audit/) | 审计与评审报告（AUDIT / CODE-REVIEW） |
-| [doc/archive/](./doc/archive/) | 历史归档（开发计划 / 评审 / 测试审计 / 发布说明） |
+| [doc/TEST-MATRIX.md](./doc/TEST-MATRIX.md) | 分级测试矩阵、运行方式、覆盖率统计 |
+| [doc/audit/](./doc/audit/) | 全景审计报告（两轮 AUDIT + 总结） |
+| [doc/archive/](./doc/archive/) | 历史归档（开发计划 / 评审 / 代码审查 / 文档整合计划 / 发布说明，均带归档声明） |
 
 ---
 

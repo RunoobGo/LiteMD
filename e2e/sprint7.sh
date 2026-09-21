@@ -105,9 +105,9 @@ TIP_VISI=$(evs "getComputedStyle(document.querySelector('.actions button[data-ac
     || fail "tooltip 未浮出: opacity=$TIP_OPAC visibility=$TIP_VISI"
 
 # 视觉验证：截图截顶部 + sidebar-head 区域，肉眼确认 tooltip 浮在最上
-agent-browser screenshot "" e2e/sprint7-tooltip-on-top.png > /dev/null 2>&1
-OK=$(ls -l /workspace/litemd-build/LiteMD-v0.2.0-src/e2e/sprint7-tooltip-on-top.png 2>/dev/null | awk '{print $5}')
-[[ -n "$OK" && "$OK" -gt 1000 ]] && ok "视觉截图已生成：e2e/sprint7-tooltip-on-top.png（应见 tooltip 浮在 sidebar-head 之上）" \
+agent-browser screenshot "" e2e/screenshots/sprint7-tooltip-on-top.png > /dev/null 2>&1
+OK=$(ls -l e2e/screenshots/sprint7-tooltip-on-top.png 2>/dev/null | awk '{print $5}')
+[[ -n "$OK" && "$OK" -gt 1000 ]] && ok "视觉截图已生成：e2e/screenshots/sprint7-tooltip-on-top.png（应见 tooltip 浮在 sidebar-head 之上）" \
     || fail "截图生成失败"
 
 # 像素级断言：取 tooltip 中心区样本，应比 sidebar-head 背景更亮（提示词背景 --bg-3 较深色 sidebar 背景更深）
@@ -133,8 +133,8 @@ GRID_ROW2=$(evs "getComputedStyle(document.getElementById('app')).gridTemplateRo
 [[ "$GRID_ROW2" == "30px" ]] && ok "grid 第 2 行=${GRID_ROW2}（标签栏 30px）" \
     || fail "grid 第 2 行=${GRID_ROW2}（应 30px）"
 # 视觉验证
-agent-browser screenshot "" e2e/sprint7-topbar-compact.png > /dev/null 2>&1
-ok "视觉截图：e2e/sprint7-topbar-compact.png"
+agent-browser screenshot "" e2e/screenshots/sprint7-topbar-compact.png > /dev/null 2>&1
+ok "视觉截图：e2e/screenshots/sprint7-topbar-compact.png"
 
 # ============================================================================
 log "场景 4: 预览中 []() 链接可点击（相对路径 + 危险 scheme 过滤）"
@@ -229,8 +229,8 @@ LINE3=$(evs "document.querySelectorAll('#preview .code-block > pre')[0].dataset.
 [[ -n "$LINE3" ]] && ok "pre data-line 保留：第 1 块=${LINE3}" || fail "pre data-line 丢失"
 
 # 视觉
-agent-browser screenshot "" e2e/sprint7-codeblocks.png > /dev/null 2>&1
-ok "视觉截图：e2e/sprint7-codeblocks.png"
+agent-browser screenshot "" e2e/screenshots/sprint7-codeblocks.png > /dev/null 2>&1
+ok "视觉截图：e2e/screenshots/sprint7-codeblocks.png"
 
 # ============================================================================
 echo

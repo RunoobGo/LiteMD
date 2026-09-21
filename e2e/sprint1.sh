@@ -191,7 +191,8 @@ This is **Sprint 1** final screenshot.
 sleep 1
 # v0.2.11：截图路径不再写死仓库绝对路径（/workspace/LiteMD/…），改为脚本所在目录，
 # 仓库 checkout 在任意位置都能存档
-SHOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/screenshots"
+mkdir -p "$SHOT_DIR"
 agent-browser screenshot "$SHOT_DIR/sprint1-screenshot.png" > /dev/null 2>&1
 if [[ -f "$SHOT_DIR/sprint1-screenshot.png" ]]; then
     SIZE=$(du -h "$SHOT_DIR/sprint1-screenshot.png" | cut -f1)

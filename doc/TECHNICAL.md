@@ -2,7 +2,7 @@
 
 > 最后更新：2026-09-21（对齐 tag `v0.2.12` 与工作区 Unreleased 批次快照；修复项见 `doc/CHANGELOG.md` \[0.2.12] 与 \[Unreleased] 段）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
-> 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)。
+> 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [TEST-MATRIX.md](./TEST-MATRIX.md)。
 
 ***
 
@@ -106,7 +106,7 @@ LiteMD/
 ├── main.go                 # 入口：窗口配置、单实例锁、文件关联冷启动
 ├── app.go                  # Wails binding：文件/配置/图片 API
 ├── startupfile.go          # 启动文件队列（并发安全）
-├── app_test.go / app_integration_test.go / startupfile_test.go
+├── *_test.go               # main 包测试 9 文件（app/bindings/close/notify/integration/save-conflict/asset/navguard/startupfile）
 ├── internal/
 │   ├── config/             # ~/.litemd/config.json 持久化（主题/字号/最近文件）
 │   ├── fileio/             # 文件读写（原子写 + safeWritePath 守卫）
@@ -131,8 +131,10 @@ LiteMD/
 │   ├── dev.html            # 浏览器开发入口（含 mock）
 │   └── vite.config.js      # 构建配置（含 KaTeX 字体裁剪插件）
 ├── nsis-src/              # NSIS 安装脚本（安装脚本事实源）
-├── e2e/                    # E2E 脚本（sprint4~11 为有效回归集；1/2/3/5 历史脚本 bug 未修）
-├── doc/                    # 技术文档（本文件 + CHANGELOG + archive/）
+├── e2e/                    # E2E 脚本（有效回归集 sprint1、sprint4、sprint6~11；失效脚本 sprint2/3/5 已于 2026-09-21 删除）
+│   ├── screenshots/        # 截图存档（脚本输出目录）
+│   └── fixtures/           # 手工测试素材（Markdown-test.md）
+├── doc/                    # 技术文档（本文件 + CHANGELOG + TEST-MATRIX + design/ + audit/ + archive/）
 └── build-win11-x64.sh      # 一键构建脚本
 ```
 
@@ -428,13 +430,13 @@ cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 
 ### 7.2 当前统计
 
-> **单一事实源为 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)**（逐套件断言数、覆盖标记、运行口径），本节只留量级摘要，避免双处统计漂移（doc/README 维护纪律 #3）。
+> **单一事实源为 [TEST-MATRIX.md](./TEST-MATRIX.md)**（逐套件断言数、覆盖标记、运行口径），本节只留量级摘要，避免双处统计漂移（doc/README 维护纪律 #3）。
 
 | 层 | 规模（2026-09-21） |
 | --- | --- |
 | Go 单测 | 107 个 Test 函数（main / config / fileio / links 4 包，`-race`）；主包覆盖率 74.9% |
 | 前端单测 | 17 套件全绿（preview / user-css / obsidian / latex / titlebar / tabs / link-handler / toc / md-escape / mermaid / font-size / errcode / file-ops / sidebar / splitpane / unsaved-guard / env） |
-| E2E | sprint4~11 有效集全绿；失效脚本 sprint1/2/3/5 降级至 `e2e/SPRINT-LEGACY-README.md` |
+| E2E | sprint1、sprint4、sprint6\~11 有效集全绿；失效脚本 sprint2/3/5 已于 2026-09-21 删除 |
 | CI 门禁 | `ci.yml`：gofmt + `go test -race` 三平台矩阵 + 前端检查 + npm audit；`build.yml`：tag 触发四平台构建发布 |
 
 E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
@@ -460,7 +462,7 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 ### 8.1 已知限制
 
-- E2E 失效脚本 sprint1/2/3/5 已降级归档到 `e2e/SPRINT-LEGACY-README.md`（**有效集 sprint4~11**），sprint12 迁回再恢复
+- E2E 失效脚本 sprint2/3/5 已于 2026-09-21 删除（覆盖内容早已由 sprint4\~11 补充，见 ROADMAP R9 收口备注）；sprint1 已在 v0.2.11 重写为 v3 版恢复有效
 
 - 前端 GetConfig/SetConfig 仍主要给主题持久化用，**字号/侧栏宽/同步滚动偏好** 用 localStorage（频繁读写不值得跨 IPC 边界；如未来字段增多再统一到 Config，R7 备注）
 
@@ -497,7 +499,7 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 | 优先级 | 项                                                   | 位置                   |
 | --- | --------------------------------------------------- | -------------------- |
-| P1  | E2E sprint12：把 sprint1/2/3/5 迁到 `__litemd__bindings` 注入 + 移除自动更新项 | `e2e/`              |
+| ~~P1~~ | ✅ E2E R9 已收口（2026-09-21）：sprint1 重写为 v3 恢复有效；sprint2/3/5 已删除（覆盖内容早已由 sprint4\~11 补充） | `e2e/`              |
 
 ***
 

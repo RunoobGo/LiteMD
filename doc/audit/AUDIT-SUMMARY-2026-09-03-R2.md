@@ -69,7 +69,7 @@
 - [README.md](../../README.md) 扩展名关联 5 个（md/markdown/mdown/mkd/mkdn）
 - [README.md](../../README.md) 快捷键 `Ctrl+Shift+F` → `Ctrl+H` 修正
 - [TECHNICAL.md](../TECHNICAL.md) §5.3 macOS OnFileOpen 状态更新
-- [TEST-MATRIX.md](../test/TEST-MATRIX.md) 11 套件 → 15 套件 + Go 69 → 73 Test
+- [TEST-MATRIX.md](../TEST-MATRIX.md) 11 套件 → 15 套件 + Go 69 → 73 Test
 - [AUDIT-2026-09-03.md](./AUDIT-2026-09-03.md) macOS Finder 🟢 + 11 套件 → 11 套件
 - [PRINCIPLES.md](../design/PRINCIPLES.md) 新增约定 #16-#22（7 条）
 - [CHANGELOG.md](../../CHANGELOG.md)「[未发布]」段补 R2 完整记录

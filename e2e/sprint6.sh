@@ -218,7 +218,7 @@ sleep 0.8
 ACTIVE2=$(ev "document.querySelectorAll('#tocPanel .toc-row.active').length")
 ACT_TXT=$(evs "(() => { const e=document.querySelector('#tocPanel .toc-row.active .toc-text'); return e?e.textContent:'无'; })()")
 [[ "$ACTIVE2" -eq 1 ]] && ok "手动滚动后高亮唯一：「${ACT_TXT}」" || fail "滚动跟随高亮异常: ${ACTIVE2} 项"
-agent-browser screenshot "" e2e/sprint6-preview-jump.png > /dev/null 2>&1
+agent-browser screenshot "" e2e/screenshots/sprint6-preview-jump.png > /dev/null 2>&1
 
 # ============================================================================
 log "场景 6: 分屏模式跳转"
@@ -233,7 +233,7 @@ CLINE=$(ev "window.__litemd__cm.getCursorPos().line")
 PSCROLL=$(ev "Math.round(document.getElementById('preview').scrollTop)")
 [[ "$CLINE" == "$TARGET_LINE" ]] && ok "编辑器光标定位到第 ${CLINE} 行" || fail "光标行 ${CLINE}，期望 ${TARGET_LINE}"
 [[ "$PSCROLL" -gt 0 ]] && ok "预览同步滚动到 ${PSCROLL}" || fail "预览未同步滚动: ${PSCROLL}"
-agent-browser screenshot "" e2e/sprint6-split-jump.png > /dev/null 2>&1
+agent-browser screenshot "" e2e/screenshots/sprint6-split-jump.png > /dev/null 2>&1
 
 # ============================================================================
 log "场景 7: 仅编辑模式跳转"
