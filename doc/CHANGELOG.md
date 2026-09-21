@@ -5,9 +5,9 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ***
 
-## \[Unreleased] — 2026-09-18
+## \[Unreleased] — 2026-09-21（v0.2.12 之后，待发布）
 
-全面审查与测试补强批次。基线：Go 全绿（4 包）、前端 16/16 套件全绿。
+全面审查与测试补强批次（tag `v0.2.12` 之后的 13 个提交）。基线：Go 全绿（4 包、107 例）、前端 17/17 套件全绿。
 
 ### 🔒 安全
 
@@ -97,6 +97,31 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
   按钮属刻意偏离平台惯例，`WindowToggleMaximise` 在 macOS 等效 zoom。对应
   `wails-frameless-titlebar` 技能审查清单第 8 项（偏离须在项目文档明示），
   补齐后审计 8/8 合规。
+
+***
+
+## \[0.2.12] — 2026-09-18 · Pre-release
+
+发布通道批次：把「打 tag → 四平台产物 → GitHub Release」打通到 CI，并修复 Windows 测试链路。产物为 4 平台压缩包（`LiteMD-linux-amd64.zip` / `LiteMD-windows-amd64.zip` / `LiteMD-macos-arm64.zip` / `LiteMD-macos-amd64.zip`），本批未经本地 `build-win11-x64.sh` 打包，故无 NSIS 安装器资产。
+
+### 🚀 新增
+
+- **`build.yml` 全平台构建与 Release 工作流**：推送 `v*` 标签自动构建 Linux amd64 / Windows amd64 / macOS arm64 / macOS Intel 四产物并发布 GitHub Release；`workflow_dispatch` 支持手动触发。Linux 依赖 `libwebkit2gtk-4.1-dev`（wails v2 要求 WebKit 4.1）。
+
+### ⚙️ 工程与 CI
+
+- `setup-go` 改用 `go-version-file` 直读 `go.mod`，版本单一事实源。
+- `ci.yml` 三连修复：补齐三处缺失 `run` 的 step 并安装 wails CLI；go-test 补前端构建前置（`go:embed frontend/dist`）与 Node 20 全局 `navigator` 缺失；消除 Node 20 弃用告警。
+- 从 `ci.yml` 移除 build job，发布构建由 `build.yml` 独占，CI 门禁与产物发布职责分离。
+- Windows 矩阵 `go test` 去掉 `-race`（工具链在 Windows runner 上编译失败）；配套仪器化输出以暴露失败根因。
+
+### 🐛 修复
+
+- **`internal/config.Path()` 优先读 `HOME`，修复 Windows 测试污染真实主目录**：`os.UserHomeDir()` 在 Windows 落到 `USERPROFILE`，单测直接读写真实用户目录。现 `HOME` 优先，测试可注入隔离路径。
+
+### 📚 文档
+
+- README 专业化重写（特性 / 快速开始 / 文档地图结构）+ 补全 MIT LICENSE 文件。
 
 ***
 
@@ -316,7 +341,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 - 修正 README 快捷键"Ctrl+Shift+F 查找替换" → "Ctrl+H"（CodeMirror `searchKeymap` 默认）。
 
-- CHANGELOG [0.2.0](https://github.com/litemd/litemd/releases/tag/v0.2.0) 历史条目加注脚（"命令面板 / Vim·Emacs keymap" 实际未实装）。
+- CHANGELOG \[0.2.0] 历史条目加注脚（"命令面板 / Vim·Emacs keymap" 实际未实装）。
 
 - TECHNICAL §7.2 / TEST-MATRIX §2 测试统计对齐：11 套件 + 各套件数与 E2E sprint4-11。
 
@@ -759,7 +784,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 - 视觉截图：`e2e/sprint7-tooltip-on-top.png`、`e2e/sprint7-topbar-compact.png`、
   `e2e/sprint7-codeblocks.png`。
 
-## [0.2.2](https://github.com/litemd/litemd/releases/tag/v0.2.2) — 2026-09-01
+## \[0.2.2] — 2026-09-01
 
 ### 🐛 修复
 
@@ -796,7 +821,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 - 全量前端套件 269 项断言通过；`tsc --noEmit` 无错误；Go 测试全通过。
 
-## [0.2.1](https://github.com/litemd/litemd/releases/tag/v0.2.1) — 2026-09-01
+## \[0.2.1] — 2026-09-01
 
 ### ✨ 新增
 
@@ -840,7 +865,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 - 全量前端套件 269 项断言通过（7 套件）；`tsc --noEmit` 无错误；Go 测试全通过。
 
-## [0.2.0](https://github.com/litemd/litemd/releases/tag/v0.2.0) — 2026-08-12
+## \[0.2.0] — 2026-08-12
 
 **首个生产可用版本**：对标 Obsidian 快捕场景，启动 < 1.5s、安装包 3MB、内存 < 200MB。
 
@@ -931,7 +956,7 @@ LiteMD 版本变更记录。格式遵循 [Keep a Changelog](https://keepachangel
 
 ***
 
-## [0.1.0](https://github.com/litemd/litemd/releases/tag/v0.1.0) — 2026-06-30
+## \[0.1.0] — 2026-06-30
 
 **Sprint 0 原型版本**：内部验证，功能不完整。
 

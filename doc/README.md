@@ -3,8 +3,8 @@
 > 本页是 LiteMD 全部技术文档的**单一入口**。按软件生命周期（规划 → 设计 → 开发 → 测试 → 发布 → 审计）组织，目标是让任何角色都能在 1 分钟内定位所需文档。
 
 - **产品入口**（用户视角）：见仓库根 [README.md](../README.md)
-- **版本基线**：v0.2.11（2026-09-04）
-- **当前批次**：[0.2.11] 段 = 外部审查报告 REV-09-04（R1/Y1-Y3/G1-G5）落地项 + R2-F7 的 E2E 回归修复（详见 [CHANGELOG.md](./CHANGELOG.md)）
+- **版本基线**：tag `v0.2.12`（2026-09-18，Pre-release，四平台 CI 产物）；工作区代码领先 tag 一个未发布批次
+- **当前批次**：[CHANGELOG.md](./CHANGELOG.md) `[Unreleased]` 段 = v0.2.12 之后的「全面审查与测试补强」批次（敏感文件读写双向拦截 + 符号链接白名单加固 + 标题栏关闭双弹框修复 + 测试补强至 Go 107 例 / 前端 17 套件），待发布为下一版本
 
 ---
 
@@ -35,6 +35,7 @@
 | 审计 / 评审（R2）| [audit/AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md) | 第二轮审计（F1 错误码体系 + G1-G11 / F2-F17） | 研发 / 架构 | 每次大审查 |
 | 审计总结 | [audit/AUDIT-SUMMARY-2026-09-03.md](./audit/AUDIT-SUMMARY-2026-09-03.md) | 第一轮审计一页版结论 | 管理层 / 研发 | 每次大审查 |
 | 审计总结（R2）| [audit/AUDIT-SUMMARY-2026-09-03-R2.md](./audit/AUDIT-SUMMARY-2026-09-03-R2.md) | 第二轮审计一页版结论（F1 错误码体系 + 20 P1 + 18 P2 全部修复） | 管理层 / 研发 | 每次大审查 |
+| 文档整合计划 | [audit/DOC-INTEGRATION-PLAN-2026-09-03.md](./audit/DOC-INTEGRATION-PLAN-2026-09-03.md) | 2026-09-03 文档体系整合的执行计划（已落地） | 文档维护者 | 一次性，历史冻结 |
 | 历史归档 | [archive/](./archive/) | 已取代文档（标注基线，仅追溯） | — | 一次性，历史冻结 |
 
 ---
@@ -50,12 +51,14 @@ doc/
 │   ├── PRINCIPLES.md            设计原则与约定（含主题配色）
 │   └── ROADMAP-2026-09-03.md    优化/改进/功能建议（R1-R12）
 ├── test/
-│   └── TEST-MATRIX.md           分级测试矩阵与运行文档
+│   ├── TEST-MATRIX.md           分级测试矩阵与运行文档
+│   └── Markdown-test.md         全语法兼容性测试素材
 ├── audit/
 │   ├── AUDIT-2026-09-03.md            第一轮全景审计主报告（7 项 P1 已修复）
 │   ├── AUDIT-2026-09-03-R2.md        第二轮全景审计（F1 错误码体系 + G1-G11/F2-F17）
 │   ├── AUDIT-SUMMARY-2026-09-03.md   第一轮审计总结
 │   ├── AUDIT-SUMMARY-2026-09-03-R2.md 第二轮审计总结
+│   ├── DOC-INTEGRATION-PLAN-2026-09-03.md 文档整合计划（已落地，历史冻结）
 │   ├── CODE-REVIEW-2026-09-02.html   代码审查（历史）
 │   └── LiteMD-0.2.0-*.html          早期审查/交付报告（历史）
 └── archive/                     历史归档（每份均带「归档声明」头部）
@@ -80,4 +83,4 @@ doc/
 
 ---
 
-*最后更新：2026-09-04（v0.2.11 发布）· 详见 [CHANGELOG.md](./CHANGELOG.md) [0.2.11] 段 + [audit/AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md)*
+*最后更新：2026-09-21（对齐 tag v0.2.12 + Unreleased 审查补强批次）· 详见 [CHANGELOG.md](./CHANGELOG.md)*

@@ -1,6 +1,6 @@
 # LiteMD 技术文档
 
-> 最后更新：2026-09-04（对齐当前代码快照 v0.2.11；0.2.11 修复项见 `doc/CHANGELOG.md` [0.2.11] 段）
+> 最后更新：2026-09-21（对齐 tag `v0.2.12` 与工作区 Unreleased 批次快照；修复项见 `doc/CHANGELOG.md` \[0.2.12] 与 \[Unreleased] 段）
 > 历史文档已归档至 `doc/archive/`，如需追溯开发过程请查阅。
 > 交叉导航：全流程文档地图见 [doc/README.md](./README.md)；设计原则与主题配色见 [design/PRINCIPLES.md](./design/PRINCIPLES.md)；测试矩阵与运行方式见 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)。
 
@@ -394,6 +394,19 @@ OUT=/path/to/dist ./build-win11-x64.sh
 
 安装包**不内嵌** WebView2 运行时。安装时检测注册表（HKLM/HKCU），缺失则提示下载地址但**不阻断安装**。Win11 通常已自带。
 
+### 6.4 CI 全平台构建与发布（v0.2.12 起）
+
+`.github/workflows/build.yml`：推送 `v*` tag 自动构建四平台产物并发布 GitHub Release（`workflow_dispatch` 可手动触发）。
+
+| 平台 | runner | 产物（zip） | 备注 |
+| --- | --- | --- | --- |
+| Linux amd64 | ubuntu-latest | `LiteMD-linux-amd64.zip` | 依赖 `libwebkit2gtk-4.1-dev`（wails v2 要求 WebKit 4.1） |
+| Windows amd64 | windows-latest | `LiteMD-windows-amd64.zip` | 裸 exe 便携包；NSIS 安装器仍需本地 `build-win11-x64.sh` |
+| macOS arm64 | macos-14 | `LiteMD-macos-arm64.zip` | Apple Silicon |
+| macOS amd64 | macos-15-intel | `LiteMD-macos-amd64.zip` | Intel |
+
+> CI 产物为 wails 通用构建，不含 NSIS 安装器 / 文件关联注册项；macOS / Linux 定位「技术预览」，Windows 为完整集成体验。
+
 ***
 
 ## 7. 测试
@@ -413,23 +426,16 @@ cd frontend && LITEMD_TEST=latex npx tsx src/preview.test-bootstrap.ts
 cd frontend && LITEMD_TEST=titlebar npx tsx src/preview.test-bootstrap.ts
 ```
 
-### 7.2 当前统计（2026-09-03，v0.2.9）
+### 7.2 当前统计
 
-| 套件                                 | 断言/用例数                                                                      |
-| ---------------------------------- | --------------------------------------------------------------------------- |
-| Go（main + config + fileio + links） | 69 个 Test 函数（含关闭守卫 app\_close\_test.go、二实例通知 app\_notify\_test.go、navguard） |
-| preview\.test.ts                   | 91（含分块增量渲染）                                                                 |
-| user-css.test.ts                   | 64（前缀化/at-rule 分支/声明黑名单/逃逸转义）                                               |
-| obsidian.test.ts                   | 45（含 ReDoS 防护 9 项）                                                          |
-| latex.test.ts                      | 59（含占位符防伪 + ReDoS 守卫 + 闸门 9 例）                                              |
-| titlebar.test.ts                   | 17（按钮/手势/状态同步/降级）                                                           |
-| tabs.test.ts                       | 21                                                                          |
-| link-handler.test.ts               | 23（链接分类/锚点切分/slug 生成）                                                       |
-| toc.test.ts                        | 22                                                                          |
-| md-escape.test.ts                  | 9                                                                           |
-| mermaid.test.ts                    | 25（缓存/主题隔离/失败三分/超时/串行）                                                    |
-| font-size.test.ts                  | 16（钳位/持久化/CSS 写入/隐私模式降级）                                                   |
-| E2E sprint4\~11                    | 全绿（sprint4 16 / sprint6 29 / sprint7 30 / sprint8 14 / sprint9 26 / sprint10 28 / sprint11 新增） |
+> **单一事实源为 [test/TEST-MATRIX.md](./test/TEST-MATRIX.md)**（逐套件断言数、覆盖标记、运行口径），本节只留量级摘要，避免双处统计漂移（doc/README 维护纪律 #3）。
+
+| 层 | 规模（2026-09-21） |
+| --- | --- |
+| Go 单测 | 107 个 Test 函数（main / config / fileio / links 4 包，`-race`）；主包覆盖率 74.9% |
+| 前端单测 | 17 套件全绿（preview / user-css / obsidian / latex / titlebar / tabs / link-handler / toc / md-escape / mermaid / font-size / errcode / file-ops / sidebar / splitpane / unsaved-guard / env） |
+| E2E | sprint4~11 有效集全绿；失效脚本 sprint1/2/3/5 降级至 `e2e/SPRINT-LEGACY-README.md` |
+| CI 门禁 | `ci.yml`：gofmt + `go test -race` 三平台矩阵 + 前端检查 + npm audit；`build.yml`：tag 触发四平台构建发布 |
 
 E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 `window.__litemd__unsavedCount` 记录 mock 侧最近一次 `SetUnsavedCount` 上报值。
@@ -481,11 +487,11 @@ E2E 断言接缝：`window.__litemd__bindings` 暴露 binding 包装函数；
 
 ### 8.2 待办（v0.2.9 + R2 审计后更新）
 
-> **R1 审计**（[AUDIT-2026-09-03.md](../audit/AUDIT-2026-09-03.md)）落地 P1 三项：
+> **R1 审计**（[AUDIT-2026-09-03.md](./audit/AUDIT-2026-09-03.md)）落地 P1 三项：
 > `OnBeforeClose` 协商、保存重构（`updateContentBaseline` 不覆盖
 > liveContent）、`PushRecent` 事务化（`store.Mutate`）—— 全部并入 v0.2.9。
 >
-> **R2 审计**（[AUDIT-2026-09-03-R2.md](../audit/AUDIT-2026-09-03-R2.md)）落地 20 P1：
+> **R2 审计**（[AUDIT-2026-09-03-R2.md](./audit/AUDIT-2026-09-03-R2.md)）落地 20 P1：
 > F1 错误码体系 + G1-G11 后端加固 + F2-F17 前端清理—— 全部并入 [未发布] 段。
 > P2 全部修复，剩余 0 P1 / 0 P2。
 
